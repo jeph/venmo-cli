@@ -1,0 +1,27 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Pay one person
+
+Usage: pay [OPTIONS] --note <NOTE> <RECIPIENT> <AMOUNT>
+
+Arguments:
+  <RECIPIENT>
+          Exact @username or positive numeric Venmo user ID
+
+  <AMOUNT>
+          Positive USD amount with at most two fractional digits
+
+Options:
+      --note <NOTE>
+          Non-empty payment note
+
+      --from <METHOD_ID>
+          Payment-method ID shown by `payment-methods list`
+
+      --yes
+          Skip only the final default-No confirmation
+
+  -h, --help
+          Print help

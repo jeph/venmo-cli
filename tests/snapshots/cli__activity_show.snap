@@ -1,0 +1,15 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Show one activity record
+
+Usage: show <ACTIVITY_ID>
+
+Arguments:
+  <ACTIVITY_ID>
+          Canonical activity ID
+
+Options:
+  -h, --help
+          Print help

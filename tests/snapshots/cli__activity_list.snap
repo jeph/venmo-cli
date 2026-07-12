@@ -1,0 +1,19 @@
+---
+source: tests/cli.rs
+expression: help
+---
+List recent activity
+
+Usage: list [OPTIONS]
+
+Options:
+      --limit <N>
+          Server request page size
+
+          [default: 10]
+
+      --before-id <TOKEN>
+          Fetch activity before this endpoint-native token
+
+  -h, --help
+          Print help

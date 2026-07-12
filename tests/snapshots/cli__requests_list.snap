@@ -1,0 +1,25 @@
+---
+source: tests/cli.rs
+expression: help
+---
+List pending requests involving the active account
+
+Usage: list [OPTIONS]
+
+Options:
+      --direction <DIRECTION>
+          Filter by the request's direction
+
+          [default: all]
+          [possible values: all, incoming, outgoing]
+
+      --limit <N>
+          Server request page size before local direction filtering
+
+          [default: 10]
+
+      --before <TOKEN>
+          Fetch pending requests before this endpoint-native token
+
+  -h, --help
+          Print help

@@ -1,0 +1,16 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Authenticate with a trusted device and password/SMS OTP, or import a bearer token
+
+Usage: login [OPTIONS]
+
+Options:
+      --token
+          Import a bearer token and prompt for its matching device ID when needed
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Password login requires a v_id/device ID that Venmo already trusts. Every credential value is entered through an interactive prompt; never put a device ID, password, OTP, or bearer token in command arguments.

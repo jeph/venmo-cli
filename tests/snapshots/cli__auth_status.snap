@@ -1,0 +1,11 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Validate the credential and show the active account
+
+Usage: status
+
+Options:
+  -h, --help
+          Print help

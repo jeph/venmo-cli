@@ -1,0 +1,11 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Show the Venmo wallet balance
+
+Usage: balance
+
+Options:
+  -h, --help
+          Print help

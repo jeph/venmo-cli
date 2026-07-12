@@ -1,0 +1,11 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Run read-only diagnostics
+
+Usage: doctor
+
+Options:
+  -h, --help
+          Print help

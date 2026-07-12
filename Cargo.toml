@@ -1,0 +1,53 @@
+[package]
+name = "venmo-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+authors = ["Jeph"]
+description = "An unofficial Venmo command-line client"
+license = "MIT"
+readme = "README.md"
+keywords = ["venmo", "cli", "payments"]
+categories = ["command-line-utilities"]
+
+[lib]
+name = "venmo_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "venmo"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.1", default-features = false, features = ["color", "derive", "error-context", "help", "std", "suggestions", "usage"] }
+clap_complete = { version = "4.6.7", default-features = false }
+dialoguer = { version = "0.12.0", default-features = false, features = ["password"] }
+keyring = { version = "4.1.4", default-features = false, features = ["v1"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0.228", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0.149", default-features = false, features = ["std"] }
+tabled = { version = "0.21.0", default-features = false, features = ["std"] }
+thiserror = { version = "2.0.18", default-features = false }
+time = { version = "0.3.53", default-features = false, features = ["formatting", "parsing", "std"] }
+tokio = { version = "1.52.3", default-features = false, features = ["macros", "net", "rt", "time"] }
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.22", default-features = false, features = ["fmt", "std"] }
+zeroize = { version = "1.9.0", default-features = false, features = ["alloc", "derive"] }
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+clap_mangen = "0.3.0"
+insta = { version = "1.48.0", default-features = false }
+predicates = "3.1.4"
+proptest = { version = "1.11.0", default-features = false, features = ["std"] }
+wiremock = { version = "0.6.5", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+expect_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"

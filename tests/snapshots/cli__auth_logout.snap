@@ -1,0 +1,14 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Remove the locally stored credential
+
+Usage: logout [OPTIONS]
+
+Options:
+      --revoke
+          Attempt to revoke the bearer token before deleting it locally
+
+  -h, --help
+          Print help

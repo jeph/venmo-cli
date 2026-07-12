@@ -1,0 +1,11 @@
+---
+source: tests/cli.rs
+expression: help
+---
+List payment methods and copyable IDs
+
+Usage: list
+
+Options:
+  -h, --help
+          Print help

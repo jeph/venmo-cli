@@ -1,0 +1,25 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Search for Venmo users
+
+Usage: search [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>
+          Search text
+
+Options:
+      --limit <N>
+          Server request page size
+
+          [default: 10]
+
+      --offset <N>
+          Zero-based user-search offset
+
+          [default: 0]
+
+  -h, --help
+          Print help

@@ -1,0 +1,21 @@
+---
+source: tests/cli.rs
+expression: help
+---
+List friends of the active account
+
+Usage: list [OPTIONS]
+
+Options:
+      --limit <N>
+          Server request page size
+
+          [default: 10]
+
+      --offset <N>
+          Zero-based friend-list offset
+
+          [default: 0]
+
+  -h, --help
+          Print help

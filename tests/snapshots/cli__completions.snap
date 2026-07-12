@@ -1,0 +1,17 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Generate shell completion source
+
+Usage: completions <SHELL>
+
+Arguments:
+  <SHELL>
+          Shell whose completion source should be generated
+
+          [possible values: bash, zsh, fish, powershell]
+
+Options:
+  -h, --help
+          Print help

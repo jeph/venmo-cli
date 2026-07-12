@@ -1,0 +1,21 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Pay and settle one existing incoming request
+
+Usage: accept [OPTIONS] <REQUEST_ID>
+
+Arguments:
+  <REQUEST_ID>
+          Canonical incoming request ID
+
+Options:
+      --from <METHOD_ID>
+          Payment-method ID shown by `payment-methods list`
+
+      --yes
+          Skip only the final default-No confirmation
+
+  -h, --help
+          Print help
