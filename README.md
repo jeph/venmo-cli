@@ -40,11 +40,20 @@ The command interface is intentionally not backward-compatible:
 | `venmo search <QUERY>` | `venmo users search <QUERY>` |
 | `venmo payment-methods list` | `venmo payment-methods list` |
 
-The old `charge`, split-payment, and multi-recipient interfaces were removed. `pay` and direct request creation use the mobile-private API through independently verified Rust contracts; each passed exact synthetic HTTP tests and a separately approved, reconciled one-cent live validation on 2026-07-12. Both enforce a personal/payable recipient, private audience, one-write/no-retry behavior, strict success validation, and ambiguous-outcome classification. `pay` additionally requires transaction-specific proof of an exactly `$0.00` fee. Request creation has no funding or fee fields and never sends money from the authenticated account. Request acceptance remains blocked because no sufficiently current canonical acceptance contract has been established.
+The old `charge`, split-payment, and multi-recipient interfaces were removed. `pay` and direct request creation use the mobile-private API through independently verified Rust contracts; each passed exact synthetic HTTP tests and a separately approved, reconciled one-cent live validation on 2026-07-12. Both enforce a personal/payable recipient, private audience, one-write/no-retry behavior, strict success validation, and ambiguous-outcome classification. `pay` additionally requires transaction-specific proof of an exactly `$0.00` fee. Request creation has no funding or fee fields and never sends money from the authenticated account.
+
+Top-level `accept` and `decline` replace the never-released nested `request accept` design:
+
+```sh
+venmo accept <REQUEST_ID> [--yes]
+venmo decline <REQUEST_ID>
+```
+
+Both are implemented as candidate contracts but remain unavailable in normal dispatch pending separate controlled live validations and resolution of their remaining contract risks. `accept` fetches an authoritative incoming exact-`pending` private request, requires a personal/payable requester and enough available Venmo balance to cover the full amount, submits no external funding method, shows a default-No preflight, and uses the historical incoming action `approve`. That balance check is only a snapshot: the candidate update does not bind it or prove the final funding source/fee, so the CLI explicitly discloses the limitation and does not claim wallet funding or `$0.00` fees. `decline` fetches an authoritative incoming exact-`pending` request, displays the validated plan and then writes immediately without pausing for a prompt or accepting `--yes`, sends no money or funding fields, and uses historical incoming action `deny`—never outgoing-request `cancel`. A candidate response must preserve the exact complete request details and prove the supported result; otherwise the outcome is ambiguous and the command remains gated.
 
 For `pay`, `--from` identifies the preferred external or backup funding method submitted to Venmo. It does not guarantee that method is debited: Venmo may use available wallet balance first. Pay prompts only when both stdin and stderr are terminals; otherwise it requires `--yes`. The enabled scope is ordinary personal peer-to-peer operations whose transaction-specific eligibility response proves the fee is exactly `$0.00`. An explicit funding method whose own fee is unknown remains blocked.
 
-Direct request creation writes immediately after its account and recipient validation; it has no confirmation prompt and does not accept `--yes`. If any financial command exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
+Direct request creation writes immediately after its account and recipient validation; it has no confirmation prompt and does not accept `--yes`. Decline follows the same no-prompt rule because it sends no money, but remains protected as an ambiguous state mutation after possible transmission. If any mutation exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
 
 ### Endpoint-native read pagination
 

@@ -4,7 +4,6 @@ use std::str::FromStr;
 use clap::builder::TypedValueParser;
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use thiserror::Error;
 
 use crate::domain::{
     ActivityBeforeId, ActivityId, Limit, Money, Note, Offset, PaymentMethodId, RecipientInput,
@@ -36,8 +35,14 @@ pub enum Command {
     /// Pay one person.
     Pay(PayArgs),
 
-    /// Create a request immediately; acceptance syntax is reserved but unavailable.
+    /// Create a request immediately.
     Request(RequestArgs),
+
+    /// Candidate incoming-request acceptance; unavailable pending live validation.
+    Accept(AcceptArgs),
+
+    /// Candidate incoming-request decline; unavailable pending live validation.
+    Decline(DeclineArgs),
 
     /// Inspect friends of the active account.
     Friends(FriendsArgs),
@@ -71,6 +76,8 @@ impl Command {
             Self::Auth(_) => "auth",
             Self::Pay(_) => "pay",
             Self::Request(_) => "request",
+            Self::Accept(_) => "accept",
+            Self::Decline(_) => "decline",
             Self::Friends(_) => "friends",
             Self::Users(_) => "users",
             Self::PaymentMethods(_) => "payment-methods",
@@ -152,92 +159,44 @@ pub struct PayArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    args_conflicts_with_subcommands = true,
-    subcommand_negates_reqs = true,
-    flatten_help = true,
     after_long_help = "Direct request creation writes immediately after validation. It does not prompt and has no `--yes` option. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app."
 )]
 pub struct RequestArgs {
-    #[command(subcommand)]
-    operation: Option<RequestOperation>,
-
     /// Exact @username or positive numeric Venmo user ID.
-    #[arg(value_name = "RECIPIENT", required = true)]
-    recipient: Option<RecipientInput>,
+    #[arg(value_name = "RECIPIENT")]
+    pub recipient: RecipientInput,
 
     /// Positive USD amount with at most two fractional digits.
-    #[arg(value_name = "AMOUNT", required = true)]
-    amount: Option<Money>,
+    #[arg(value_name = "AMOUNT")]
+    pub amount: Money,
 
     /// Non-empty request note.
-    #[arg(long, value_name = "NOTE", required = true)]
-    note: Option<Note>,
-}
-
-impl RequestArgs {
-    pub fn into_invocation(self) -> Result<RequestInvocation, RequestInvocationError> {
-        match self.operation {
-            Some(RequestOperation::Accept(args)) => {
-                if self.recipient.is_some() || self.amount.is_some() || self.note.is_some() {
-                    return Err(RequestInvocationError::MixedCreateAndAccept);
-                }
-                Ok(RequestInvocation::Accept(args))
-            }
-            None => match (self.recipient, self.amount, self.note) {
-                (Some(recipient), Some(amount), Some(note)) => {
-                    Ok(RequestInvocation::Create(RequestCreateArgs {
-                        recipient,
-                        amount,
-                        note,
-                    }))
-                }
-                _ => Err(RequestInvocationError::MissingCreateArguments),
-            },
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
-pub enum RequestOperation {
-    /// Reserved request-acceptance syntax; this operation is unavailable.
-    Accept(AcceptRequestArgs),
+    #[arg(long, value_name = "NOTE")]
+    pub note: Note,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct AcceptRequestArgs {
+#[command(
+    after_long_help = "Accepting sends the exact requested amount to the requester and requires enough available Venmo balance to cover it. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
+)]
+pub struct AcceptArgs {
     /// Canonical incoming request ID.
-    #[arg(value_name = "REQUEST_ID")]
+    #[arg(value_name = "REQUEST_ID", value_parser = RedactedRequestIdParser)]
     pub request_id: RequestId,
-
-    /// Preferred external/backup method ID; Venmo balance may be used first.
-    #[arg(long, value_name = "METHOD_ID")]
-    pub from: Option<PaymentMethodId>,
 
     /// Skip only the final default-No confirmation.
     #[arg(long)]
     pub yes: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RequestInvocation {
-    Create(RequestCreateArgs),
-    Accept(AcceptRequestArgs),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RequestCreateArgs {
-    pub recipient: RecipientInput,
-    pub amount: Money,
-    pub note: Note,
-}
-
-#[derive(Clone, Debug, Eq, Error, PartialEq)]
-pub enum RequestInvocationError {
-    #[error("request creation arguments were missing after successful CLI parsing")]
-    MissingCreateArguments,
-
-    #[error("request creation arguments cannot be combined with request acceptance")]
-    MixedCreateAndAccept,
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "Declining displays the authoritative request plan and then writes immediately without pausing for confirmation. It sends no money and has no `--yes` option. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app."
+)]
+pub struct DeclineArgs {
+    /// Canonical incoming request ID.
+    #[arg(value_name = "REQUEST_ID", value_parser = RedactedRequestIdParser)]
+    pub request_id: RequestId,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -400,6 +359,33 @@ impl TypedValueParser for RedactedRequestsBeforeParser {
         RequestsBefore::from_str(parsed)
             .map_err(|source| continuation_parse_error(command, "before", &source))
     }
+}
+
+#[derive(Clone)]
+struct RedactedRequestIdParser;
+
+impl TypedValueParser for RedactedRequestIdParser {
+    type Value = RequestId;
+
+    fn parse_ref(
+        &self,
+        command: &clap::Command,
+        _argument: Option<&clap::Arg>,
+        value: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let parsed = value
+            .to_str()
+            .ok_or_else(|| request_id_parse_error(command, "request ID is not valid UTF-8"))?;
+        RequestId::from_str(parsed).map_err(|source| request_id_parse_error(command, &source))
+    }
+}
+
+fn request_id_parse_error(command: &clap::Command, source: impl std::fmt::Display) -> clap::Error {
+    let mut command = command.clone();
+    command.error(
+        ErrorKind::ValueValidation,
+        format_args!("invalid request ID: {source}"),
+    )
 }
 
 fn continuation_parse_error(

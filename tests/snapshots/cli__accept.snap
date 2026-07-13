@@ -1,0 +1,20 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Candidate incoming-request acceptance; unavailable pending live validation
+
+Usage: accept [OPTIONS] <REQUEST_ID>
+
+Arguments:
+  <REQUEST_ID>
+          Canonical incoming request ID
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Accepting sends the exact requested amount to the requester and requires enough available Venmo balance to cover it. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app.

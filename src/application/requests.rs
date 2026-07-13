@@ -182,7 +182,7 @@ mod tests {
     use super::*;
     use crate::application::ports::{
         CredentialDeleteOutcome, CredentialFailureKind, CredentialFormat, CredentialStoreFailure,
-        LoadedCredential, PendingRequestsPage,
+        LoadedCredential, PendingRequestsPage, RequestLookupApi,
     };
     use crate::domain::{
         AccessToken, CredentialEnvelope, DeviceId, Money, RequestDirection, RequestStatus, User,
@@ -274,6 +274,10 @@ mod tests {
                     .unwrap_or(Err(FakeApiError(ApiFailureKind::Internal))),
             )
         }
+    }
+
+    impl RequestLookupApi for FakeApi {
+        type Error = FakeApiError;
 
         fn pending_request_by_id<'a>(
             &'a self,

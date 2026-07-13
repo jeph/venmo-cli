@@ -1,7 +1,5 @@
 use clap::{Command as ClapCommand, CommandFactory, Parser};
-use venmo_cli::cli::args::{
-    AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg, RequestInvocation,
-};
+use venmo_cli::cli::args::{AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg};
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
     for name in path {
@@ -86,54 +84,28 @@ fn auth_reauthenticate_exposes_no_secret_or_alternate_input_arguments() {
 #[test]
 fn direct_request_creation_dispatches_to_create() {
     let parsed = Cli::try_parse_from(["venmo", "request", "@alice", "12.50", "--note", "Dinner"]);
-    let dispatches_to_create = match parsed {
-        Ok(cli) => match cli.command {
-            Command::Request(args) => {
-                matches!(args.into_invocation(), Ok(RequestInvocation::Create(_)))
-            }
-            _ => false,
-        },
-        Err(_) => false,
-    };
+    let dispatches_to_create = parsed.is_ok_and(|cli| matches!(cli.command, Command::Request(_)));
     assert!(dispatches_to_create);
 }
 
 #[test]
 fn accept_username_is_not_the_accept_subcommand() {
     let parsed = Cli::try_parse_from(["venmo", "request", "@accept", "0.01", "--note", "Test"]);
-    let dispatches_to_create = match parsed {
-        Ok(cli) => match cli.command {
-            Command::Request(args) => {
-                matches!(args.into_invocation(), Ok(RequestInvocation::Create(_)))
-            }
-            _ => false,
-        },
-        Err(_) => false,
-    };
+    let dispatches_to_create = parsed.is_ok_and(|cli| matches!(cli.command, Command::Request(_)));
     assert!(dispatches_to_create);
 }
 
 #[test]
-fn request_accept_dispatches_to_accept() {
-    let parsed = Cli::try_parse_from([
-        "venmo",
-        "request",
-        "accept",
-        "request-123",
-        "--from",
-        "method-456",
-        "--yes",
-    ]);
-    let dispatches_to_accept = match parsed {
-        Ok(cli) => match cli.command {
-            Command::Request(args) => {
-                matches!(args.into_invocation(), Ok(RequestInvocation::Accept(_)))
-            }
-            _ => false,
-        },
-        Err(_) => false,
-    };
-    assert!(dispatches_to_accept);
+fn top_level_accept_and_decline_have_distinct_minimal_arguments() {
+    let accept = Cli::try_parse_from(["venmo", "accept", "request-123", "--yes"]);
+    assert!(accept.is_ok_and(|cli| matches!(cli.command, Command::Accept(args) if args.yes)));
+
+    let decline = Cli::try_parse_from(["venmo", "decline", "request-123"]);
+    assert!(decline.is_ok_and(|cli| matches!(cli.command, Command::Decline(_))));
+
+    assert_rejected(&["venmo", "request", "accept", "request-123"]);
+    assert_rejected(&["venmo", "accept", "request-123", "--from", "method-456"]);
+    assert_rejected(&["venmo", "decline", "request-123", "--yes"]);
 }
 
 #[test]
@@ -148,28 +120,19 @@ fn numeric_recipient_and_global_option_placement_are_supported() {
         "Test",
     ]);
     let dispatches_to_create = match parsed {
-        Ok(cli) => {
-            cli.verbose
-                && match cli.command {
-                    Command::Request(args) => {
-                        matches!(args.into_invocation(), Ok(RequestInvocation::Create(_)))
-                    }
-                    _ => false,
-                }
-        }
+        Ok(cli) => cli.verbose && matches!(cli.command, Command::Request(_)),
         Err(_) => false,
     };
     assert!(dispatches_to_create);
 
-    let accept = Cli::try_parse_from(["venmo", "--verbose", "request", "accept", "request-123"]);
+    let accept = Cli::try_parse_from(["venmo", "--verbose", "accept", "request-123"]);
     assert!(accept.is_ok_and(|cli| cli.verbose));
 }
 
 #[test]
-fn request_forms_cannot_be_mixed() {
+fn request_and_request_mutation_forms_cannot_be_mixed() {
     assert_rejected(&[
         "venmo",
-        "request",
         "accept",
         "request-123",
         "12.50",
@@ -424,7 +387,8 @@ fn every_command_has_a_help_snapshot() {
         ("auth_status", &["auth", "status"]),
         ("pay", &["pay"]),
         ("request", &["request"]),
-        ("request_accept", &["request", "accept"]),
+        ("accept", &["accept"]),
+        ("decline", &["decline"]),
         ("friends", &["friends"]),
         ("friends_list", &["friends", "list"]),
         ("users", &["users"]),

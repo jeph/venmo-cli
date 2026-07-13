@@ -3,21 +3,41 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
+const MAX_OPAQUE_ID_BYTES: usize = 512;
+
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
-#[error("{kind} must be non-empty and contain no whitespace or control characters")]
+#[error(
+    "{kind} must be non-empty, at most 512 bytes, and contain no whitespace or control characters"
+)]
 pub struct OpaqueIdParseError {
     kind: &'static str,
 }
 
 fn validate_opaque_id(value: &str, kind: &'static str) -> Result<(), OpaqueIdParseError> {
     if value.is_empty()
-        || value
-            .chars()
-            .any(|character| character.is_whitespace() || character.is_control())
+        || value.len() > MAX_OPAQUE_ID_BYTES
+        || value.chars().any(|character| {
+            character.is_whitespace()
+                || character.is_control()
+                || is_invisible_format_control(character)
+        })
     {
         return Err(OpaqueIdParseError { kind });
     }
     Ok(())
+}
+
+fn is_invisible_format_control(character: char) -> bool {
+    matches!(
+        character,
+        '\u{00AD}'
+            | '\u{061C}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{FEFF}'
+    )
 }
 
 macro_rules! opaque_id {
@@ -103,4 +123,18 @@ pub enum UserIdParseError {
 
     #[error("Venmo user ID must be positive")]
     NotPositive,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opaque_ids_are_bounded_and_reject_invisible_controls() {
+        assert!(RequestId::from_str("request-1").is_ok());
+        assert!(RequestId::from_str(&"x".repeat(MAX_OPAQUE_ID_BYTES + 1)).is_err());
+        assert!(RequestId::from_str("request\u{202E}1").is_err());
+        assert!(RequestId::from_str("request\u{200B}1").is_err());
+        assert!(RequestId::from_str("request\u{061C}1").is_err());
+    }
 }

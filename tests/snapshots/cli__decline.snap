@@ -1,0 +1,17 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Candidate incoming-request decline; unavailable pending live validation
+
+Usage: decline <REQUEST_ID>
+
+Arguments:
+  <REQUEST_ID>
+          Canonical incoming request ID
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+Declining displays the authoritative request plan and then writes immediately without pausing for confirmation. It sends no money and has no `--yes` option. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app.

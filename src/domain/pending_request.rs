@@ -14,6 +14,12 @@ pub enum RequestDirection {
     Outgoing,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PendingRequestAction {
+    Charge,
+    Pay,
+}
+
 impl fmt::Display for RequestDirection {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -98,10 +104,12 @@ pub enum RequestStatusParseError {
 #[derive(Clone, Eq, PartialEq)]
 pub struct PendingRequest {
     id: RequestId,
+    action: PendingRequestAction,
     direction: RequestDirection,
     counterparty: User,
     amount: Money,
     note: Option<String>,
+    audience: Option<String>,
     created_at: Option<OffsetDateTime>,
     status: RequestStatus,
 }
@@ -119,10 +127,12 @@ impl PendingRequest {
     ) -> Self {
         Self {
             id,
+            action: PendingRequestAction::Charge,
             direction,
             counterparty,
             amount,
             note,
+            audience: None,
             created_at,
             status,
         }
@@ -131,6 +141,17 @@ impl PendingRequest {
     #[must_use]
     pub const fn id(&self) -> &RequestId {
         &self.id
+    }
+
+    #[must_use]
+    pub(crate) fn with_action(mut self, action: PendingRequestAction) -> Self {
+        self.action = action;
+        self
+    }
+
+    #[must_use]
+    pub const fn action(&self) -> PendingRequestAction {
+        self.action
     }
 
     #[must_use]
@@ -144,6 +165,12 @@ impl PendingRequest {
     }
 
     #[must_use]
+    pub(crate) fn with_counterparty(mut self, counterparty: User) -> Self {
+        self.counterparty = counterparty;
+        self
+    }
+
+    #[must_use]
     pub const fn amount(&self) -> Money {
         self.amount
     }
@@ -151,6 +178,24 @@ impl PendingRequest {
     #[must_use]
     pub fn note(&self) -> Option<&str> {
         self.note.as_deref()
+    }
+
+    #[must_use]
+    #[cfg(test)]
+    pub(crate) fn with_note(mut self, note: Option<String>) -> Self {
+        self.note = note;
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_audience(mut self, audience: Option<String>) -> Self {
+        self.audience = audience;
+        self
+    }
+
+    #[must_use]
+    pub fn audience(&self) -> Option<&str> {
+        self.audience.as_deref()
     }
 
     #[must_use]
@@ -169,10 +214,12 @@ impl fmt::Debug for PendingRequest {
         formatter
             .debug_struct("PendingRequest")
             .field("id", &"[REDACTED]")
+            .field("action", &self.action)
             .field("direction", &self.direction)
             .field("counterparty", &"[REDACTED]")
             .field("amount", &"[REDACTED]")
             .field("note", &"[REDACTED]")
+            .field("audience", &"[REDACTED]")
             .field("created_at", &"[REDACTED]")
             .field("status", &self.status)
             .finish()

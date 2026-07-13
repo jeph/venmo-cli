@@ -3,12 +3,14 @@ use std::io::{self, Write};
 use tabled::{builder::Builder, settings::Style};
 use time::format_description::well_known::Rfc3339;
 
+use crate::application::accept::{AcceptResult, PreparedAccept};
 use crate::application::activity::{ActivityListResult, ActivityShowResult};
 use crate::application::auth::{
     AuthStatus, DeviceTrustOutcome, LocalDeletionOutcome, LoginResult, LogoutReport,
     PasswordLoginReport, RemoteRevocationOutcome,
 };
 use crate::application::balance::BalanceResult;
+use crate::application::decline::{DeclineResult, PreparedDecline};
 use crate::application::doctor::DoctorReport;
 use crate::application::friends::FriendsResult;
 use crate::application::pay::{PayResult, PreparedPay};
@@ -300,6 +302,160 @@ pub fn write_request_create_result<W: Write>(
     writeln!(writer, "Audience: private")
 }
 
+pub fn write_accept_preflight<W: Write>(
+    writer: &mut W,
+    prepared: &PreparedAccept,
+) -> io::Result<()> {
+    let plan = prepared.plan();
+    let request = plan.request();
+    writeln!(writer, "Request acceptance preflight:")?;
+    writeln!(
+        writer,
+        "  Paying account: {} (ID {})",
+        sanitize_terminal_text(&plan.account().username().to_string()),
+        plan.account().user_id()
+    )?;
+    writeln!(
+        writer,
+        "  Request ID: {}",
+        sanitize_terminal_text(request.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "  Requester: {} (ID {})",
+        sanitize_terminal_text(&financial_user_label(request.counterparty())),
+        request.counterparty().user_id()
+    )?;
+    writeln!(writer, "  Amount: ${}", request.amount())?;
+    writeln!(
+        writer,
+        "  Note: {}",
+        sanitize_terminal_text(request.note().unwrap_or(""))
+    )?;
+    writeln!(writer, "  Audience: private")?;
+    writeln!(writer, "  Current request status: {}", request.status())?;
+    if let Some(created_at) = request.created_at() {
+        let created_at = created_at.format(&Rfc3339).map_err(io::Error::other)?;
+        writeln!(writer, "  Created: {created_at}")?;
+    }
+    writeln!(
+        writer,
+        "  Fee/source proof: unavailable in the candidate request-update contract"
+    )?;
+    writeln!(
+        writer,
+        "  Available Venmo balance: {}",
+        plan.balance().available()
+    )?;
+    writeln!(
+        writer,
+        "  Funding guard: available balance covers the request and no external funding method will be submitted."
+    )?;
+    writeln!(
+        writer,
+        "  Warning: the candidate update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request."
+    )
+}
+
+pub fn write_accept_result<W: Write>(writer: &mut W, result: &AcceptResult) -> io::Result<()> {
+    writeln!(
+        writer,
+        "Accepted request ID: {}",
+        sanitize_terminal_text(result.plan().request().id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Payment ID: {}",
+        sanitize_terminal_text(result.accepted().payment_id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Status: {}",
+        financial_status(result.accepted().status())
+    )?;
+    writeln!(
+        writer,
+        "Paid requester: {}",
+        sanitize_terminal_text(&financial_user_label(
+            result.plan().request().counterparty()
+        ))
+    )?;
+    writeln!(writer, "Amount: ${}", result.plan().request().amount())?;
+    writeln!(
+        writer,
+        "Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source."
+    )
+}
+
+pub fn write_decline_result<W: Write>(writer: &mut W, result: &DeclineResult) -> io::Result<()> {
+    writeln!(
+        writer,
+        "Request ID: {}",
+        sanitize_terminal_text(result.declined().request_id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Server status: {}",
+        sanitize_terminal_text(result.declined().status().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Declined requester: {}",
+        sanitize_terminal_text(&financial_user_label(
+            result.plan().request().counterparty()
+        ))
+    )?;
+    writeln!(
+        writer,
+        "Amount requested: ${}",
+        result.plan().request().amount()
+    )?;
+    writeln!(writer, "Money sent: no")
+}
+
+pub fn write_decline_preflight<W: Write>(
+    writer: &mut W,
+    prepared: &PreparedDecline,
+) -> io::Result<()> {
+    let request = prepared.plan().request();
+    writeln!(writer, "Request decline preflight:")?;
+    writeln!(
+        writer,
+        "  Request ID: {}",
+        sanitize_terminal_text(request.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "  Requester: {} (ID {})",
+        sanitize_terminal_text(&financial_user_label(request.counterparty())),
+        request.counterparty().user_id()
+    )?;
+    writeln!(writer, "  Amount: ${}", request.amount())?;
+    writeln!(
+        writer,
+        "  Note: {}",
+        sanitize_terminal_text(request.note().unwrap_or(""))
+    )?;
+    writeln!(
+        writer,
+        "  Audience: {}",
+        sanitize_terminal_text(request.audience().unwrap_or("(not provided)"))
+    )?;
+    writeln!(writer, "  Current request status: {}", request.status())?;
+    if let Some(created_at) = request.created_at() {
+        let created_at = created_at.format(&Rfc3339).map_err(io::Error::other)?;
+        writeln!(writer, "  Created: {created_at}")?;
+    }
+    writeln!(
+        writer,
+        "  Action: decline this exact incoming request without sending money."
+    )?;
+    writeln!(
+        writer,
+        "  This command does not pause for confirmation after displaying this validated plan."
+    )
+}
+
 pub fn write_activity_list<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
@@ -557,7 +713,10 @@ pub fn sanitize_terminal_text(value: &str) -> String {
 fn is_invisible_format_control(character: char) -> bool {
     matches!(
         character,
-        '\u{200B}'..='\u{200F}'
+        '\u{00AD}'
+            | '\u{061C}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
             | '\u{202A}'..='\u{202E}'
             | '\u{2060}'..='\u{206F}'
             | '\u{FEFF}'
@@ -570,30 +729,37 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use crate::application::accept::{AcceptResult, PreparedAccept};
     use crate::application::activity::{ActivityListResult, ActivityShowResult};
     use crate::application::auth::{LoginDisposition, OperationFailure};
     use crate::application::balance::BalanceResult;
+    use crate::application::decline::DeclineResult;
     use crate::application::doctor::{DoctorCheck, DoctorCheckStatus, DoctorReport};
     use crate::application::friends::FriendsResult;
     use crate::application::requests::RequestsResult;
     use crate::domain::{
-        AccessToken, Account, Activity, ActivityAction, ActivityCounterparty, ActivityDirection,
-        ActivityId, ActivityStatus, Balance, ClientRequestId, CreateRequestPlan, CreatedPayment,
-        CredentialEnvelope, DeviceId, EligibilityToken, Money, Note, PayPlan, PaymentId,
+        AcceptRequestPlan, AcceptedRequest, AccessToken, Account, Activity, ActivityAction,
+        ActivityCounterparty, ActivityDirection, ActivityId, ActivityStatus, Balance,
+        ClientRequestId, CreateRequestPlan, CreatedPayment, CredentialEnvelope, DeclineRequestPlan,
+        DeclinedRequest, DeviceId, EligibilityToken, Money, Note, PayPlan, PaymentId,
         PaymentMethod, PaymentMethodId, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
         PendingRequest, RequestDirection, RequestDirectionFilter, RequestId, RequestStatus,
-        SignedUsdAmount, User, UserId, Username,
+        SignedUsdAmount, User, UserId, UserProfileKind, Username,
     };
 
     type TestResult = Result<(), Box<dyn Error>>;
 
     #[test]
     fn sanitizer_escapes_terminal_and_direction_controls() {
-        let value = "safe\n\u{1b}[31mred\u{202e}text\u{200b}";
+        let value = "safe\n\u{1b}[31mred\u{202e}text\u{200b}\u{061c}";
         let sanitized = sanitize_terminal_text(value);
-        assert_eq!(sanitized, "safe\\n\\u{001B}[31mred\\u{202E}text\\u{200B}");
+        assert_eq!(
+            sanitized,
+            "safe\\n\\u{001B}[31mred\\u{202E}text\\u{200B}\\u{061C}"
+        );
         assert!(!sanitized.contains('\u{1b}'));
         assert!(!sanitized.contains('\u{202e}'));
+        assert!(!sanitized.contains('\u{061c}'));
     }
 
     #[test]
@@ -801,6 +967,59 @@ mod tests {
     }
 
     #[test]
+    fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult {
+        let prepared = PreparedAccept::new(synthetic_credential()?, synthetic_accept_plan()?);
+        let mut preflight = Vec::new();
+        write_accept_preflight(&mut preflight, &prepared)?;
+        let preflight = String::from_utf8(preflight)?;
+        assert!(preflight.contains("Request acceptance preflight"));
+        assert!(preflight.contains("Amount: $0.01"));
+        assert!(preflight.contains("Fee/source proof: unavailable"));
+        assert!(preflight.contains("does not bind that balance snapshot"));
+        assert!(preflight.contains("accepting pays the requester"));
+        assert!(preflight.contains("Synthetic\\nrequest"));
+        assert!(!preflight.contains("synthetic-token"));
+
+        let accepted = AcceptResult::new(
+            synthetic_accept_plan()?,
+            AcceptedRequest::new(PaymentId::from_str("request-1")?, FinancialStatus::Settled),
+        );
+        let mut accept_output = Vec::new();
+        write_accept_result(&mut accept_output, &accepted)?;
+        let accept_output = String::from_utf8(accept_output)?;
+        assert!(accept_output.contains("Accepted request ID: request-1"));
+        assert!(accept_output.contains("Payment ID: request-1"));
+        assert!(accept_output.contains("submitted no external funding method"));
+        assert!(accept_output.contains("did not prove the actual source"));
+
+        let decline_prepared =
+            PreparedDecline::new(synthetic_credential()?, synthetic_decline_plan()?);
+        let mut decline_preflight = Vec::new();
+        write_decline_preflight(&mut decline_preflight, &decline_prepared)?;
+        let decline_preflight = String::from_utf8(decline_preflight)?;
+        assert!(decline_preflight.contains("Request decline preflight"));
+        assert!(decline_preflight.contains("without sending money"));
+        assert!(decline_preflight.contains("does not pause for confirmation"));
+        assert!(decline_preflight.contains("Synthetic\\nrequest"));
+
+        let decline_plan = synthetic_decline_plan()?;
+        let decline = DeclineResult::new(
+            decline_plan,
+            DeclinedRequest::new(
+                RequestId::from_str("request-1")?,
+                RequestStatus::from_str("cancelled")?,
+            ),
+        );
+        let mut decline_output = Vec::new();
+        write_decline_result(&mut decline_output, &decline)?;
+        let decline_output = String::from_utf8(decline_output)?;
+        assert!(decline_output.contains("Server status: cancelled"));
+        assert!(decline_output.contains("Money sent: no"));
+        assert!(!decline_output.contains("Synthetic\nrequest"));
+        Ok(())
+    }
+
+    #[test]
     fn activity_list_and_show_render_authoritative_status_as_data() -> TestResult {
         let activity = synthetic_activity("failed", "note\n\u{1b}[31mline")?;
         let transfer = Activity::new(
@@ -1001,6 +1220,50 @@ mod tests {
             synthetic_user("456", "bob")?,
             Money::from_cents(1)?,
             Note::from_str("Synthetic note")?,
+        ))
+    }
+
+    fn synthetic_incoming_request() -> Result<PendingRequest, Box<dyn Error>> {
+        Ok(PendingRequest::new(
+            RequestId::from_str("request-1")?,
+            RequestDirection::Incoming,
+            User::new(
+                UserId::from_str("456")?,
+                Some(Username::from_bare("requester")?),
+                Some("Synthetic\nrequester".to_owned()),
+            )
+            .with_financial_attributes(UserProfileKind::Personal, true),
+            Money::from_cents(1)?,
+            Some("Synthetic\nrequest".to_owned()),
+            Some(time::OffsetDateTime::UNIX_EPOCH),
+            RequestStatus::from_str("pending")?,
+        )
+        .with_audience(Some("private".to_owned())))
+    }
+
+    fn synthetic_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
+        Ok(AcceptRequestPlan::new(
+            Account::new(
+                UserId::from_str("123")?,
+                Username::from_bare("owner")?,
+                Some("Synthetic owner".to_owned()),
+            ),
+            synthetic_incoming_request()?,
+            Balance::new(
+                SignedUsdAmount::from_cents(1),
+                SignedUsdAmount::from_cents(0),
+            ),
+        ))
+    }
+
+    fn synthetic_decline_plan() -> Result<DeclineRequestPlan, Box<dyn Error>> {
+        Ok(DeclineRequestPlan::new(
+            Account::new(
+                UserId::from_str("123")?,
+                Username::from_bare("owner")?,
+                Some("Synthetic owner".to_owned()),
+            ),
+            synthetic_incoming_request()?,
         ))
     }
 

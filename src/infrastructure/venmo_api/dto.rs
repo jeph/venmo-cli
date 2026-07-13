@@ -13,6 +13,11 @@ pub(super) struct SmsOtpRequest {
     pub via: &'static str,
 }
 
+#[derive(Serialize)]
+pub(super) struct UpdatePaymentRequest {
+    pub action: &'static str,
+}
+
 #[derive(Debug, Deserialize)]
 pub(super) struct AccountEnvelope {
     pub data: AccountData,
@@ -415,6 +420,13 @@ impl StringOrNumber {
         match self {
             Self::String(value) => value,
             Self::Number(value) => value.to_string(),
+        }
+    }
+
+    pub(super) fn as_str(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            Self::String(value) => std::borrow::Cow::Borrowed(value),
+            Self::Number(value) => std::borrow::Cow::Owned(value.to_string()),
         }
     }
 }

@@ -23,9 +23,9 @@ pub use credential::{
     AccessToken, AccessTokenParseError, CredentialEnvelope, DeviceId, DeviceIdParseError,
 };
 pub use financial::{
-    ClientRequestId, CreateRequestPlan, CreatedPayment, EligibilityToken,
-    EligibilityTokenParseError, FinancialStatus, PayPlan, PeerFundingFee, PeerFundingMethod,
-    PeerFundingRole,
+    AcceptRequestPlan, AcceptedRequest, ClientRequestId, CreateRequestPlan, CreatedPayment,
+    DeclineRequestPlan, DeclinedRequest, EligibilityToken, EligibilityTokenParseError,
+    FinancialStatus, PayPlan, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
 };
 pub use identifiers::{
     ActivityId, PaymentId, PaymentMethodId, RequestId, UserId, UserIdParseError,
@@ -43,7 +43,7 @@ pub use pagination::{
 };
 pub use payment_method::PaymentMethod;
 pub use pending_request::{
-    PendingRequest, RequestDirection, RequestDirectionFilter, RequestStatus,
+    PendingRequest, PendingRequestAction, RequestDirection, RequestDirectionFilter, RequestStatus,
     RequestStatusParseError,
 };
 pub use recipient::{

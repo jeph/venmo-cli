@@ -75,6 +75,30 @@ fn invalid_before_usage_errors_are_redacted_and_service_free() -> TestResult {
 }
 
 #[test]
+fn invalid_request_mutation_ids_are_redacted_and_service_free() -> TestResult {
+    for command in ["accept", "decline"] {
+        for raw in [
+            "sensitive request id".to_owned(),
+            "sensitive\u{202e}request".to_owned(),
+            "s".repeat(513),
+        ] {
+            Command::cargo_bin("venmo")?
+                .args([command, raw.as_str()])
+                .assert()
+                .code(2)
+                .stdout(predicate::str::is_empty())
+                .stderr(
+                    predicate::str::contains("invalid request ID")
+                        .and(predicate::str::contains(raw).not())
+                        .and(predicate::str::contains("sensitive").not()),
+                );
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
 fn completion_generation_is_a_service_free_success_path() -> TestResult {
     Command::cargo_bin("venmo")?
         .args(["completions", "bash"])
@@ -82,6 +106,25 @@ fn completion_generation_is_a_service_free_success_path() -> TestResult {
         .success()
         .stdout(predicate::str::contains("_venmo"))
         .stderr(predicate::str::is_empty());
+
+    Ok(())
+}
+
+#[test]
+fn candidate_request_mutations_fail_before_keychain_or_network_access() -> TestResult {
+    for (arguments, command) in [
+        (&["accept", "synthetic-request", "--yes"][..], "accept"),
+        (&["decline", "synthetic-request"][..], "decline"),
+    ] {
+        Command::cargo_bin("venmo")?
+            .args(arguments)
+            .assert()
+            .code(1)
+            .stdout(predicate::str::is_empty())
+            .stderr(predicate::str::contains(format!(
+                "the `{command}` command is implemented as a candidate but unavailable pending controlled live validation"
+            )));
+    }
 
     Ok(())
 }
@@ -144,6 +187,8 @@ fn clap_schema_generates_a_manpage() -> TestResult {
     assert!(text.contains(".TH venmo"));
     assert!(text.contains("payment\\-methods"));
     assert!(text.contains("request"));
+    assert!(text.contains("accept"));
+    assert!(text.contains("decline"));
 
     Ok(())
 }

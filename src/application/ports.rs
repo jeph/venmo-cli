@@ -7,11 +7,12 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::domain::{
-    AccessToken, AccessTokenParseError, Account, AccountPassword, AccountPasswordParseError,
-    Activity, ActivityId, Balance, ClientRequestId, CreateRequestPlan, CreatedPayment,
-    CredentialEnvelope, DeviceId, DeviceIdParseError, EligibilityToken, LoginIdentifier,
-    LoginIdentifierParseError, OtpCode, OtpCodeParseError, OtpSecret, PasswordLoginStart, PayPlan,
-    PaymentMethod, PeerFundingMethod, PendingRequest, RequestId, User, UserId, UserSearchQuery,
+    AcceptRequestPlan, AcceptedRequest, AccessToken, AccessTokenParseError, Account,
+    AccountPassword, AccountPasswordParseError, Activity, ActivityId, Balance, ClientRequestId,
+    CreateRequestPlan, CreatedPayment, CredentialEnvelope, DeclineRequestPlan, DeclinedRequest,
+    DeviceId, DeviceIdParseError, EligibilityToken, LoginIdentifier, LoginIdentifierParseError,
+    OtpCode, OtpCodeParseError, OtpSecret, PasswordLoginStart, PayPlan, PaymentMethod,
+    PeerFundingMethod, PendingRequest, RequestId, User, UserId, UserSearchQuery,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -247,6 +248,28 @@ pub(crate) trait RequestCreationApi {
         device_id: &'a DeviceId,
         plan: &'a CreateRequestPlan,
     ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a;
+}
+
+pub(crate) trait RequestAcceptanceApi {
+    type Error: ApiFailure;
+
+    fn accept_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a AcceptRequestPlan,
+    ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a;
+}
+
+pub(crate) trait RequestDeclineApi {
+    type Error: ApiFailure;
+
+    fn decline_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a DeclineRequestPlan,
+    ) -> impl Future<Output = Result<DeclinedRequest, Self::Error>> + Send + 'a;
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
@@ -577,6 +600,10 @@ pub trait RequestsApi {
         current_user_id: &'a UserId,
         page: PendingRequestsPageRequest,
     ) -> impl Future<Output = Result<PendingRequestsPage, Self::Error>> + Send + 'a;
+}
+
+pub(crate) trait RequestLookupApi {
+    type Error: ApiFailure;
 
     fn pending_request_by_id<'a>(
         &'a self,

@@ -15,7 +15,7 @@ The first release should make the common workflow obvious:
 2. Verify which Venmo account is active.
 3. Find a friend or another user.
 4. Inspect the Venmo balance and available payment methods.
-5. Pay one person, request money from one person, or accept one incoming request.
+5. Pay one person, request money from one person, accept one incoming request, or decline one incoming request.
 6. Inspect activity and pending requests.
 7. Diagnose authentication or private-API failures.
 
@@ -38,18 +38,18 @@ The initial MCP release provides structured, read-only access to the already imp
 - A validated token for a different account never replaces a valid stored credential; `auth login` fails without mutation and requires an explicit `auth logout` first.
 - Do not ship browser automation, browser-cookie import, or web-session authentication as CLI features. Development-time browser observation under Section 7.4 is permitted solely to establish sanitized API contracts.
 - Document the unsupported password/SMS-OTP login risk and the optional existing-token import path in the README.
-- Support one recipient per new `pay` or `request` invocation and one request ID per acceptance invocation.
-- Release `pay`, request creation, and request acceptance independently. `pay` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation gates on 2026-07-12 and are enabled. Request acceptance remains unavailable; its unverified contract does not block the two verified commands.
+- Support one recipient per new `pay` or `request` invocation and one request ID per `accept` or `decline` invocation.
+- Release `pay`, request creation, request acceptance, and request decline independently. `pay` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation gates on 2026-07-12 and are enabled. Top-level `accept` and `decline` have candidate implementations and exact synthetic contracts but remain unavailable until their separate controlled live validations and reconciliations pass.
 - Treat the controlled-live-test boundary as absolute: send only one $0.01 payment at a time to `@georgecma`, create only one $0.01 request at a time from `@georgecma`, and reconcile that mutation before authorizing another. This restriction governs operator testing even though synthetic tests may use invented users and amounts.
-- Keep direct request creation as `venmo request ...`; reserve the exact `accept` token for `venmo request accept ...`.
+- Keep direct request creation as `venmo request ...`. Make the frequent request-state actions top-level `venmo accept ...` and `venmo decline ...`; reject the never-released nested `venmo request accept ...` form and add no compatibility alias.
 - Call transaction history `activity`.
 - Keep payment audience private in the first release.
 - Limit the first financial release to ordinary personal-profile peer-to-peer operations with a fee proven by the verified contract to be exactly zero. Reject business, charity, purchase-protection, nonzero-fee, and unknown-fee operations before any write.
 - Treat `--from` as the submitted preferred external or backup funding method, not a guarantee that the method will be debited. Venmo wallet balance may take priority; preflight must state that behavior and success output may name an actual source only when authoritative evidence proves it.
-- Require default-No confirmation only when the user sends money: `pay` and `request accept`.
-- Expose `--yes` only on `pay` and `request accept`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a financial confirmation prompt.
+- Require default-No confirmation only when the user sends money: `pay` and `accept`.
+- Expose `--yes` only on `pay` and `accept`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a financial confirmation prompt. `decline` sends no money, writes immediately after authoritative validation, and accepts no `--yes`.
 - Do not expose any `--dry-run` flags.
-- Never automatically retry payment creation, request creation, or request acceptance.
+- Never automatically retry payment creation, request creation, request acceptance, or request decline.
 - Write no first-party `unsafe` Rust and prohibit it mechanically across every first-party target.
 - Use no `unwrap`, `unwrap_err`, `expect`, `expect_err`, or equivalent panic-based value extraction in first-party Rust, including tests and build tooling.
 - If the correct treatment of any failure is unclear, stop the affected implementation and ask the prompter/project owner rather than guessing, swallowing it, panicking, or choosing an arbitrary fallback.
@@ -106,7 +106,8 @@ venmo auth status
 
 venmo pay <RECIPIENT> <AMOUNT> --note <NOTE> [--from <METHOD_ID>] [--yes]
 venmo request <RECIPIENT> <AMOUNT> --note <NOTE>
-venmo request accept <REQUEST_ID> [--from <METHOD_ID>] [--yes]
+venmo accept <REQUEST_ID> [--yes]
+venmo decline <REQUEST_ID>
 
 venmo friends list [--limit <N>] [--offset <N>]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
@@ -123,7 +124,7 @@ venmo completions <SHELL>
 
 No compatibility aliases should be added initially. Add aliases only in response to demonstrated user need.
 
-`request` deliberately has a default create form plus an `accept` subcommand. The exact first token `accept` selects the subcommand; valid creation recipients must begin with `@` or be numeric, so this reserves no valid recipient spelling. `venmo request @accept ...` remains an unambiguous request to the user named `accept`. Freeze this behavior in parser and help snapshots rather than adding a `request create` alias.
+`request` has only the direct creation form. `accept` and `decline` are separate top-level actions because the hybrid hierarchy keeps frequent operations top-level. `venmo request @accept ...` remains an unambiguous request to the user named `accept`; `venmo request accept ...` is invalid because bare usernames are not valid recipients. Freeze this behavior in parser and help snapshots rather than adding `request create`, nested mutation forms, or compatibility aliases.
 
 ### 3.1 Global behavior
 
@@ -234,7 +235,7 @@ Before confirmation, show:
 
 Confirmation defaults to **No**. Non-interactive execution without `--yes` is rejected.
 
-### 3.4 Creating and accepting requests
+### 3.4 Creating, accepting, and declining requests
 
 #### Creating a request for one person
 
@@ -251,36 +252,56 @@ The command shares recipient, amount, note, and preflight validation with `pay`,
 - Rejects payment-only options, `--yes`, and `--dry-run` instead of ignoring them.
 - Still performs at most one write and is never retried automatically.
 
-#### `venmo request accept <REQUEST_ID>`
+#### `venmo accept <REQUEST_ID>`
 
 ```text
-venmo request accept 123456789
-venmo request accept 123456789 --from 987654321 --yes
+venmo accept 123456789
+venmo accept 123456789 --yes
 ```
 
-This is a financial write that pays exactly one existing incoming request. Contract:
+This is a financial write that pays exactly one existing incoming request. The candidate requires full available-balance coverage and submits no external funding field, but that snapshot is not transaction-bound and does not prove the actual source or fee:
 
 - `REQUEST_ID` is the canonical request identifier printed by `requests list`; its validated syntax must follow the verified API contract.
 - Fetches the server-side request record before prompting.
 - Requires the request to be pending, incoming, addressed to the authenticated account, and explicitly payable through the verified acceptance contract.
 - Rejects outgoing, completed, declined, cancelled, inaccessible, malformed, or wrong-account records before any write.
 - Takes no recipient, amount, or note arguments. The requester, amount, and note come only from the fetched request record and cannot be changed by this command.
-- `--from` and automatic backup-funding selection follow the same rules and balance-priority disclosure as `pay`.
-- `--yes` skips only confirmation; it does not skip lookup, state validation, or funding-source resolution.
+- Requires authoritative available Venmo balance covering the entire requested amount; otherwise it sends no write. It submits no external funding-source ID and exposes no `--from`. This is a conservative candidate guard, not proof that Venmo cannot select a fallback after a concurrent balance change.
+- Requires a verified private audience and a personal, payable requester in the first release.
+- `--yes` skips only confirmation; it does not skip account, lookup, request-state, identity, audience, or balance validation.
 
 Before confirmation, show:
 
 - Request ID and current pending status.
-- Requester username, display name, and user ID.
+- Requester username and user ID, plus the display name when supplied by the authoritative user record.
 - Exact requested amount and sanitized note.
 - Request creation time when supplied by the verified contract.
-- Proven fee of `$0.00`, current wallet balance when available, and submitted backup payment method including a safe label and ID.
-- A warning that Venmo may use available wallet balance before the submitted backup method.
+- Current available wallet balance and a statement that no external funding method will be submitted.
+- An explicit warning that the candidate update provides no request-bound fee/source proof, so the release gate cannot open until stronger evidence resolves that risk.
 - An explicit statement that accepting will pay the requester and settle this request.
 
 Confirmation defaults to **No**. Non-interactive execution without `--yes` is rejected. The acceptance operation must use a verified request-acceptance contract; it must not silently substitute an unrelated ordinary payment to the requester. A stale-state rejection is a confirmed failure, while a timeout or disconnect after possible transmission is an ambiguous financial outcome with exit code `3`.
 
 On confirmed success, print the accepted request ID, resulting activity/payment ID when supplied, requester, amount, and server-reported status. Do not claim that the request settled unless the verified response or a follow-up read proves that state.
+
+The archived official contract lead is `PUT /v1/payments/{id}` with `action: "approve"`; the candidate mobile-authenticated implementation sends the action as exact JSON. It remains unavailable in normal dispatch until one separately approved live canary proves the current response and state transition.
+
+#### `venmo decline <REQUEST_ID>`
+
+```text
+venmo decline 123456789
+```
+
+This state-changing write refuses exactly one existing incoming request without sending money:
+
+- Fetches and validates the authoritative request by ID and requires exact incoming `pending` state addressed to the active account.
+- Takes no requester, amount, note, funding, or acknowledgement arguments.
+- Has no prompt and no `--yes`; after successful preflight it executes immediately, like direct request creation.
+- Sends exactly one candidate `PUT /v1/payments/{id}` JSON update with `action: "deny"`, never outgoing-request `cancel`.
+- Requires a successful response to preserve the exact request ID, amount, parties, note, and audience and to prove the supported terminal `cancelled` server status. Any mismatch, empty response, unverified error, or transport uncertainty is exit `3` and requires reconciliation without retry.
+- Prints the authoritative server status and explicitly states that no money was sent; it does not invent a `declined` status value.
+
+The `deny` action is strongly documented by archived official Venmo material for a received request, while `cancel` applies to a request made by the authenticated user. Current-production decline behavior remains a separate live-validation gate. If the official app's removal behavior is merely local dismissal rather than terminal refusal, keep `decline` unavailable and return to the project owner before renaming or weakening the command semantics.
 
 ### 3.5 Friends and user discovery
 
@@ -312,7 +333,7 @@ Financial recipient resolution is fail-closed around the live-verified mobile be
 #### `venmo payment-methods list`
 
 - Lists method ID, safe display name, type, masked last four digits when available, and default status.
-- Includes the exact ID accepted by `pay --from` and `request accept --from`.
+- Includes the exact ID accepted by `pay --from`. Wallet-only `accept` exposes no funding-method option.
 - Never displays full account or card numbers.
 
 #### `venmo balance`
@@ -335,7 +356,7 @@ Financial recipient resolution is fail-closed around the live-verified mobile be
 #### `venmo activity show <ACTIVITY_ID>`
 
 - Shows all understood fields for one activity record.
-- Is the primary recovery tool after an ambiguous payment, request creation, or request-acceptance outcome.
+- Is the primary recovery tool after an ambiguous payment, request creation, or request-acceptance outcome; request reads and the official app are also required for ambiguous decline state.
 - Clearly distinguishes absent, inaccessible, malformed, pending, failed, and completed records.
 
 ### 3.8 Pending requests
@@ -349,9 +370,9 @@ venmo requests list --direction incoming --before <TOKEN>
 
 - Lists pending requests involving the authenticated account.
 - `--direction` is a `clap::ValueEnum`: `all`, `incoming`, or `outgoing`; default is `all`.
-- Displays the canonical request ID accepted by `request accept`, direction, counterparty, amount, note, creation time, and status when supplied.
-- Incoming pending records can be passed to `venmo request accept <REQUEST_ID>`; outgoing IDs and non-pending records are not acceptable.
-- Does not decline, remind, or cancel a request in the first release.
+- Displays the canonical request ID accepted by top-level `accept` and `decline`, direction, counterparty, amount, note, creation time, and status when supplied.
+- Incoming exact-`pending` records can be passed to `venmo accept <REQUEST_ID>` or `venmo decline <REQUEST_ID>` once that operation's independent release gate passes; outgoing IDs and non-pending records are unacceptable.
+- Does not remind or cancel an outgoing request in the first release. Incoming decline is a distinct candidate `deny` operation and must never be implemented with outgoing `cancel` semantics.
 - Fetches exactly one source page using `--limit` as the server page size, with default 10 and maximum 50. `--direction` is applied locally after that complete page is validated, so fewer than `--limit` rows may be rendered.
 - Accepts the endpoint-native bounded opaque `before` value through `--before` and reports the source page's validated `Next before: <TOKEN>` even when local filtering leaves an empty result.
 - Must be backed by a verified endpoint or a verified complete activity filter. A count without request records is insufficient.
@@ -424,7 +445,7 @@ Do not register tools for:
 - `auth login`, token import, `auth reauthenticate`, `auth logout`, or remote revocation.
 - Passwords, OTPs, OTP secrets, bearer tokens, device IDs, cookies, CSRF values, or alternate credential sources.
 - Help, version, shell completion generation, or package management.
-- `pay`, request creation, or request acceptance until their CLI contracts and the later MCP write phase are complete.
+- `pay`, request creation, request acceptance, or request decline until their CLI contracts and the later MCP write phase are complete.
 - Internal exact-recipient resolution, funding-method selection, pending-request detail, or any lower-level API merely because implementation code exists.
 
 “Auth-status-only” describes the MCP authentication command surface: `venmo_auth_status` is the sole auth-oriented tool. `venmo_doctor` may still report its existing read-only credential-store, credential-presence/schema, and current-account checks, but it cannot mutate credentials or disclose authentication material.
@@ -443,7 +464,7 @@ Every initial tool must explicitly publish standard MCP annotations equivalent t
 
 `openWorldHint` is true because each tool can contact Venmo and may return dynamic, user-authored external content. `idempotentHint` may be omitted for the read-only catalog because it is defined primarily for state-changing tools and this project does not want metadata to imply an automatic-retry policy. Each tool also has a clear human-readable title and description that states when it returns private financial, social, or account data.
 
-Any future payment, request creation, or request acceptance tool must be annotated equivalent to:
+Any future payment, request creation, request acceptance, or request decline tool must be annotated equivalent to:
 
 ```json
 {
@@ -461,7 +482,7 @@ Annotations are hints for trusted harness UI, filtering, and approval policy. Th
 - Multi-recipient or batch payments.
 - Split payments.
 - The old `charge` alias.
-- Declining, reminding, or cancelling pending requests; partial acceptance or changing a requested amount.
+- Reminding or cancelling outgoing requests, local-only request dismissal, partial acceptance, or changing a requested amount. Incoming terminal decline remains separately gated rather than deferred.
 - Adding, removing, accepting, or blocking friends.
 - Transfers or cash-out to a bank.
 - Adding or removing payment methods.
@@ -501,6 +522,8 @@ pub enum Command {
     Auth(AuthArgs),
     Pay(PayArgs),
     Request(RequestArgs),
+    Accept(AcceptArgs),
+    Decline(DeclineArgs),
     Friends(FriendsArgs),
     Users(UsersArgs),
     PaymentMethods(PaymentMethodsArgs),
@@ -512,29 +535,15 @@ pub enum Command {
 }
 ```
 
-Model `request` as a typed default create operation plus one nested operation:
-
-```rust
-#[derive(Debug, Subcommand)]
-pub enum RequestOperation {
-    Accept(AcceptRequestArgs),
-}
-
-pub enum RequestInvocation {
-    Create(RequestCreateArgs),
-    Accept(AcceptRequestArgs),
-}
-```
-
-Use the same supported shape as `clap`'s documented Git-style default-operation pattern: direct-create arguments on the `request` command, an optional nested subcommand, `args_conflicts_with_subcommands`, and `subcommand_negates_reqs`. Dispatch must immediately convert the raw derive shape into `RequestInvocation`; no handler should receive a partially populated request-creation shape.
+Model `request`, `accept`, and `decline` as independent typed top-level argument structs. Do not add a nested request-operation enum or partially populated default-subcommand shape.
 
 Requirements:
 
 - Prefer typed fields and custom `FromStr` value types over parsing `Vec<String>` manually.
-- Keep `PayArgs`, `RequestCreateArgs`, and `AcceptRequestArgs` separate after parsing so invalid options are impossible by construction.
-- Prove that `request @user ...`, `request <numeric-id> ...`, `request @accept ...`, and `request accept <request-id>` dispatch exactly as documented.
-- Reject mixed forms such as `request accept <id> <amount>`.
-- Accept `--from` and `--yes` only on `pay` and `request accept`; reject both on request creation.
+- Keep `PayArgs`, `RequestArgs`, `AcceptArgs`, and `DeclineArgs` separate so invalid options are impossible by construction.
+- Prove that `request @user ...`, `request <numeric-id> ...`, `request @accept ...`, `accept <request-id>`, and `decline <request-id>` dispatch exactly as documented.
+- Reject nested or mixed forms such as `request accept <id>` and `accept <id> <amount>`.
+- Accept `--from` only on `pay`; accept `--yes` only on `pay` and `accept`; reject both on request creation and decline.
 - Reject `--dry-run` everywhere; it is not part of the schema.
 - Use `ValueEnum` for request direction and shell selection.
 - Put validation that depends only on one value in `clap` parsers.
@@ -546,7 +555,7 @@ Requirements:
 
 This section defines only the `venmo` terminal adapter. `venmo-mcp` must not invoke the `clap` command dispatcher, parse terminal table output, or reuse human output writers. Its stdio stream is the protocol transport, so even a normal CLI banner or success message would corrupt framing. If a future startup policy flag such as `--allow-financial-writes` is added, parse only that server-composition setting before stdio service starts; it must never accept a secret or stand in for per-call human approval.
 
-Interactive financial behavior is limited to `pay` and `request accept`. On a TTY, either command shows its complete plan and asks for default-No confirmation unless `--yes` is present. Off a TTY, either command fails before writing unless `--yes` is present. Request creation never prompts and does not accept `--yes`. `auth login` and `auth reauthenticate` remain intentional non-financial exceptions because credentials, OTP, and token import are interactive-only; neither has a `--yes` option.
+Interactive financial behavior is limited to `pay` and `accept`. On a TTY, either command shows its complete plan and asks for default-No confirmation unless `--yes` is present. Off a TTY, either command fails before writing unless `--yes` is present. Request creation and decline never prompt and do not accept `--yes`. `auth login` and `auth reauthenticate` remain intentional non-financial exceptions because credentials, OTP, and token import are interactive-only; neither has a `--yes` option.
 
 Prompt adapter rules:
 
@@ -632,7 +641,7 @@ Popularity does not replace review. Recheck release status, advisories, licenses
 - Missing, corrupt, locked, unavailable, ambiguous, or rejected credentials map to stable sanitized tool errors that direct the operator to the terminal `venmo` authentication commands without exposing platform source chains.
 - Per-call loading lets an already-running MCP process observe a successful `venmo auth reauthenticate` on its next invocation without restart.
 
-The second executable can have a distinct native-code identity from `venmo`. Validate macOS Keychain ACL/approval behavior manually with an isolated test service/account before claiming support. On Linux, an MCP host launched outside the desktop login session may lack Secret Service or user-session D-Bus even when the terminal CLI works. Fail closed with actionable setup guidance; never introduce a plaintext or environment-secret fallback. CI must not access any native production credential entry.
+The second executable can have a distinct native-code identity from `venmo`. Validate macOS Keychain ACL/approval behavior manually with an isolated test service/account before claiming support. On Linux, an MCP host launched outside the desktop login session may lack Secret Service or user-session D-Bus even when the terminal CLI works. Fail closed with actionable setup guidance; never introduce a plaintext or environment-secret fallback. Automated validation must not access any native production credential entry.
 
 ## 7. Private API scope and discovery gates
 
@@ -696,7 +705,7 @@ The root Rust package implements `friends list`, `balance`, `activity list/show`
 | Activity list | `GET /stories/target-or-actor/{user-id}` in historical unofficial docs | Authenticated visibility, pagination, amount/status fields, private records |
 | Activity detail | `GET /stories/{activity-id}` in historical unofficial docs | ID semantics, status, amount, counterpart, errors |
 | Pending requests | No sufficiently reliable record-list contract identified yet | Find a request-record endpoint or prove activity filtering is complete |
-| Pending request detail | No sufficiently reliable direct lookup contract identified yet | Canonical request ID, ownership/direction, current state, requester, immutable amount/note, not-found and stale behavior |
+| Pending request detail | Live-validated `GET /payments/{request-id}` candidate | Canonical request ID, ownership/direction, current and terminal state, action, requester, immutable amount/note/time, not-found and stale behavior |
 
 Historical research sources, including [mmohades/VenmoApiDocumentation](https://github.com/mmohades/VenmoApiDocumentation), are leads only. They are old, unofficial, and cannot be treated as a current contract. Do not copy source from third-party clients with incompatible licenses.
 
@@ -711,7 +720,7 @@ On 2026-07-11, a purpose-built ignored test used the authorized keychain credent
 - A bounded 200-record follow-up established three current story classes: peer `payment`, wallet `transfer`, and card `authorization`. Transfer records identify exactly one external `source` for incoming `add_funds` activity or one external `destination` for outgoing transfers, plus amount, status, type, request timestamp, account name/type, and optional last four. Authorization records identify the authenticated user, merchant display name, amount, status, and creation time. The typed activity model preserves those distinctions, renders transfer type in the action, uses an external sanitized counterparty label, and rejects ambiguous source/destination or wrong-account authorization records.
 - `GET /stories/{story-id}` returned HTTP 200 with the corresponding story shape. A competing `GET /payments/{nested-payment-id}` returned HTTP 500 for the observed settled activity, so `activity show` uses canonical story IDs and the story-detail route. A successfully retrieved pending, failed, expired, or cancelled record remains command data and exits 0; its authoritative status is not converted into a CLI failure.
 - `GET /payments?action=charge&status=pending,held&limit=<N>` returned HTTP 200 with actual payment/request records and pagination, not counts. Records had a canonical request/payment ID, `action=charge`, pending-state status, actor, target user, positive amount, note, audience, and dates. Direction is derived relative to the authenticated user: actor=self is outgoing and target.user=self is incoming. The next link used the fixed payments route and only `action`, `before`, `limit`, and `status`.
-- `GET /payments/{request-id}` returned HTTP 200 with the corresponding pending charge record and additional fee/medium/refund fields. The read model accepts only `action=charge`, `status=pending|held`, exactly one authenticated-account party, a positive exact amount, and an exact returned request ID. Acceptance mutation semantics remain wholly unverified.
+- `GET /payments/{request-id}` returned HTTP 200 with the corresponding pending charge record and additional fee/medium/refund fields. Unlike the pending-request list, which accepts only `action=charge` and `status=pending|held`, detail mapping preserves `charge` or `pay` plus any understood status so mutation preflight can reject stale, terminal, or action-changed records safely. Detail still requires exactly one authenticated-account party, a positive exact amount, and an exact returned request ID. Acceptance mutation semantics remain wholly unverified.
 
 The Rust adapters encode these findings with endpoint-specific opaque tokens, exact path/query/header assertions, strict typed IDs/money/timestamps, exact detail-ID checks, and same-origin/same-route continuation validation. Synthetic fixtures cover malformed records, unsupported state/action values, duplicate/conflicting IDs, oversized pages, and untrusted next links. Each public application call buffers one complete source page before stdout, applies request direction locally, preserves server order and source continuation, and rejects repeated/no-progress values. Only internal exact-recipient resolution performs a bounded multi-page traversal.
 
@@ -721,9 +730,9 @@ After implementation, read-only live smoke tests succeeded for `auth status`, `f
 
 On 2026-07-11, the owner explicitly authorized read-only live pagination validation using the active mobile-issued credential. After the public CLI was aligned with endpoint-native pagination, a one-record first page exposed a validated continuation and a second process successfully supplied the exact native `--offset`, `--before-id`, or `--before` value for each of `friends list`, `users search`, `activity list`, and `requests list --direction all`. A separate bounded friends traversal used 50-record source pages and reached a real final page with no continuation. All record output and continuation values were suppressed and discarded; no account data, query result, identifier, note, amount, or continuation value was retained, and no mutation endpoint was called. This confirms current first-to-second endpoint continuation behavior for all four adapters and final-page signaling for friends. Natural final-page exhaustion for user search, activity, and pending requests remains a release observation rather than a reason to poll aggressively.
 
-### 7.3 New write capability required by request acceptance
+### 7.3 New write capabilities required by request acceptance and decline
 
-The former TypeScript client and the historical public leads establish only how to create a payment or create a negative-amount request. Targeted public research on 2026-07-09 did not identify a sufficiently reliable contract for accepting an existing incoming request.
+The former TypeScript client establishes only how to create a payment or negative-amount request. Targeted public research initially did not identify sufficiently current contracts for mutating an existing incoming request. Expanded research on 2026-07-12 established strong historical action semantics but not current-production proof.
 
 Phase 0 must independently discover and validate:
 
@@ -734,22 +743,26 @@ Phase 0 must independently discover and validate:
 - Success response identifiers and the resulting request/activity state transition.
 - Confirmed stale/already-settled errors versus transport outcomes that remain ambiguous.
 - Whether the operation has an idempotency key or conditional-state mechanism; regardless, the client performs no automatic write retry.
+- Whether rejecting an incoming request is a terminal remote denial or merely a local UI dismissal, and its exact resulting server status.
 
-Do not infer that a normal payment to the requester is equivalent to acceptance. If a complete, controllable, and verifiable acceptance contract cannot be established, `request accept` is a first-release blocker requiring an explicit scope decision.
+Do not infer that a normal payment to the requester is equivalent to acceptance, or that outgoing-request `cancel` declines an incoming request. If either complete, controllable, and verifiable contract cannot be established, keep only that top-level command unavailable.
 
 #### 7.3.1 Dated public write-contract evidence and selected discovery limit
 
-Public-source research completed on 2026-07-12 produced the candidate contracts below. Controlled live validation later that day supplied the release proof described after them:
+Public-source research completed on 2026-07-12 produced the candidate contracts below. Controlled live validation later that day supplied release proof for pay and request creation only; acceptance and decline remain candidates:
+
+**Live-test status (2026-07-13):** The top-level `venmo accept` and `venmo decline` functionality is implemented only as release-gated candidate code and has not been tested against the live Venmo service. No live acceptance or decline mutation has been attempted. Exact synthetic tests and independent review have passed, but separately approved one-cent tests, complete reconciliation, and resolution of acceptance's request-bound funding/fee gap are still required before the corresponding release gate can open.
 
 - The maintained `joshhubert-dsp/py-venmo` fork at commit `899cd288d11d3599176ff3b8d40236a7d4886027` states that it targets the mobile API and that payments work. Its payment path first posts JSON to `/v1/protection/eligibility` with blank `funding_source_id`, `action: "pay"`, country code, target type/ID, note, and integer-cent amount. A positive payment then posts JSON to `/v1/payments` with a client UUID, user ID, `audience: "private"`, decimal-dollar amount, note, eligibility token, and funding-source ID. Its response model expects `data.payment`. This is the strongest current public pay lead, but the fork's February 2026 `Venmo/26.1.0` compatibility header is older than the App Store's July 2026 version and must not be copied as a present-day header contract.
 - The same fork creates a request through `/v1/payments` with a client UUID, user ID, private audience, negative decimal-dollar amount, and note, omitting eligibility and funding fields. Retired official documentation independently used a negative amount for charge creation. This is a candidate request-creation contract only.
-- Retired official Venmo documentation archived in 2021 described `PUT /v1/payments/{payment}` with `action: "approve"` to complete an incoming request. Current maintained public clients implement only reminder/cancellation updates, and the 2026 web `RedeemablePayment` GraphQL flow is an opaque-token/iMessage flow rather than the canonical pending-request API. No current acceptance body, funding, atomic-state, response, or stale-state contract is established.
-- Current Venmo help states that available Venmo balance is used before a selected linked bank or card. Historical client reports independently observed a supplied funding-source ID being overridden by balance. The first release therefore presents `--from` as a backup preference and never claims an actual debit source without authoritative result evidence.
+- Official Venmo payment documentation archived on 2021-06-12 describes `PUT /payments/:payment` as “Complete a Payment Request.” It explicitly assigns `approve` or `deny` to a request received by the authenticated user and `cancel` to a request made by that user. Historical `deet/govenmo` commit `21492682f08bb876a9a8cabaf249733e642e9c20` independently sends form-encoded `action=approve|deny|cancel` to that route. Its success assumption is a direct `data` Payment with a nonempty ID; the archived approval example shows resulting `action=pay`, `status=settled`, and completion data. This is strong historical evidence, not current-production proof.
+- Maintained descendants support bearer-authenticated JSON `PUT /v1/payments/{id}` with `action: "cancel"` or `"remind"`, but their listing scope proves only outgoing/requester-owned requests. They do not establish incoming denial. A 2022 client contains a conflicting, weakly evidenced `action: "pay"` plus actor/funding-source candidate. A current June 2026 client implements pay and request creation but no request completion. The candidate Rust contract therefore combines the current mobile authentication/JSON update convention with the historically explicit incoming actions `approve` and `deny`, while treating every unverified error or response mismatch as ambiguous.
+- Acceptance exposes no `--from` and is restricted to requests whose entire amount is covered by authoritative available Venmo balance. Current official product guidance says full available balance takes priority and personal balance-funded payments have zero Venmo fee, but the `approve` request does not bind the balance snapshot or return proven actual funding/fee fields. The guard prevents guessing a funding field but is not sufficient by itself to release acceptance. If balance is insufficient, acceptance fails before the write. Decline submits no funding fields and sends no money. `pay --from` remains a backup preference and never claims an actual debit source without authoritative result evidence.
 - A read-only live CLI preflight resolved the exact `@georgecma` search match through an authoritative user-detail fetch, proved a personal/payable non-self target, excluded wallet balance from external backup selection, and received a transaction-specific eligibility result totaling exactly zero fee. The fuzzy search reached its bounded traversal limit, so the verified rule now accepts one exact username match only after detail-by-ID returns the same ID and case-insensitive exact username; no match still fails when traversal is incomplete.
 - After separate immediate approval, the Rust `pay` command sent exactly one private $0.01 payment with a unique generated note and zero retries. Its response matched `data.payment` and the submitted action, parties, amount, note, private audience, supported status, creation timestamp, and canonical ID. A separate CLI activity read found the matching latest one-cent pay, and the owner independently confirmed exactly one matching payment in the official Venmo mobile app.
 - After the payment was reconciled and a second immediate approval was obtained, the Rust request command sent exactly one private $0.01 request with a distinct generated note and zero retries. Its response passed the same operation-specific strict checks, a separate CLI request read found the matching pending outgoing request, and the owner independently confirmed exactly one matching request in the official mobile app. No token, device ID, user/payment/request ID, note, raw body, account identity, funding details, or mobile traffic was retained.
 
-The project owner declined mobile-app traffic capture. Do not install a proxy certificate or intercept the official mobile app. Pay and request creation are now verified through contract-independent code, exact synthetic tests, one separately approved controlled mutation per operation, strict response validation, CLI read reconciliation, and manual official-app confirmation. Request acceptance remains unavailable until a new credible public/static source establishes its current complete contract; the historical `approve` hypothesis alone must not be probed live.
+The project owner declined mobile-app traffic capture. Do not install a proxy certificate or intercept the official mobile app. Pay and request creation are verified through exact synthetic tests, one separately approved controlled mutation per operation, strict response validation, CLI read reconciliation, and manual official-app confirmation. For `accept` and `decline`, the owner explicitly selected one controlled candidate probe per operation if static evidence remained insufficient. That choice authorizes neither immediate execution nor blind guessing: each probe still requires a complete single candidate request, exact synthetic tests, a fresh incoming $0.01 request from `@georgecma`, and a separate immediate approval. No retries or field variation are allowed. Each command remains unavailable until its own probe and reconciliation pass; acceptance additionally requires resolution of the request-bound funding/fee gap rather than treating one successful canary as general proof.
 
 ### 7.4 Establishing verified HTTP request shapes
 
@@ -760,7 +773,7 @@ Phase 0 must produce a dated, sanitized contract dossier for every API operation
 1. Prefer the official Venmo web application in a dedicated visible/headed browser session using `agent-browser --headed`; live web discovery must not run headlessly. If Venmo blocks its security challenge, do not bypass it: close the browser and use only the already authenticated CLI for bounded reads plus manual official-mobile-app identity/result verification, without capturing mobile traffic.
 2. Prompt the prompter/project owner to complete Venmo login manually in that visible browser, then pause until they explicitly confirm login is complete. The agent must not request, read, type, or store the username, password, MFA code, or other login secret and must not inspect or capture login traffic.
 3. Verify the intended active account after login, then clear the tracked request log. Record the relevant read-only pre-state immediately before the one action and capture only `fetch`/XHR traffic associated with it.
-4. Read-only exploration may exercise account, user/friend search, payment-method, balance, activity, and request listing/detail views. For a financial action, obtain explicit human approval immediately before the agent-browser click and follow Section 13.6. Request acceptance must use only a fresh $0.01 incoming request from the authorized `@georgecma` counterparty.
+4. Read-only exploration may exercise account, user/friend search, payment-method, balance, activity, and request listing/detail views. For any mutation, obtain explicit human approval immediately before the action and follow Section 13.6. Request acceptance and decline must each use a separate fresh $0.01 incoming request from the authorized `@georgecma` counterparty.
 5. Use `agent-browser network requests` to identify candidate calls and `agent-browser network request <NETWORK_REQUEST_ID>` to inspect the selected call's method, route, headers, body, response, and status. The network detail command can expose full secrets and bodies, so its raw output must pass through a purpose-built local structural redactor before it reaches agent/model output, logs, terminal history, or any saved artifact.
 6. Keep `Authorization`, cookies, CSRF values, device IDs, account/user/request/payment IDs, notes, and all unrelated response values out of the dossier. Preserve only header names, field names, types, safe enums, amount-unit evidence, route templates, placeholder relationships, statuses, and other facts required to implement the contract.
 7. Do not export a HAR by default. A HAR may be used only when request correlation cannot otherwise be completed, must live outside the repository in an approved temporary location, must never be emitted into agent context, and must be destroyed after a sanitized structural record is produced.
@@ -784,14 +797,14 @@ Never discover a write contract by blind endpoint/body fuzzing, replaying a capt
 ### 7.5 Discovery rules
 
 - Validate candidate endpoints only with an account the developer is authorized to use.
-- Use only the controlled live-mutation protocol in Section 13.6 for payment, request, and acceptance discovery. Every live amount is exactly **$0.01**, and the only approved counterparty is `@georgecma` after the account owner authorizes the test session.
+- Use only the controlled live-mutation protocol in Section 13.6 for payment, request, acceptance, and decline discovery. Every live amount is exactly **$0.01**, and the only approved counterparty is `@georgecma` after the account owner authorizes the test session.
 - Reconcile every discovery write through the official app and activity/request reads before another attempt.
 - Capture the minimum sanitized fixtures necessary for contract tests.
 - Remove access tokens, device IDs, user IDs, names, notes, payment IDs, account fragments, and other personal data from fixtures.
 - Never commit raw discovery responses.
 - Do not inspect or repurpose historical local response caches without first establishing a safe redaction workflow.
 - A count such as `outgoing_requests_count` does not satisfy `requests list`; actual records are required.
-- `request accept` requires a fresh authoritative request record; a feed summary, count, or guessed association is insufficient.
+- `accept` and `decline` require a fresh authoritative request record; a feed summary, count, or guessed association is insufficient.
 - If pending-request records or their acceptance contract cannot be retrieved reliably, treat that as a release-scope blocker requiring an explicit product decision rather than fabricating results or sending a substitute payment.
 
 ### 7.6 Application-facing API ports
@@ -1118,7 +1131,7 @@ For any future paginated endpoint, exact defaults, per-page sizes, hard maxima, 
 
 - The first release performs no automatic retries, including for read-only pagination.
 - A network failure, timeout, rejection, malformed response, or continuation failure ends the invocation with its typed error.
-- Never retry payment creation, request creation, or request acceptance automatically. Any future retry proposal requires an explicit endpoint-specific product decision and new safety tests before implementation.
+- Never retry payment creation, request creation, request acceptance, or request decline automatically. Any future retry proposal requires an explicit endpoint-specific product decision and new safety tests before implementation.
 
 ### 10.3 Response handling
 
@@ -1174,31 +1187,44 @@ Before prompting or writing:
 3. Fetch the authoritative request record by ID.
 4. Verify that the record is incoming, pending, payable, and addressed to the authenticated account.
 5. Require complete, understood requester, amount, note, status, profile type, payability, and ownership fields; never guess missing safety-critical values. Until independently proven otherwise, only exact `pending` is payable and `held` is read-only data.
-6. Resolve one peer-eligible backup funding method using the same precedence as `pay`.
-7. Prove a zero fee and obtain the wallet balance required for balance-priority disclosure.
+6. Read authoritative available Venmo balance and require it to cover the entire request amount. External acceptance funding and `--from` remain unavailable because no current request-bound funding contract has been established.
+7. Treat full available-balance coverage as a candidate guard only. Any insufficient, negative, malformed, or unavailable balance fails before a write, but the command must disclose that the update is not transaction-bound and the actual fee/source is unproven.
 8. Build an immutable acceptance plan tied to the fetched request ID and observed state.
-9. Render a sanitized complete summary that explicitly says this operation pays the requester and that wallet balance may precede the submitted backup method.
+9. Render a sanitized complete summary that explicitly says this operation pays the requester, submits no external funding method, and lacks request-bound fee/source proof.
 
 An outgoing, already-settled, cancelled, declined, inaccessible, wrong-account, or malformed request sends no write. The client must use the verified acceptance operation and must not translate the record into an ordinary recipient payment.
 
-The verified server mutation must atomically enforce the request ID's payable state, or expose a conditional token/version that the client sends. A client-side preflight followed by an unconditional unrelated write is not sufficient protection against a concurrent state change.
+The verified server mutation must atomically enforce the request ID's payable state, or expose a conditional token/version that the client sends. A client-side preflight followed by an unconditional unrelated write is not sufficient protection against a concurrent state change. The candidate `approve` update is state-bound by request ID but remains unreleased until the live canary proves current behavior.
 
-### 11.3 Execution rules
+### 11.3 Request-decline preflight
+
+Before the immediate decline write:
+
+1. Parse one canonical request ID, load and verify the authenticated account, and fetch authoritative request detail by ID.
+2. Require exact incoming `pending` state addressed to that account; outgoing, `held`, terminal, inaccessible, wrong-account, or malformed records send no write.
+3. Bind an immutable decline plan to the fetched request ID, parties, amount, note, audience, and observed state.
+4. Render and flush a sanitized complete plan stating that this exact request will be declined without money movement; do not pause for confirmation afterward.
+5. Submit exactly one state-bound `deny` mutation with no funding fields. Never substitute outgoing `cancel`, ordinary payment creation, or a notification dismissal.
+6. Require the response to preserve every immutable request field and prove the supported terminal `cancelled` server status. Render that server status rather than inventing a remote `declined` value.
+
+`decline` has no prompt or `--yes` because it sends no money. Its explicit canonical request ID is the authorization for the state change, and help must disclose that the command writes immediately after validation. Despite having no money movement, possible transmission, interruption, response loss, or an unverified error is an ambiguous state mutation with exit code `3`; never retry it.
+
+### 11.4 Execution rules
 
 Execution rules:
 
-- One invocation creates or accepts at most one financial operation.
-- For `pay` and `request accept`, prompt only when both stdin and stderr are terminals and default to No.
-- For `pay` and `request accept`, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation.
-- Request creation never prompts, never requires `--yes`, and rejects that flag.
-- Send exactly one verified financial mutation for payment creation, request creation, or request acceptance.
+- One invocation creates, accepts, or declines at most one operation.
+- For `pay` and `accept`, prompt only when both stdin and stderr are terminals and default to No.
+- For `pay` and `accept`, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation.
+- Request creation and decline never prompt, never require `--yes`, and reject that flag.
+- Send exactly one verified mutation for payment creation, request creation, request acceptance, or request decline.
 - Preserve the original API or transport cause on failure.
 - Never claim rollback or retry a write.
 - On ambiguous outcome, do not print a false failure or success.
 - A Ctrl-C, SIGTERM, or SIGHUP received before the protected write region keeps normal process interruption semantics. Once the financial future may have started, those catchable termination signals drop local waiting and return the ambiguous-write exit code `3`; they never report ordinary cancellation or authorize a retry, and the user must reconcile through reads and the official app. Uncatchable termination such as SIGKILL cannot provide an exit warning, so external supervisors must never retry financial commands automatically.
 - On confirmed request-state conflict, report the current understood state and direct the user to refresh `requests list`.
 
-### 11.4 Future MCP financial-write gate
+### 11.5 Future MCP financial-write gate
 
 The initial MCP server registers no financial tools. A later financial MCP phase cannot begin until the corresponding CLI application operations and private-API contracts have satisfied Sections 7, 11, and 13.6. Even then, financial tools remain absent from `tools/list` by default.
 
@@ -1213,7 +1239,7 @@ Startup opt-in, standard annotations, a model statement, or a model-supplied fie
 
 For a prepare/execute design, the read-only prepare tool resolves and returns the complete immutable plan plus a random process-local opaque handle. The server retains a matching plan for at most five minutes. The execute input repeats every human-visible plan field plus that handle so the host can display the exact values; the server requires byte-for-byte/typed equality with its retained plan, the same authenticated account, unexpired single-use state, and a fresh authoritative preflight. Any changed recipient, amount, note, funding source, request status, or account invalidates the plan and requires a new preparation and approval. The handle is not authorization by itself, is never logged, and becomes invalid on use, timeout, cancellation before execution, or server restart. Do not silently refresh or rewrite a plan after the human approved it.
 
-Every future payment, request-creation, and request-acceptance tool must be marked `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, and `openWorldHint=true`. These hints help trusted hosts display policy and warnings but do not replace capability restriction or approval. The tool executes at most one write and must not be retried by the server after timeout, cancellation, disconnect, protocol reconnect, or unknown outcome.
+Every future payment, request-creation, request-acceptance, and request-decline tool must be marked `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, and `openWorldHint=true`. These hints help trusted hosts display policy and warnings but do not replace capability restriction or approval. The tool executes at most one write and must not be retried by the server after timeout, cancellation, disconnect, protocol reconnect, or unknown outcome.
 
 ## 12. Output, errors, and protocol/terminal safety
 
@@ -1258,7 +1284,7 @@ Rendering rules:
 - Amount syntax, bounds, formatting, and checked arithmetic.
 - Recipient syntax and exact username matching.
 - Funding-source selection precedence.
-- Pay, request-creation, and request-acceptance plan invariants.
+- Pay, request-creation, request-acceptance, and request-decline plan invariants.
 - Request-state transition and authenticated-target invariants.
 - Native page-size and offset bounds, strict redacted before-token parsing, duplicate/conflict handling, and continuation no-progress detection.
 - Terminal sanitization.
@@ -1271,10 +1297,10 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 
 - Every command and subcommand.
 - Required recipient, amount, and note.
-- Direct request creation versus the nested `request accept` grammar, including the valid `@accept` recipient.
-- `--from` and `--yes` accepted by `pay` and `request accept` but rejected by request creation.
+- Direct request creation versus top-level `accept`/`decline`, rejection of nested `request accept`, and the valid `@accept` recipient.
+- `--from` accepted only by `pay`; `--yes` accepted by `pay` and `accept`; both rejected by request creation and decline.
 - `--dry-run` rejected by every command.
-- Request acceptance's required request ID and rejection of recipient, amount, and note arguments.
+- Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported funding arguments.
 - Absence of an undocumented `request create` alias.
 - Direction and shell enums.
 - Limit bounds.
@@ -1296,10 +1322,10 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Every public paginated application flow makes exactly one source request, uses `--limit` as its page size, validates and buffers the page before output, preserves source continuation after local request-direction filtering, and rejects oversized/conflicting/no-progress pages.
 - The separate internal exact-recipient traversal remains limited to four 50-record pages/200 unique users and accepts no public continuation. Exhaustion is required for normal not-found; one exact match found at the bound still requires matching authoritative detail-by-ID before use.
 - Balance does not infer unsupported values.
-- Funding method is resolved and displayed before `pay` or request-acceptance confirmation.
+- Funding is displayed before confirmation: `pay` has transaction-specific fee proof and shows its backup method, while candidate `accept` shows full available-balance coverage, submits no external method, and explicitly does not claim request-bound source/fee proof.
 - Cancelled `pay`/acceptance prompts and all preflight failures send zero writes.
-- `pay` and `request accept` prompt default-No on a TTY and require `--yes` off a TTY.
-- Request creation never prompts and works off a TTY without `--yes`.
+- `pay` and `accept` prompt default-No on a TTY and require `--yes` off a TTY.
+- Request creation and decline never prompt and work off a TTY without `--yes`.
 - The `dialoguer` adapter sends prompts to stderr, never echoes the bearer token, maps default Enter to No, and distinguishes cancellation from terminal failure.
 - First write failure preserves its source.
 - Ambiguous writes are never retried.
@@ -1307,7 +1333,9 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Request acceptance uses the exact server-side requester, amount, note, and request ID rather than caller-supplied substitutes.
 - Only an incoming, pending request addressed to the active account can reach the acceptance write.
 - Outgoing, stale, settled, cancelled, declined, wrong-account, incomplete, and malformed request records send zero writes.
-- Request-acceptance funding is resolved and displayed before confirmation.
+- Request acceptance requires and displays full available-balance coverage before confirmation; insufficient balance sends no write, while the unresolved non-atomic source/fee risk keeps its release gate closed.
+- Request decline accepts only authoritative incoming exact-`pending` records, performs one `deny` write, and never sends funding fields or money.
+- Outgoing-request `cancel` and local-only dismissal semantics cannot satisfy decline.
 - A request-state conflict is reported as a confirmed failure; an uncertain transport outcome is classified as ambiguous and is not retried.
 - Confirmed acceptance output is tied to the requested ID and does not overstate settlement when the server reports only pending/unknown state.
 - Doctor is read-only and redacted.
@@ -1327,10 +1355,10 @@ For every verified operation, test:
 - Control characters in remote strings.
 - Connect/read/total timeouts.
 - Read retry count and `Retry-After` bounds.
-- Zero retries for payment creation, request creation, and request acceptance.
+- Zero retries for payment creation, request creation, request acceptance, and request decline.
 - Ambiguous write classification.
 
-Friends, balance, activity, activity detail, pending requests, pending-request detail, and request acceptance require dedicated sanitized fixtures before their commands are considered implemented.
+Friends, balance, activity, activity detail, pending requests, pending-request detail, request acceptance, and request decline require dedicated sanitized fixtures before their commands are considered implemented.
 
 ### 13.5 Native and packaged tests
 
@@ -1341,9 +1369,9 @@ Friends, balance, activity, activity detail, pending requests, pending-request d
 - Completion generation for every supported shell.
 - Manpage generation.
 - Release archive contents and execution after unpacking.
-- Isolated second-executable Keychain/Secret Service smoke tests using a randomized test-only service/account; never production `venmo-cli` / `default` credentials in CI.
+- Isolated second-executable Keychain/Secret Service smoke tests using a randomized test-only service/account; never production `venmo-cli` / `default` credentials during automated validation.
 - Packaged `venmo-mcp` initialize and `tools/list` smoke tests with no keychain or network access.
-- No live financial writes in automated CI.
+- No live financial writes in automated validation.
 
 ### 13.6 Controlled live-mutation protocol
 
@@ -1357,6 +1385,7 @@ Automated tests use fakes and mock HTTP servers; their synthetic amounts are not
 - Test sending with one $0.01 payment to `@georgecma`.
 - Test receiving by creating one $0.01 request from `@georgecma` (with `@georgecma` as the request target); any fulfillment by the counterparty must also be exactly $0.01.
 - Test request acceptance only from a fresh $0.01 incoming request created by `@georgecma` for the authenticated test account.
+- Only after acceptance has been fully reconciled, test request decline with a different fresh $0.01 incoming request created by `@georgecma`. Confirm that no money moved and that the request reached the expected terminal state in CLI reads and the official app.
 - Use a unique, non-sensitive test note so identical one-cent operations can be reconciled, but never commit the note or raw response.
 - Run one mutation at a time. Require an explicit human go-ahead immediately before invocation and never fuzz, loop, schedule, or batch-probe a financial route. Prefer the default-No terminal prompt. When the trusted execution harness has no TTY, `--yes` may carry only the immediately preceding human approval for that exact rendered preflight; it is never standing, unattended, inferred, or reusable authorization.
 - After each mutation, verify the counterparty, amount, request/payment ID, status, audience, and funding result through the CLI reads and official Venmo application before continuing.
@@ -1382,11 +1411,11 @@ MCP tests must be service-free unless a separately ignored native test explicitl
 - Test hostile notes, names, and labels containing newlines, terminal controls, bidi/invisible controls, quotes, JSON-looking text, and prompt-injection instructions. They must remain correctly escaped data fields and never alter framing, metadata, logs, or errors.
 - Launch the compiled `venmo-mcp` process and prove stdout contains only valid protocol frames while stderr contains no tool inputs, results, secrets, identifiers, notes, or continuations.
 - Add compile-time `Send + Sync` checks for production server state and explicit regression tests for structured output matching `outputSchema` plus the equivalent JSON text fallback.
-- Do not access the native keychain, Venmo, browser sessions, authentication endpoints, or financial endpoints in normal MCP tests or CI.
+- Do not access the native keychain, Venmo, browser sessions, authentication endpoints, or financial endpoints in normal MCP tests or automated validation.
 
 ## 14. Quality and security gates
 
-Required in CI:
+Required local and release validation (this repository intentionally has no GitHub Actions workflows):
 
 ```text
 cargo fmt --check
@@ -1401,7 +1430,7 @@ Also require:
 
 - Advisory scanning.
 - Pinned stable toolchain and separate MSRV job.
-- Dependency updates through reviewed automation.
+- Dependency updates through deliberate review.
 - Secret scanning for source and fixtures.
 - Workspace/package lint configuration forbids first-party `unsafe` across all targets, with no project-owned exceptions.
 - Clippy denies `unwrap`/`expect` extraction across all first-party targets, including tests and build tooling.
@@ -1425,9 +1454,9 @@ Required sections:
 6. `venmo auth login`, stored-device `venmo auth reauthenticate`, trust-device warnings, status, logout, and revocation behavior.
 7. Friends and user-search examples, including server-page `--limit`, typed `--offset`, copyable next offsets, one-page behavior, and changing-dataset/no-snapshot semantics.
 8. Payment-method and balance examples.
-9. Pay, request-creation, and request-acceptance examples; `--from`; confirmation and `--yes` rules for money-sending commands; and request creation's immediate no-prompt behavior.
-10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `request accept`.
-11. Ambiguous financial-write recovery steps, including checking both activity and request state before retrying acceptance.
+9. Pay, request-creation, top-level acceptance, and top-level decline examples; `--from`; confirmation and `--yes` rules for money-sending commands; the candidate acceptance funding limitation; and immediate no-prompt behavior for request creation and decline.
+10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `accept` or `decline`.
+11. Ambiguous mutation recovery steps, including checking activity, request state, and the official app before any later operation.
 12. Doctor and troubleshooting guidance.
 13. Completion installation.
 14. Local MCP installation and host configuration that launches `venmo-mcp` over stdio with no secret environment variables, after authenticating through `venmo`.
@@ -1477,10 +1506,10 @@ Deliverables:
 - Verify token-retrieval steps for the README without automating them.
 - Validate the legacy password/SMS-OTP token issuance, device trust, and existing-token import paths without storing password or OTP material.
 - Validate current-account, search, user, payment-method, revoke, payment-creation, and request-creation contracts.
-- Discover and validate friends, balance, activity list/detail, pending-request list/detail, and request acceptance.
+- Discover and validate friends, balance, activity list/detail, pending-request list/detail, request acceptance, and request decline.
 - For operations exposed by the Venmo web application, use the sanitized `agent-browser` network-observation workflow in Section 7.4 to establish the proper request shape; never commit or emit raw captures.
 - Produce a dated sanitized contract dossier, typed DTO outline, fixture, and exact mock-server assertion for every retained API operation.
-- Prove that accepting by canonical request ID settles that request, supports a known funding source, and has well-understood stale and ambiguous outcomes.
+- Prove that accepting by canonical request ID settles that request with request-bound, prewrite fee/source safety and well-understood stale and ambiguous outcomes; independently prove that decline terminally refuses the exact incoming request without moving money.
 - Perform any necessary live mutation only under the exactly-$0.01, `@georgecma` protocol in Section 13.6.
 - Produce fully sanitized fixtures.
 - For every paginated endpoint, verify ordering, continuation or offset semantics, reliable end/has-more signaling, filtering behavior, default and hard limits, per-page size, and maximum page/request bounds.
@@ -1490,7 +1519,7 @@ Exit criteria:
 
 - Every first-release command has a credible API or local implementation path.
 - `requests list` has actual records and canonical IDs, not only counts.
-- A complete request lookup and acceptance contract has been verified without substituting an ordinary payment.
+- Complete request lookup, acceptance, and decline contracts have been verified without substituting an ordinary payment, outgoing cancellation, or local-only dismissal.
 - No discovery fixture contains personal or secret data.
 - Any unavailable required capability is brought back as an explicit scope decision.
 
@@ -1506,7 +1535,7 @@ Deliverables:
 - Typed errors and exit codes.
 - Workspace-enforced no-`unsafe`, no-`unwrap`, and no-`expect` lint policy across all first-party targets.
 - Redacted tracing.
-- Initial CI and dependency policy.
+- Initial local-validation and dependency policy.
 
 Exit criteria:
 
@@ -1557,7 +1586,7 @@ Deliverables:
 
 Exit criteria:
 
-- Output provides recipient identifiers accepted by `pay`/request creation and funding IDs accepted by `pay --from`/`request accept --from`.
+- Output provides recipient identifiers accepted by `pay`/request creation and funding IDs accepted by `pay --from`; candidate acceptance has no funding-ID input and remains gated while actual source/fee is unproven.
 - No command silently truncates without saying so.
 - Public `--limit` is enforced as the one-request endpoint page size, and any validated native continuation is reported without describing the page as the complete collection.
 
@@ -1567,7 +1596,7 @@ Deliverables:
 
 - `activity list` and `activity show`.
 - `requests list` with direction filtering.
-- Pending-request detail lookup used by acceptance preflight.
+- Pending-request detail lookup used by acceptance and decline preflight.
 - `doctor`.
 - Ambiguous-outcome recovery messaging.
 
@@ -1578,14 +1607,14 @@ Exit criteria:
 - Activity and request pagination obeys the one-page endpoint-native limit, ordering, local-filtering, and continuation policy in Section 10.1.
 - Doctor is read-only and leaks no sensitive data.
 
-### Phase 6: Pay, request, and request acceptance
+### Phase 6: Pay, request creation, request acceptance, and request decline
 
 Deliverables:
 
-- Single-recipient payment and request-creation models plus the single-ID `request accept` model.
+- Single-recipient payment and request-creation models plus single-ID top-level `accept` and `decline` models.
 - Recipient and funding-source resolution.
 - Authoritative incoming-request lookup and state validation.
-- Complete default-No confirmation rendering for `pay` and request acceptance; no prompt for request creation.
+- Complete default-No confirmation rendering for `pay` and request acceptance; no prompt for request creation or decline.
 - One-write execution, stale-state handling, and ambiguous-outcome handling.
 
 Exit criteria:
@@ -1593,8 +1622,10 @@ Exit criteria:
 - Every preflight failure sends zero writes.
 - `pay` and request-acceptance confirmation contains every safety-critical field and defaults to No.
 - Request creation exposes neither `--yes` nor an interactive confirmation.
+- Request decline exposes neither `--yes` nor an interactive confirmation and proves a terminal server state without money movement.
 - No write is automatically retried.
 - Acceptance settles the identified pending request and cannot silently become an unrelated payment.
+- Decline terminally refuses the identified pending request and cannot silently become outgoing cancellation or local dismissal.
 - No multi-recipient, split, or `charge` surface exists.
 
 ### Phase 7: Documentation and release engineering
@@ -1615,7 +1646,7 @@ Exit criteria:
 
 - Promoted the Rust package, lockfile, toolchain, policy, source, and tests to the repository root.
 - Removed the Node/pnpm/TypeScript implementation, SEA packaging, generated `dist`, dependency/build output, and obsolete product caches from the working tree.
-- Updated CI, ignore rules, package metadata, and development documentation to operate from the root Cargo package only.
+- Updated local-validation guidance, ignore rules, package metadata, and development documentation to operate from the root Cargo package only.
 - Kept legacy credential-envelope decoding solely for one-time native-keychain compatibility; no legacy runtime or source tree ships.
 - Added explicit TypeScript-to-Rust credential and command migration notes to the root README, including removed financial interfaces and the absence of a legacy fallback.
 
@@ -1632,7 +1663,7 @@ Deliverables:
 - Add bounded 64 KiB ingress, 2 MiB serialized-result enforcement, non-waiting `server_busy` admission, capacity-one/two-second-refill rate limiting, and SDK payload-log suppression.
 - Add the `venmo-mcp` stdio binary with protocol-only stdout and stderr-only diagnostics while preserving `default-run = "venmo"`.
 - Add protocol, process, schema, permission-matrix, no-cache, concurrency, cancellation, nonleakage, and service-free startup/list tests.
-- Update CI, release packaging, README host configuration, transcript/privacy warnings, and troubleshooting for the second executable.
+- Update local/release validation, release packaging, README host configuration, transcript/privacy warnings, and troubleshooting for the second executable.
 - Manually validate the second executable's native credential access with an isolated service/account on supported platforms.
 
 Exit criteria:
@@ -1642,7 +1673,7 @@ Exit criteria:
 - Server state has no credential save/delete capability and caches no bearer token, device ID, or loaded credential between calls.
 - Stdout contains only valid MCP protocol frames; stderr and tool errors contain no arguments, results, account data, notes, continuations, or secrets.
 - Exact tool schemas and annotations are regression-tested, and no tool capable of mutation is registered.
-- macOS and Linux CI build/test both binaries, cargo-deny passes, and packaged stdio smoke tests remain service-free.
+- Manual release validation on macOS and Linux builds/tests both binaries, cargo-deny passes, and packaged stdio smoke tests remain service-free.
 - A user can authenticate with `venmo`, configure a trusted local MCP host to launch `venmo-mcp` without secret environment variables, and invoke the documented reads.
 
 ### Phase 10: Future opt-in financial MCP tools (deferred and gated)
@@ -1678,14 +1709,15 @@ Exit criteria:
 - README token-retrieval steps are verified and carry prominent secret-handling warnings.
 - The token is stored only in the native OS credential store through `keyring`.
 - Friends and search output provide copyable recipient identifiers.
-- Payment-method output provides IDs accepted by `pay --from` and `request accept --from`.
+- Payment-method output provides IDs accepted by `pay --from`; candidate acceptance has no `--from` and does not claim its balance snapshot is transaction-bound.
 - Balance semantics are verified and do not overclaim external balances.
 - Activity supports list and detail views usable for write reconciliation.
-- Pending requests are based on complete verified records and expose canonical IDs accepted by `request accept`.
-- Payment and request-acceptance confirmation follows recipient/request and funding-source resolution.
-- Only `pay` and `request accept` expose `--yes` or use financial confirmation; request creation prompts for neither.
+- Pending requests are based on complete verified records and expose canonical IDs accepted by top-level `accept` and `decline`.
+- Payment and request-acceptance confirmation follows recipient/request and operation-specific funding resolution.
+- Only `pay` and `accept` expose `--yes` or use financial confirmation; request creation and decline prompt for neither.
 - No command exposes `--dry-run`.
-- `request accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
+- `accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
+- `decline` validates an authoritative incoming pending record, sends no money, and proves that exact record reached the supported terminal server state.
 - One invocation executes at most one financial write.
 - Failed writes preserve actionable root causes.
 - Ambiguous writes are never retried and direct the user to verification.
@@ -1699,8 +1731,8 @@ Exit criteria:
 - Unit, property, application, HTTP, keyring, CLI, and release smoke tests pass.
 - Packaged verbose logging works and leaks no secrets.
 - Production and release paths require only the Rust/Cargo toolchain and documented native platform services.
-- No live financial write occurs in automated CI.
-- Every manually approved live payment, request, or acceptance test uses exactly $0.01 and the authorized `@georgecma` counterparty under Section 13.6.
+- No live financial write occurs in automated tests or release validation.
+- Every manually approved live payment, request, acceptance, or decline test uses exactly $0.01 and the authorized `@georgecma` counterparty under Section 13.6.
 - No material contradiction or ambiguity discovered during implementation is resolved without clarification from the prompter/project owner and a recorded plan/test update; finished CLI users are never asked to make implementation decisions.
 - `venmo` and `venmo-mcp` are thin adapters over the same shared application, domain, credential, and private-API implementations; MCP does not parse terminal output or duplicate HTTP contracts.
 - The initial MCP registry exposes exactly the nine Section 3.11 read tools, no resources/prompts, no auth mutation or secret input, and no financial/internal-helper tools.
@@ -1717,7 +1749,7 @@ Exit criteria:
 | Risk | Mitigation |
 | --- | --- |
 | Private endpoints changed or disappear | Phase 0 validation, isolated DTOs, sanitized fixtures, doctor diagnostics |
-| Pending request records or acceptance are unavailable | Treat as explicit release blocker; never substitute counts, incomplete guesses, or an ordinary payment |
+| Pending request records, acceptance, or decline are unavailable | Gate only the affected command; never substitute counts, incomplete guesses, an ordinary payment, outgoing cancellation, or local-only dismissal |
 | Live discovery moves money | Use only the Section 13.6 protocol: exactly $0.01 with authorized `@georgecma`, one immediately confirmed mutation at a time, no unattended authorization, and immediate reconciliation |
 | A timed-out write actually succeeded | Never retry; classify as ambiguous; use activity detail, request state, and the official app for verification |
 | Wrong recipient | Exact resolution and one recipient; show identity before default-No `pay` confirmation and in the confirmed request-creation result |
@@ -1753,7 +1785,7 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 3. Whether the first release adds Linux arm64, musl, or Windows.
 4. GitHub-only initial distribution versus Homebrew and crates.io at launch.
 5. Whether JSON output for the terminal CLI belongs in the next release or a later milestone; MCP structured output does not resolve that separate decision.
-6. What product decision to make if complete pending-request list/detail or acceptance contracts cannot be verified.
+6. What product decision to make if complete pending-request list/detail, acceptance, or decline contracts cannot be verified. Each mutation has an independent release gate.
 7. Whether a legitimate current native-mobile onboarding contract or official device-authorization flow can eliminate manual trusted-device bootstrap without reproducing browser anti-bot controls. The observed web flow is explicitly not a production candidate.
 8. The exact published official `rmcp` release and minimal feature set that satisfy Rust 1.95, macOS/Linux, schema, license, advisory, and cargo-deny requirements.
 9. Whether native MCP validation shows synchronous keychain reads need a `spawn_blocking`/loaded-credential application seam rather than relying only on a multi-thread runtime.
@@ -1762,13 +1794,13 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 
 ## 21. Immediate next steps
 
-1. Refactor auth status and every shared read application use case to `CredentialReader`, split current-account from revocation/login ports, add read-only native credential/API façades, and prove existing CLI behavior remains unchanged.
-2. Add defensive bounds for arbitrary activity/payment/request IDs that will become MCP inputs.
-3. Revalidate and lock the official `rmcp` stable release, minimal stdio/server/schema features, MSRV, license, advisories, and transitive graph.
-4. Implement explicit MCP DTOs, schemas, conversions, annotations, and unit tests without serializing secret or raw transport types.
-5. Implement generic read-only handlers and the exact tool registry using fake read-only credential/API services plus bounded framing/results, non-waiting one-operation admission, and conservative rate limiting.
-6. Add the thin `venmo-mcp` stdio binary, protocol/process/framing/nonleak tests, and preserve Cargo `default-run = "venmo"`.
-7. Update CI, release packaging, and README with both binaries, local host configuration, transcript privacy, prompt-injection treatment, annotations, and troubleshooting.
-8. Perform isolated manual native credential access validation for the second executable on supported platforms; never use production credentials in CI.
+1. Complete formatting, lint, test, rustdoc, dependency-policy, and independent safety review for the candidate top-level `accept` and `decline` implementations while both normal dispatch gates remain closed.
+2. Resolve the acceptance funding contradiction before any live call: the candidate can prove a sufficient balance snapshot and omit an external funding field, but cannot bind that snapshot or prove the final source/fee. Ask the project owner whether to keep acceptance gated pending stronger evidence or authorize one explicitly risk-disclosed $0.01 discovery probe; a successful canary alone does not establish atomic funding safety for release.
+3. Only after acceptance reconciliation, arrange a different fresh incoming $0.01 request from `@georgecma`, verify official-app removal semantics, and obtain separate immediate approval for exactly one development-only `deny` candidate write. Keep the normal decline release gate closed during the probe; prove terminal state with no money movement, then consider a separate gate change only after the evidence passes review.
+4. Refactor auth status and every shared read application use case to `CredentialReader`, split current-account from revocation/login ports, add read-only native credential/API façades, and prove existing CLI behavior remains unchanged.
+5. Revalidate and lock the official `rmcp` stable release, minimal stdio/server/schema features, MSRV, license, advisories, and transitive graph.
+6. Implement explicit MCP DTOs, schemas, conversions, annotations, generic read-only handlers, the exact registry, bounded framing/results, and the thin `venmo-mcp` stdio binary with protocol/process/nonleak tests.
+7. Update local/release validation, release packaging, and README with both binaries, local host configuration, transcript privacy, prompt-injection treatment, annotations, and troubleshooting.
+8. Perform isolated manual native credential access validation for the second executable on supported platforms; never use production credentials during automated validation.
 9. Continue occasional explicit read-only observation of the validated mobile-issued token's lifetime. Do not poll aggressively, infer an expiry date, store the password, automatically reauthenticate, or retry after rejection.
-10. Keep the live-verified CLI pay and request-creation contracts covered by exact synthetic tests and monitor them only through normal use; do not repeat canary mutations speculatively. Complete Phase 0 contract discovery for exact pending-request acceptance, which remains unavailable. Keep every MCP financial command unavailable until its own request, response, ambiguity, verification, and human-approval contracts are established.
+10. Keep the live-verified CLI pay and request-creation contracts covered by exact synthetic tests and monitor them only through normal use; do not repeat canary mutations speculatively. Keep every MCP financial command unavailable until its own request, response, ambiguity, verification, and human-approval contracts are established.

@@ -152,6 +152,24 @@ impl<'a> HttpRequest<'a> {
         }
     }
 
+    #[must_use]
+    pub(super) fn financial_json_put(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+        body: Vec<u8>,
+    ) -> Self {
+        Self {
+            method: Method::PUT,
+            route_template,
+            path_segments,
+            query,
+            body: Some(RequestBody::Json(body)),
+            operation: OperationClass::FinancialWrite,
+            response_capture: ResponseCapture::None,
+        }
+    }
+
     pub(super) fn password_login_json_post(
         route_template: &'static str,
         path_segments: &'a [&'a str],

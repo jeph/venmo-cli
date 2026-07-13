@@ -3,7 +3,8 @@ use std::io::Write;
 
 use crate::application::ports::PromptError;
 use crate::application::{
-    activity, auth, balance, doctor, friends, pay, payment_methods, request_create, requests, users,
+    accept, activity, auth, balance, decline, doctor, friends, pay, payment_methods,
+    request_create, requests, users,
 };
 use crate::error::AppError;
 use crate::infrastructure::credentials::NativeCredentialStore;
@@ -11,14 +12,17 @@ use crate::infrastructure::system::{SystemClientRequestIdGenerator, SystemClock}
 use crate::infrastructure::venmo_api::VenmoApiClient;
 
 use super::args::{
-    ActivityArgs, ActivityOperation, AuthArgs, AuthOperation, Cli, Command, FriendsArgs,
-    FriendsOperation, LoginArgs, LogoutArgs, PayArgs, PaymentMethodsArgs, PaymentMethodsOperation,
-    RequestCreateArgs, RequestInvocation, RequestsArgs, RequestsOperation, UsersArgs,
+    AcceptArgs, ActivityArgs, ActivityOperation, AuthArgs, AuthOperation, Cli, Command,
+    DeclineArgs, FriendsArgs, FriendsOperation, LoginArgs, LogoutArgs, PayArgs, PaymentMethodsArgs,
+    PaymentMethodsOperation, RequestArgs, RequestsArgs, RequestsOperation, UsersArgs,
     UsersOperation,
 };
 use super::completions;
 use super::prompt::{self, DialoguerPrompt};
 use super::{output, output::write_logout_report};
+
+const ACCEPT_RELEASED: bool = false;
+const DECLINE_RELEASED: bool = false;
 
 pub fn run<W: Write, E: Write>(cli: Cli, stdout: &mut W, stderr: &mut E) -> Result<(), AppError> {
     match cli.command {
@@ -33,11 +37,11 @@ pub fn run<W: Write, E: Write>(cli: Cli, stdout: &mut W, stderr: &mut E) -> Resu
         Command::Requests(args) => run_requests(args, stdout, stderr),
         Command::Doctor => run_doctor(stdout),
         Command::Pay(args) => run_pay(args, stdout, stderr),
-        Command::Request(args) => match args.into_invocation() {
-            Ok(RequestInvocation::Create(args)) => run_request_create(args, stdout),
-            Ok(RequestInvocation::Accept(_)) => unavailable("request accept"),
-            Err(_) => unavailable("request"),
-        },
+        Command::Request(args) => run_request_create(args, stdout),
+        Command::Accept(args) if ACCEPT_RELEASED => run_accept(args, stdout, stderr),
+        Command::Accept(_) => unavailable("accept"),
+        Command::Decline(args) if DECLINE_RELEASED => run_decline(args, stdout, stderr),
+        Command::Decline(_) => unavailable("decline"),
     }
 }
 
@@ -72,7 +76,7 @@ fn run_pay<W: Write, E: Write>(
     Ok(())
 }
 
-fn run_request_create<W: Write>(args: RequestCreateArgs, stdout: &mut W) -> Result<(), AppError> {
+fn run_request_create<W: Write>(args: RequestArgs, stdout: &mut W) -> Result<(), AppError> {
     let store = NativeCredentialStore::new();
     let runtime = runtime()?;
     let api = production_api()?;
@@ -89,6 +93,46 @@ fn run_request_create<W: Write>(args: RequestCreateArgs, stdout: &mut W) -> Resu
         &api, prepared,
     )))??;
     output::write_request_create_result(stdout, &result)
+        .and_then(|()| stdout.flush())
+        .map_err(|source| AppError::FinancialResultOutput { source })?;
+    Ok(())
+}
+
+fn run_accept<W: Write, E: Write>(
+    args: AcceptArgs,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> Result<(), AppError> {
+    let store = NativeCredentialStore::new();
+    let prompt = DialoguerPrompt::new();
+    let runtime = runtime()?;
+    let api = production_api()?;
+    let prepared = runtime.block_on(accept::prepare(&store, &api, &args.request_id))?;
+    output::write_accept_preflight(stderr, &prepared)
+        .and_then(|()| stderr.flush())
+        .map_err(|source| AppError::CommandOutput { source })?;
+    let authorized = accept::authorize(&prompt, prepared, args.yes)?;
+    let result = runtime.block_on(protect_financial_write(accept::execute(&api, authorized)))??;
+    output::write_accept_result(stdout, &result)
+        .and_then(|()| stdout.flush())
+        .map_err(|source| AppError::FinancialResultOutput { source })?;
+    Ok(())
+}
+
+fn run_decline<W: Write, E: Write>(
+    args: DeclineArgs,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> Result<(), AppError> {
+    let store = NativeCredentialStore::new();
+    let runtime = runtime()?;
+    let api = production_api()?;
+    let prepared = runtime.block_on(decline::prepare(&store, &api, &args.request_id))?;
+    output::write_decline_preflight(stderr, &prepared)
+        .and_then(|()| stderr.flush())
+        .map_err(|source| AppError::CommandOutput { source })?;
+    let result = runtime.block_on(protect_financial_write(decline::execute(&api, prepared)))??;
+    output::write_decline_result(stdout, &result)
         .and_then(|()| stdout.flush())
         .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())

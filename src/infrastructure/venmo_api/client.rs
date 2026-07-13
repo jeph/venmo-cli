@@ -12,7 +12,8 @@ use super::dto::{
     AccountEnvelope, AuthorizationDto, BalanceEnvelope, CreatePaymentRequest, CreateRequestRequest,
     FriendsEnvelope, PasswordLoginRequest, PaymentEligibilityEnvelope, PaymentEligibilityRequest,
     PaymentMethodDto, PaymentMethodsEnvelope, PaymentRecordDto, PaymentsEnvelope, SmsOtpRequest,
-    StoriesEnvelope, StoryDto, StoryEnvelope, TransferDto, UserDto, UserEnvelope, UsersEnvelope,
+    StoriesEnvelope, StoryDto, StoryEnvelope, TransferDto, UpdatePaymentRequest, UserDto,
+    UserEnvelope, UsersEnvelope,
 };
 use super::transport::{
     ApiSession, HttpRequest, HttpResponse, TransportBuildError, TransportError, VenmoHttpTransport,
@@ -22,18 +23,19 @@ use crate::application::ports::{
     AuthenticationApi, BalanceApi, DoctorApi, FriendsApi, FriendsPage, FriendsPageRequest,
     FriendsPageToken, PasswordLoginApi, PaymentCreationApi, PaymentEligibility,
     PaymentEligibilityApi, PaymentMethodsApi, PeerFundingApi, PendingRequestsPage,
-    PendingRequestsPageRequest, PendingRequestsPageToken, RequestCreationApi, RequestsApi,
-    RequiredShape, ShapeProbeOutcome, UserSearchPage, UserSearchPageRequest, UserSearchPageToken,
-    UsersApi,
+    PendingRequestsPageRequest, PendingRequestsPageToken, RequestAcceptanceApi, RequestCreationApi,
+    RequestDeclineApi, RequestLookupApi, RequestsApi, RequiredShape, ShapeProbeOutcome,
+    UserSearchPage, UserSearchPageRequest, UserSearchPageToken, UsersApi,
 };
 use crate::domain::{
-    AccessToken, Account, AccountPassword, Activity, ActivityAction, ActivityBeforeId,
-    ActivityCounterparty, ActivityDirection, ActivityId, ActivityStatus, Balance,
-    CreateRequestPlan, CreatedPayment, DeviceId, EligibilityToken, FinancialStatus,
-    LoginIdentifier, Money, OtpCode, OtpSecret, PasswordLoginStart, PayPlan, PaymentId,
-    PaymentMethod, PaymentMethodId, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
-    PendingRequest, RequestDirection, RequestId, RequestStatus, RequestsBefore, SignedUsdAmount,
-    User, UserId, UserProfileKind, UserSearchQuery, Username,
+    AcceptRequestPlan, AcceptedRequest, AccessToken, Account, AccountPassword, Activity,
+    ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDirection, ActivityId,
+    ActivityStatus, Balance, CreateRequestPlan, CreatedPayment, DeclineRequestPlan,
+    DeclinedRequest, DeviceId, EligibilityToken, FinancialStatus, LoginIdentifier, Money, OtpCode,
+    OtpSecret, PasswordLoginStart, PayPlan, PaymentId, PaymentMethod, PaymentMethodId,
+    PeerFundingFee, PeerFundingMethod, PeerFundingRole, PendingRequest, PendingRequestAction,
+    RequestDirection, RequestId, RequestStatus, RequestsBefore, SignedUsdAmount, User, UserId,
+    UserProfileKind, UserSearchQuery, Username,
 };
 
 const ACTIVITY_DETAIL_OPERATION: &str = "activity detail";
@@ -55,6 +57,8 @@ const PEER_FUNDING_OPERATION: &str = "peer funding-method listing";
 const REVOKE_TOKEN_OPERATION: &str = "token revocation";
 #[allow(dead_code)]
 const REQUEST_CREATION_OPERATION: &str = "request creation";
+const REQUEST_ACCEPTANCE_OPERATION: &str = "request acceptance";
+const REQUEST_DECLINE_OPERATION: &str = "request decline";
 const REQUEST_DETAIL_OPERATION: &str = "pending-request detail";
 const REQUEST_LIST_OPERATION: &str = "pending-request listing";
 const USER_LOOKUP_OPERATION: &str = "user lookup";
@@ -453,6 +457,68 @@ impl VenmoApiClient {
         validate_created_request(REQUEST_CREATION_OPERATION, payment, plan)
     }
 
+    async fn accept_incoming_request(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        plan: &AcceptRequestPlan,
+    ) -> Result<AcceptedRequest, VenmoApiError> {
+        let payment = self
+            .update_incoming_request(
+                access_token,
+                device_id,
+                plan.request().id(),
+                "approve",
+                REQUEST_ACCEPTANCE_OPERATION,
+            )
+            .await?;
+        validate_accepted_request(payment, plan)
+    }
+
+    async fn decline_incoming_request(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        plan: &DeclineRequestPlan,
+    ) -> Result<DeclinedRequest, VenmoApiError> {
+        let payment = self
+            .update_incoming_request(
+                access_token,
+                device_id,
+                plan.request().id(),
+                "deny",
+                REQUEST_DECLINE_OPERATION,
+            )
+            .await?;
+        validate_declined_request(payment, plan)
+    }
+
+    async fn update_incoming_request(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        request_id: &RequestId,
+        action: &'static str,
+        operation: &'static str,
+    ) -> Result<PaymentRecordDto, VenmoApiError> {
+        let body = serde_json::to_vec(&UpdatePaymentRequest { action })
+            .map_err(|_| VenmoApiError::RequestEncoding { operation })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::financial_json_put(
+                    "/payments/{payment-id}",
+                    &["payments", request_id.as_str()],
+                    &[],
+                    body,
+                ),
+            )
+            .await?;
+        let value = require_financial_success_json(operation, response)?;
+        parse_updated_payment(operation, value)
+    }
+
     async fn fetch_friends_page(
         &self,
         access_token: &AccessToken,
@@ -683,7 +749,9 @@ impl VenmoApiClient {
         let requests = envelope
             .data
             .into_iter()
-            .map(|payment| map_pending_request(payment, current_user_id, REQUEST_LIST_OPERATION))
+            .map(|payment| {
+                map_pending_request(payment, current_user_id, REQUEST_LIST_OPERATION, true)
+            })
             .collect::<Result<Vec<_>, _>>()?;
         validate_page_count(REQUEST_LIST_OPERATION, requests.len(), page.page_size())?;
         let next_token =
@@ -754,6 +822,7 @@ impl VenmoApiClient {
             envelope.data.into_payment(),
             current_user_id,
             REQUEST_DETAIL_OPERATION,
+            false,
         )?;
         if request.id() != request_id {
             return Err(VenmoApiError::Contract {
@@ -980,6 +1049,32 @@ impl RequestCreationApi for VenmoApiClient {
     }
 }
 
+impl RequestAcceptanceApi for VenmoApiClient {
+    type Error = VenmoApiError;
+
+    fn accept_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a AcceptRequestPlan,
+    ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a {
+        self.accept_incoming_request(access_token, device_id, plan)
+    }
+}
+
+impl RequestDeclineApi for VenmoApiClient {
+    type Error = VenmoApiError;
+
+    fn decline_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a DeclineRequestPlan,
+    ) -> impl Future<Output = Result<DeclinedRequest, Self::Error>> + Send + 'a {
+        self.decline_incoming_request(access_token, device_id, plan)
+    }
+}
+
 impl UsersApi for VenmoApiClient {
     type Error = VenmoApiError;
 
@@ -1065,6 +1160,10 @@ impl RequestsApi for VenmoApiClient {
     ) -> impl Future<Output = Result<PendingRequestsPage, Self::Error>> + Send + 'a {
         self.fetch_pending_requests_page(access_token, device_id, current_user_id, page)
     }
+}
+
+impl RequestLookupApi for VenmoApiClient {
+    type Error = VenmoApiError;
 
     fn pending_request_by_id<'a>(
         &'a self,
@@ -1611,6 +1710,156 @@ fn parse_created_payment(
     Ok(payment)
 }
 
+fn parse_updated_payment(
+    operation: &'static str,
+    value: Value,
+) -> Result<PaymentRecordDto, VenmoApiError> {
+    let envelope: super::dto::PaymentEnvelope =
+        serde_json::from_value(value).map_err(|_| VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the successful response did not match the supported updated-payment envelope",
+        })?;
+    let payment = envelope.data.into_payment();
+    let created_at =
+        payment
+            .date_created
+            .as_deref()
+            .ok_or(VenmoApiError::FinancialOutcomeUnknown {
+                operation,
+                problem: "the successful response omitted the original creation timestamp",
+            })?;
+    parse_timestamp_value(created_at).map_err(|()| VenmoApiError::FinancialOutcomeUnknown {
+        operation,
+        problem: "the successful response contained an invalid creation timestamp",
+    })?;
+    Ok(payment)
+}
+
+fn validate_accepted_request(
+    payment: PaymentRecordDto,
+    plan: &AcceptRequestPlan,
+) -> Result<AcceptedRequest, VenmoApiError> {
+    let operation = REQUEST_ACCEPTANCE_OPERATION;
+    let status = validate_updated_record(
+        operation,
+        &payment,
+        plan.request(),
+        plan.account().user_id(),
+        plan.request().counterparty().user_id(),
+        "pay",
+    )?;
+    let status = match status.as_str() {
+        "settled" => FinancialStatus::Settled,
+        "pending" => FinancialStatus::Pending,
+        "held" => FinancialStatus::Held,
+        _ => {
+            return financial_contract_unknown(
+                operation,
+                "the response contained an unsupported accepted-payment status",
+            );
+        }
+    };
+    let payment_id = PaymentId::from_str(&payment.id.into_string()).map_err(|_| {
+        VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the response contained an invalid accepted-payment ID",
+        }
+    })?;
+    Ok(AcceptedRequest::new(payment_id, status))
+}
+
+fn validate_declined_request(
+    payment: PaymentRecordDto,
+    plan: &DeclineRequestPlan,
+) -> Result<DeclinedRequest, VenmoApiError> {
+    let operation = REQUEST_DECLINE_OPERATION;
+    let status = validate_updated_record(
+        operation,
+        &payment,
+        plan.request(),
+        plan.request().counterparty().user_id(),
+        plan.account().user_id(),
+        "charge",
+    )?;
+    if status.as_str() != "cancelled" {
+        return financial_contract_unknown(
+            operation,
+            "the response did not prove the request reached the supported terminal state",
+        );
+    }
+    Ok(DeclinedRequest::new(plan.request().id().clone(), status))
+}
+
+fn validate_updated_record(
+    operation: &'static str,
+    payment: &PaymentRecordDto,
+    request: &PendingRequest,
+    expected_actor: &UserId,
+    expected_target: &UserId,
+    expected_action: &str,
+) -> Result<RequestStatus, VenmoApiError> {
+    if payment.id.as_str() != request.id().as_str() {
+        return financial_contract_unknown(
+            operation,
+            "the response returned a different request ID",
+        );
+    }
+    if payment.action != expected_action {
+        return financial_contract_unknown(operation, "the response returned a different action");
+    }
+    let amount = Money::from_str(&payment.amount.as_str()).map_err(|_| {
+        VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the response contained an invalid amount",
+        }
+    })?;
+    if amount != request.amount() {
+        return financial_contract_unknown(operation, "the response returned a different amount");
+    }
+    if payment.actor.id.as_str() != expected_actor.as_str() {
+        return financial_contract_unknown(operation, "the response returned a different actor");
+    }
+    if payment.target.user.id.as_str() != expected_target.as_str() {
+        return financial_contract_unknown(operation, "the response returned a different target");
+    }
+    if payment.note.as_deref() != request.note() {
+        return financial_contract_unknown(operation, "the response returned a different note");
+    }
+    if payment.audience.as_deref() != request.audience() {
+        return financial_contract_unknown(operation, "the response returned a different audience");
+    }
+    let response_created_at = payment
+        .date_created
+        .as_deref()
+        .ok_or(VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the response omitted the original creation timestamp",
+        })
+        .and_then(|value| {
+            parse_timestamp_value(value).map_err(|()| VenmoApiError::FinancialOutcomeUnknown {
+                operation,
+                problem: "the response contained an invalid creation timestamp",
+            })
+        })?;
+    let expected_created_at =
+        request
+            .created_at()
+            .ok_or(VenmoApiError::FinancialOutcomeUnknown {
+                operation,
+                problem: "the mutation plan omitted the original creation timestamp",
+            })?;
+    if response_created_at.unix_timestamp_nanos() != expected_created_at.unix_timestamp_nanos() {
+        return financial_contract_unknown(
+            operation,
+            "the response returned a different creation timestamp",
+        );
+    }
+    RequestStatus::from_str(&payment.status).map_err(|_| VenmoApiError::FinancialOutcomeUnknown {
+        operation,
+        problem: "the response contained an invalid request status",
+    })
+}
+
 #[allow(dead_code)]
 fn validate_created_payment(
     operation: &'static str,
@@ -2064,6 +2313,7 @@ fn map_pending_request(
     payment: PaymentRecordDto,
     current_user_id: &UserId,
     operation: &'static str,
+    require_pending: bool,
 ) -> Result<PendingRequest, VenmoApiError> {
     let PaymentRecordDto {
         id,
@@ -2073,20 +2323,35 @@ fn map_pending_request(
         actor,
         target,
         note,
-        audience: _,
+        audience,
         date_created,
     } = payment;
-    if action != "charge" {
+    let supported_action = if require_pending {
+        action == "charge"
+    } else {
+        matches!(action.as_str(), "charge" | "pay")
+    };
+    if !supported_action {
         return Err(VenmoApiError::Contract {
             operation,
-            problem: "the pending-request response contained a non-request action",
+            problem: "the request response contained an unsupported action",
         });
     }
+    let mapped_action = match action.as_str() {
+        "charge" => PendingRequestAction::Charge,
+        "pay" => PendingRequestAction::Pay,
+        _ => {
+            return Err(VenmoApiError::Contract {
+                operation,
+                problem: "the request response contained an unsupported action",
+            });
+        }
+    };
     let status = RequestStatus::from_str(&status).map_err(|_| VenmoApiError::Contract {
         operation,
         problem: "the pending-request response contained an invalid status",
     })?;
-    if !status.is_pending_record() {
+    if require_pending && !status.is_pending_record() {
         return Err(VenmoApiError::Contract {
             operation,
             problem: "the pending-request response contained a non-pending record",
@@ -2124,7 +2389,9 @@ fn map_pending_request(
         note,
         created_at,
         status,
-    ))
+    )
+    .with_action(mapped_action)
+    .with_audience(audience))
 }
 
 fn relative_parties(
@@ -4030,6 +4297,53 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn pending_request_detail_preserves_terminal_state_for_mutation_preflight() -> TestResult
+    {
+        for (action, status, actor, target, direction) in [
+            (
+                "charge",
+                "cancelled",
+                "456",
+                "123",
+                RequestDirection::Incoming,
+            ),
+            ("pay", "settled", "123", "456", RequestDirection::Outgoing),
+        ] {
+            let server = MockServer::start().await;
+            let mut body = request_body("request-1", actor, target, status);
+            body["action"] = Value::String(action.to_owned());
+            Mock::given(method("GET"))
+                .and(path("/v1/payments/request-1"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "data": body
+                })))
+                .mount(&server)
+                .await;
+            let client = test_client(&server)?;
+            let (token, device_id) = test_session()?;
+            let user_id = UserId::from_str("123")?;
+            let request_id = RequestId::from_str("request-1")?;
+
+            let detail = client
+                .pending_request_by_id(&token, &device_id, &user_id, &request_id)
+                .await?;
+
+            assert_eq!(detail.status().as_str(), status);
+            assert_eq!(detail.direction(), direction);
+            assert_eq!(
+                detail.action(),
+                if action == "charge" {
+                    PendingRequestAction::Charge
+                } else {
+                    PendingRequestAction::Pay
+                }
+            );
+            assert_request_count(&server, 1).await;
+        }
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn doctor_connectivity_probe_is_read_only_and_unauthenticated() -> TestResult {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -4132,6 +4446,156 @@ mod tests {
         assert_eq!(sanitize_api_code(&"x".repeat(65)), None);
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn request_acceptance_uses_exact_approve_update_and_validates_settlement() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/payments/request-1"))
+            .and(header("accept", "application/json"))
+            .and(header("content-type", "application/json"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_json(serde_json::json!({"action": "approve"})))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(updated_payment_body("pay", "settled", "123", "456")),
+            )
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let plan = accept_plan()?;
+
+        let accepted = client.accept_request(&token, &device_id, &plan).await?;
+
+        assert_eq!(accepted.payment_id().as_str(), "request-1");
+        assert_eq!(accepted.status(), FinancialStatus::Settled);
+        assert_request_count(&server, 1).await;
+        assert_requests_have_no_query(&server).await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn request_decline_uses_deny_not_cancel_and_requires_terminal_response() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/payments/request-1"))
+            .and(header("accept", "application/json"))
+            .and(header("content-type", "application/json"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_json(serde_json::json!({"action": "deny"})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(updated_payment_body(
+                    "charge",
+                    "cancelled",
+                    "456",
+                    "123",
+                )),
+            )
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let plan = decline_plan()?;
+
+        let declined = client.decline_request(&token, &device_id, &plan).await?;
+
+        assert_eq!(declined.request_id().as_str(), "request-1");
+        assert_eq!(declined.status().as_str(), "cancelled");
+        assert_request_count(&server, 1).await;
+        assert_requests_have_no_query(&server).await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn request_update_mismatches_and_unverified_errors_are_ambiguous() -> TestResult {
+        for (status, body) in [
+            (200, updated_payment_body("pay", "settled", "456", "123")),
+            (
+                200,
+                serde_json::json!({"data": {"id": "request-1", "status": "settled"}}),
+            ),
+            (400, serde_json::json!({"error": {"code": 2901}})),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("PUT"))
+                .and(path("/v1/payments/request-1"))
+                .respond_with(ResponseTemplate::new(status).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = test_client(&server)?;
+            let (token, device_id) = test_session()?;
+
+            let result = client
+                .accept_request(&token, &device_id, &accept_plan()?)
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+            ));
+            assert_eq!(
+                result.as_ref().err().map(ApiFailure::kind),
+                Some(ApiFailureKind::AmbiguousWrite)
+            );
+            assert_request_count(&server, 1).await;
+        }
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decline_rejects_every_unproven_terminal_response_as_ambiguous() -> TestResult {
+        let mut wrong_id = updated_payment_body("charge", "cancelled", "456", "123");
+        wrong_id["data"]["id"] = Value::String("request-2".to_owned());
+        let mut wrong_amount = updated_payment_body("charge", "cancelled", "456", "123");
+        wrong_amount["data"]["amount"] = Value::String("0.02".to_owned());
+        let mut wrong_note = updated_payment_body("charge", "cancelled", "456", "123");
+        wrong_note["data"]["note"] = Value::String("Different note".to_owned());
+        let mut wrong_audience = updated_payment_body("charge", "cancelled", "456", "123");
+        wrong_audience["data"]["audience"] = Value::String("public".to_owned());
+        let mut wrong_created_at = updated_payment_body("charge", "cancelled", "456", "123");
+        wrong_created_at["data"]["date_created"] = Value::String("2026-07-11T12:00:01".to_owned());
+        for (status, body) in [
+            (200, updated_payment_body("charge", "pending", "456", "123")),
+            (200, updated_payment_body("pay", "cancelled", "456", "123")),
+            (
+                200,
+                updated_payment_body("charge", "cancelled", "123", "456"),
+            ),
+            (200, wrong_id),
+            (200, wrong_amount),
+            (200, wrong_note),
+            (200, wrong_audience),
+            (200, wrong_created_at),
+            (400, serde_json::json!({"error": {"code": 2901}})),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("PUT"))
+                .and(path("/v1/payments/request-1"))
+                .respond_with(ResponseTemplate::new(status).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = test_client(&server)?;
+            let (token, device_id) = test_session()?;
+
+            let result = client
+                .decline_request(&token, &device_id, &decline_plan()?)
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+            ));
+            assert_eq!(
+                result.as_ref().err().map(ApiFailure::kind),
+                Some(ApiFailureKind::AmbiguousWrite)
+            );
+            assert_request_count(&server, 1).await;
+        }
+        Ok(())
+    }
+
     fn test_client(server: &MockServer) -> Result<VenmoApiClient, Box<dyn Error>> {
         let base_url = Url::parse(&format!("{}/v1/", server.uri()))?;
         let transport = VenmoHttpTransport::for_test(base_url, Duration::from_secs(2), 1024)?;
@@ -4167,6 +4631,22 @@ mod tests {
             "note": "Synthetic request",
             "audience": "private",
             "date_created": "2026-07-11T12:00:00"
+        })
+    }
+
+    fn updated_payment_body(action: &str, status: &str, actor_id: &str, target_id: &str) -> Value {
+        serde_json::json!({
+            "data": {
+                "id": "request-1",
+                "status": status,
+                "action": action,
+                "amount": "0.01",
+                "actor": {"id": actor_id, "username": format!("user-{actor_id}")},
+                "target": {"user": {"id": target_id, "username": format!("user-{target_id}")}},
+                "note": "Synthetic request",
+                "audience": "private",
+                "date_created": "2026-07-11T12:00:00"
+            }
         })
     }
 
@@ -4252,6 +4732,39 @@ mod tests {
         ))
     }
 
+    fn incoming_request() -> Result<PendingRequest, Box<dyn Error>> {
+        let created_at = parse_timestamp_value("2026-07-11T12:00:00")
+            .map_err(|()| io::Error::other("invalid synthetic request timestamp"))?;
+        Ok(PendingRequest::new(
+            RequestId::from_str("request-1")?,
+            RequestDirection::Incoming,
+            financial_user("456", "requester")?,
+            Money::from_cents(1)?,
+            Some("Synthetic request".to_owned()),
+            Some(created_at),
+            RequestStatus::from_str("pending")?,
+        )
+        .with_audience(Some("private".to_owned())))
+    }
+
+    fn accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
+        Ok(AcceptRequestPlan::new(
+            test_account()?,
+            incoming_request()?,
+            Balance::new(
+                SignedUsdAmount::from_cents(1),
+                SignedUsdAmount::from_cents(0),
+            ),
+        ))
+    }
+
+    fn decline_plan() -> Result<DeclineRequestPlan, Box<dyn Error>> {
+        Ok(DeclineRequestPlan::new(
+            test_account()?,
+            incoming_request()?,
+        ))
+    }
+
     fn test_session() -> Result<(AccessToken, DeviceId), Box<dyn Error>> {
         Ok((
             AccessToken::from_str("synthetic-token")?,
@@ -4267,6 +4780,16 @@ mod tests {
                 .is_some_and(|requests| requests.len() == expected),
             "expected {expected} captured request(s), got {}",
             requests.as_ref().map_or(0, Vec::len)
+        );
+    }
+
+    async fn assert_requests_have_no_query(server: &MockServer) {
+        let requests = server.received_requests().await;
+        assert!(
+            requests.as_ref().is_some_and(|requests| requests
+                .iter()
+                .all(|request| request.url.query().is_none())),
+            "expected every captured request URL to omit a query"
         );
     }
 }

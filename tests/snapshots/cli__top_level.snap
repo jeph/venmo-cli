@@ -9,7 +9,9 @@ Usage: venmo [OPTIONS] <COMMAND>
 Commands:
   auth             Validate and manage the stored Venmo bearer token
   pay              Pay one person
-  request          Create a request immediately; acceptance syntax is reserved but unavailable
+  request          Create a request immediately
+  accept           Candidate incoming-request acceptance; unavailable pending live validation
+  decline          Candidate incoming-request decline; unavailable pending live validation
   friends          Inspect friends of the active account
   users            Find Venmo users
   payment-methods  Inspect available payment methods

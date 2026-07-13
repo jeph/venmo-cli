@@ -2,9 +2,11 @@ use std::io;
 
 use thiserror::Error;
 
+use crate::application::accept::AcceptError;
 use crate::application::activity::ActivityError;
 use crate::application::auth::{AuthStatusError, LoginError};
 use crate::application::balance::BalanceError;
+use crate::application::decline::DeclineError;
 use crate::application::friends::FriendsError;
 use crate::application::funding::FundingSelectionError;
 use crate::application::pay::PayError;
@@ -48,7 +50,9 @@ impl ErrorCategory {
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("the `{command}` command is not implemented in this development build")]
+    #[error(
+        "the `{command}` command is implemented as a candidate but unavailable pending controlled live validation"
+    )]
     CommandUnavailable { command: &'static str },
 
     #[error("failed to write shell completions")]
@@ -122,6 +126,18 @@ pub enum AppError {
     RequestCreate {
         #[from]
         source: RequestCreateError,
+    },
+
+    #[error(transparent)]
+    Accept {
+        #[from]
+        source: AcceptError,
+    },
+
+    #[error(transparent)]
+    Decline {
+        #[from]
+        source: DeclineError,
     },
 
     #[error(transparent)]
@@ -232,6 +248,30 @@ impl AppError {
                     None => ErrorCategory::Api,
                 },
             },
+            Self::Accept { source } => match source {
+                AcceptError::MissingCredential | AcceptError::CredentialLoad { .. } => {
+                    ErrorCategory::Credential
+                }
+                AcceptError::ConfirmationDeclined
+                | AcceptError::Confirmation {
+                    source: PromptError::Cancelled,
+                } => ErrorCategory::Cancelled,
+                AcceptError::ConfirmationRequired => ErrorCategory::Usage,
+                AcceptError::Confirmation { .. } => ErrorCategory::Internal,
+                _ => match source.api_failure_kind() {
+                    Some(kind) => api_failure_category(kind),
+                    None => ErrorCategory::Api,
+                },
+            },
+            Self::Decline { source } => match source {
+                DeclineError::MissingCredential | DeclineError::CredentialLoad { .. } => {
+                    ErrorCategory::Credential
+                }
+                _ => match source.api_failure_kind() {
+                    Some(kind) => api_failure_category(kind),
+                    None => ErrorCategory::Api,
+                },
+            },
             Self::UserSearch { source } => match source.failure_kind() {
                 UserSearchFailureKind::Credential => ErrorCategory::Credential,
                 UserSearchFailureKind::Api(kind) => api_failure_category(kind),
@@ -315,5 +355,16 @@ mod tests {
         assert_eq!(output.category(), ErrorCategory::AmbiguousWrite);
         assert!(output.to_string().contains("succeeded"));
         assert!(output.to_string().contains("do not retry"));
+    }
+
+    #[test]
+    fn request_acceptance_confirmation_has_stable_categories() {
+        let required = AppError::from(AcceptError::ConfirmationRequired);
+        let declined = AppError::from(AcceptError::ConfirmationDeclined);
+
+        assert_eq!(required.category(), ErrorCategory::Usage);
+        assert_eq!(required.exit_code(), 2);
+        assert_eq!(declined.category(), ErrorCategory::Cancelled);
+        assert_eq!(declined.exit_code(), 1);
     }
 }
