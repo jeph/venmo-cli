@@ -18,10 +18,12 @@ Options:
           Non-empty payment note
 
       --from <METHOD_ID>
-          Payment-method ID shown by `payment-methods list`
+          Preferred external/backup method ID; Venmo balance may be used first
 
       --yes
           Skip only the final default-No confirmation
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
+
+Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app.

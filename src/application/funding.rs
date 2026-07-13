@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use super::ports::{PromptError, PromptPort};
-use crate::domain::{PaymentMethod, PaymentMethodId};
+use crate::domain::{PaymentMethod, PaymentMethodId, PeerFundingFee, PeerFundingMethod};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FundingSelectionDisposition {
@@ -13,14 +13,24 @@ pub enum FundingSelectionDisposition {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FundingSelection {
-    method: PaymentMethod,
+    method: PeerFundingMethod,
     disposition: FundingSelectionDisposition,
 }
 
 impl FundingSelection {
     #[must_use]
     pub fn method(&self) -> &PaymentMethod {
+        self.method.method()
+    }
+
+    #[must_use]
+    pub const fn peer_method(&self) -> &PeerFundingMethod {
         &self.method
+    }
+
+    #[must_use]
+    pub fn into_peer_method(self) -> PeerFundingMethod {
+        self.method
     }
 
     #[must_use]
@@ -31,11 +41,17 @@ impl FundingSelection {
 
 #[derive(Debug, Error)]
 pub enum FundingSelectionError {
-    #[error("no eligible Venmo payment method is available")]
+    #[error("no peer-payment funding method is available")]
     NoEligibleMethods,
+
+    #[error("no peer-payment funding method has a fee proven to be exactly zero")]
+    NoProvenZeroFeeMethods,
 
     #[error("the requested payment-method ID was not found among eligible methods")]
     ExplicitMethodUnavailable,
+
+    #[error("the requested payment method does not have a fee proven to be exactly zero")]
+    ExplicitMethodFeeNotZero,
 
     #[error("the payment-method response contained duplicate IDs")]
     DuplicateMethodIds,
@@ -55,9 +71,9 @@ pub enum FundingSelectionError {
     },
 }
 
-pub fn select<P>(
+pub(crate) fn select<P>(
     prompt: &P,
-    eligible_methods: &[PaymentMethod],
+    eligible_methods: &[PeerFundingMethod],
     requested_id: Option<&PaymentMethodId>,
 ) -> Result<FundingSelection, FundingSelectionError>
 where
@@ -68,23 +84,41 @@ where
         return Err(FundingSelectionError::NoEligibleMethods);
     }
 
+    validate_one_default(eligible_methods)?;
+
     if let Some(requested_id) = requested_id {
         let method = eligible_methods
             .iter()
-            .find(|method| method.id() == requested_id)
+            .find(|method| requested_id.matches_peer_method(method))
             .cloned()
             .ok_or(FundingSelectionError::ExplicitMethodUnavailable)?;
+        if method.fee() != PeerFundingFee::ProvenZero {
+            return Err(FundingSelectionError::ExplicitMethodFeeNotZero);
+        }
         return Ok(FundingSelection {
             method,
             disposition: FundingSelectionDisposition::Explicit,
         });
     }
 
-    let mut defaults = eligible_methods.iter().filter(|method| method.is_default());
-    let default = defaults.next();
-    if defaults.next().is_some() {
-        return Err(FundingSelectionError::MultipleDefaults);
+    // A missing method-level fee can be resolved only by the later transaction-specific
+    // eligibility response. A known nonzero fee is never eligible.
+    let fee_eligible_methods = eligible_methods
+        .iter()
+        .filter(|method| {
+            method.fee() == PeerFundingFee::ProvenZero
+                || (method.is_default() && method.fee() == PeerFundingFee::Unknown)
+        })
+        .collect::<Vec<_>>();
+    if fee_eligible_methods.is_empty() {
+        return Err(FundingSelectionError::NoProvenZeroFeeMethods);
     }
+
+    let mut defaults = fee_eligible_methods
+        .iter()
+        .copied()
+        .filter(|method| method.is_default());
+    let default = defaults.next();
     if let Some(method) = default {
         return Ok(FundingSelection {
             method: method.clone(),
@@ -92,9 +126,9 @@ where
         });
     }
 
-    if let [method] = eligible_methods {
+    if let [method] = fee_eligible_methods.as_slice() {
         return Ok(FundingSelection {
-            method: method.clone(),
+            method: (*method).clone(),
             disposition: FundingSelectionDisposition::SoleEligibleMethod,
         });
     }
@@ -102,20 +136,20 @@ where
     if !prompt.can_prompt() {
         return Err(FundingSelectionError::ExplicitMethodRequired);
     }
-    let labels = eligible_methods
+    let labels = fee_eligible_methods
         .iter()
-        .map(payment_method_label)
+        .map(|method| payment_method_label(method.method()))
         .collect::<Vec<_>>();
     let index = prompt
         .select("Choose a payment method", &labels)
         .map_err(|source| FundingSelectionError::Prompt { source })?;
-    let method = eligible_methods
+    let method = fee_eligible_methods
         .get(index)
-        .cloned()
+        .map(|method| (*method).clone())
         .ok_or(FundingSelectionError::Prompt {
             source: PromptError::InvalidSelection {
                 index,
-                choice_count: eligible_methods.len(),
+                choice_count: fee_eligible_methods.len(),
             },
         })?;
     Ok(FundingSelection {
@@ -124,14 +158,23 @@ where
     })
 }
 
-fn validate_unique_ids(methods: &[PaymentMethod]) -> Result<(), FundingSelectionError> {
+fn validate_unique_ids(methods: &[PeerFundingMethod]) -> Result<(), FundingSelectionError> {
     for (index, method) in methods.iter().enumerate() {
         if methods[..index]
             .iter()
-            .any(|candidate| candidate.id() == method.id())
+            .any(|candidate| candidate.method().id() == method.method().id())
         {
             return Err(FundingSelectionError::DuplicateMethodIds);
         }
+    }
+    Ok(())
+}
+
+fn validate_one_default(methods: &[PeerFundingMethod]) -> Result<(), FundingSelectionError> {
+    let mut defaults = methods.iter().filter(|method| method.is_default());
+    let _ = defaults.next();
+    if defaults.next().is_some() {
+        return Err(FundingSelectionError::MultipleDefaults);
     }
     Ok(())
 }
@@ -158,7 +201,9 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::domain::{AccessToken, AccountPassword, DeviceId, LoginIdentifier, OtpCode};
+    use crate::domain::{
+        AccessToken, AccountPassword, DeviceId, LoginIdentifier, OtpCode, PeerFundingRole,
+    };
 
     type TestResult = Result<(), Box<dyn Error>>;
 
@@ -257,6 +302,46 @@ mod tests {
             select(&noninteractive_prompt(), &multiple, None),
             Err(FundingSelectionError::ExplicitMethodRequired)
         ));
+
+        let requested = PaymentMethodId::from_str("one")?;
+        assert!(matches!(
+            select(
+                &noninteractive_prompt(),
+                &multiple_defaults,
+                Some(&requested)
+            ),
+            Err(FundingSelectionError::MultipleDefaults)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn fee_policy_defers_unknown_default_fees_but_rejects_known_nonzero_and_explicit_unknown()
+    -> TestResult {
+        let unknown_default = method_with_fee("unknown", true, PeerFundingFee::Unknown)?;
+        let unknown_backup = method_with_fee("unknown-backup", false, PeerFundingFee::Unknown)?;
+        let nonzero = method_with_fee("nonzero", false, PeerFundingFee::NonZero { cents: 3 })?;
+        let explicit = PaymentMethodId::from_str("unknown")?;
+
+        let selected = select(
+            &noninteractive_prompt(),
+            &[unknown_default.clone(), unknown_backup, nonzero.clone()],
+            None,
+        )?;
+        assert_eq!(selected.peer_method().fee(), PeerFundingFee::Unknown);
+        assert!(selected.peer_method().is_default());
+        assert!(matches!(
+            select(&noninteractive_prompt(), &[nonzero], None),
+            Err(FundingSelectionError::NoProvenZeroFeeMethods)
+        ));
+        assert!(matches!(
+            select(
+                &noninteractive_prompt(),
+                &[unknown_default],
+                Some(&explicit)
+            ),
+            Err(FundingSelectionError::ExplicitMethodFeeNotZero)
+        ));
         Ok(())
     }
 
@@ -285,13 +370,27 @@ mod tests {
         }
     }
 
-    fn method(id: &str, is_default: bool) -> Result<PaymentMethod, Box<dyn Error>> {
-        Ok(PaymentMethod::new(
+    fn method(id: &str, is_default: bool) -> Result<PeerFundingMethod, Box<dyn Error>> {
+        method_with_fee(id, is_default, PeerFundingFee::ProvenZero)
+    }
+
+    fn method_with_fee(
+        id: &str,
+        is_default: bool,
+        fee: PeerFundingFee,
+    ) -> Result<PeerFundingMethod, Box<dyn Error>> {
+        let method = PaymentMethod::new(
             PaymentMethodId::from_str(id)?,
             Some(format!("Method {id}")),
             Some("synthetic".to_owned()),
             Some("1234".to_owned()),
             is_default,
-        ))
+        );
+        let role = if is_default {
+            PeerFundingRole::Default
+        } else {
+            PeerFundingRole::Backup
+        };
+        Ok(PeerFundingMethod::new(method, role, fee))
     }
 }

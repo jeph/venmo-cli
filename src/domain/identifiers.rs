@@ -22,7 +22,7 @@ fn validate_opaque_id(value: &str, kind: &'static str) -> Result<(), OpaqueIdPar
 
 macro_rules! opaque_id {
     ($name:ident, $kind:literal) => {
-        #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+        #[derive(Clone, Eq, Hash, PartialEq)]
         pub struct $name(String);
 
         impl $name {
@@ -38,6 +38,12 @@ macro_rules! opaque_id {
             }
         }
 
+        impl fmt::Debug for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(concat!(stringify!($name), "([REDACTED])"))
+            }
+        }
+
         impl FromStr for $name {
             type Err = OpaqueIdParseError;
 
@@ -50,10 +56,11 @@ macro_rules! opaque_id {
 }
 
 opaque_id!(ActivityId, "activity ID");
+opaque_id!(PaymentId, "payment ID");
 opaque_id!(PaymentMethodId, "payment-method ID");
 opaque_id!(RequestId, "request ID");
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub struct UserId(String);
 
 impl UserId {
@@ -66,6 +73,12 @@ impl UserId {
 impl fmt::Display for UserId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(formatter)
+    }
+}
+
+impl fmt::Debug for UserId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("UserId([REDACTED])")
     }
 }
 

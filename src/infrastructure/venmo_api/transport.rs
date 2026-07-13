@@ -22,14 +22,14 @@ const JSON_ACCEPT: HeaderValue = HeaderValue::from_static("application/json");
 const JSON_CONTENT_TYPE: HeaderValue = HeaderValue::from_static("application/json");
 
 #[derive(Clone, Copy)]
-pub struct ApiSession<'a> {
+pub(super) struct ApiSession<'a> {
     access_token: &'a AccessToken,
     device_id: &'a DeviceId,
 }
 
 impl<'a> ApiSession<'a> {
     #[must_use]
-    pub const fn new(access_token: &'a AccessToken, device_id: &'a DeviceId) -> Self {
+    pub(super) const fn new(access_token: &'a AccessToken, device_id: &'a DeviceId) -> Self {
         Self {
             access_token,
             device_id,
@@ -74,6 +74,7 @@ enum OperationClass {
     Read,
     NonFinancialWrite,
     AuthenticationWrite,
+    #[allow(dead_code)]
     FinancialWrite,
 }
 
@@ -87,7 +88,7 @@ enum ResponseCapture {
     OtpSecret,
 }
 
-pub struct HttpRequest<'a> {
+pub(super) struct HttpRequest<'a> {
     method: Method,
     route_template: &'static str,
     path_segments: &'a [&'a str],
@@ -99,7 +100,7 @@ pub struct HttpRequest<'a> {
 
 impl<'a> HttpRequest<'a> {
     #[must_use]
-    pub const fn read(
+    pub(super) const fn read(
         route_template: &'static str,
         path_segments: &'a [&'a str],
         query: &'a [(&'a str, &'a str)],
@@ -116,7 +117,7 @@ impl<'a> HttpRequest<'a> {
     }
 
     #[must_use]
-    pub const fn non_financial_delete(
+    pub(super) const fn non_financial_delete(
         route_template: &'static str,
         path_segments: &'a [&'a str],
         query: &'a [(&'a str, &'a str)],
@@ -133,7 +134,8 @@ impl<'a> HttpRequest<'a> {
     }
 
     #[must_use]
-    pub fn financial_json_post(
+    #[allow(dead_code)]
+    pub(super) fn financial_json_post(
         route_template: &'static str,
         path_segments: &'a [&'a str],
         query: &'a [(&'a str, &'a str)],
@@ -218,7 +220,7 @@ impl<'a> HttpRequest<'a> {
 }
 
 #[derive(Eq, PartialEq)]
-pub struct HttpResponse {
+pub(super) struct HttpResponse {
     status: StatusCode,
     body: Vec<u8>,
     otp_secret: Option<Zeroizing<Vec<u8>>>,
@@ -226,12 +228,12 @@ pub struct HttpResponse {
 
 impl HttpResponse {
     #[must_use]
-    pub const fn status(&self) -> StatusCode {
+    pub(super) const fn status(&self) -> StatusCode {
         self.status
     }
 
     #[must_use]
-    pub fn body(&self) -> &[u8] {
+    pub(super) fn body(&self) -> &[u8] {
         &self.body
     }
 
@@ -251,14 +253,14 @@ impl fmt::Debug for HttpResponse {
     }
 }
 
-pub struct VenmoHttpTransport {
+pub(super) struct VenmoHttpTransport {
     client: reqwest::Client,
     base_url: Url,
     response_limit: usize,
 }
 
 impl VenmoHttpTransport {
-    pub fn production() -> Result<Self, TransportBuildError> {
+    pub(super) fn production() -> Result<Self, TransportBuildError> {
         let base_url = Url::parse(PRODUCTION_API_BASE)
             .map_err(|_| TransportBuildError::InvalidProductionOrigin)?;
         Self::build(
@@ -308,7 +310,7 @@ impl VenmoHttpTransport {
         })
     }
 
-    pub async fn send_authenticated(
+    pub(super) async fn send_authenticated(
         &self,
         session: ApiSession<'_>,
         request: HttpRequest<'_>,
@@ -615,7 +617,9 @@ pub enum TransportError {
     #[error("the API response could not be buffered safely")]
     ResourceExhaustion,
 
-    #[error("financial write outcome is unknown: {cause}")]
+    #[error(
+        "financial write outcome is unknown: {cause}; do not retry until activity or requests and the official app verify the result"
+    )]
     FinancialWriteOutcomeUnknown { cause: AmbiguousWriteCause },
 
     #[error("authentication outcome is unknown: {cause}; a remote token may have been issued")]
@@ -718,6 +722,13 @@ fn capture_otp_secret(headers: &HeaderMap) -> Result<Option<Zeroizing<Vec<u8>>>,
 }
 
 fn classify_send_error(operation: OperationClass, error: &reqwest::Error) -> TransportError {
+    if error.is_connect() {
+        return if error.is_timeout() {
+            TransportError::Timeout
+        } else {
+            TransportError::Network
+        };
+    }
     let cause = if error.is_timeout() {
         AmbiguousWriteCause::Timeout
     } else {
@@ -826,6 +837,7 @@ fn duration_millis(duration: Duration) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::net::TcpListener;
     use std::str::FromStr;
 
     use time::OffsetDateTime;
@@ -1028,6 +1040,27 @@ mod tests {
                 cause: AmbiguousWriteCause::Timeout,
             })
         );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn classifies_pretransmission_connect_failure_as_network()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let address = listener.local_addr()?;
+        drop(listener);
+        let base_url = Url::parse(&format!("http://{address}/v1/"))?;
+        let transport = VenmoHttpTransport::for_test(base_url, TEST_TIMEOUT, 1024)?;
+        let credential = test_credential()?;
+
+        let result = transport
+            .send_authenticated(
+                ApiSession::from(&credential),
+                HttpRequest::financial_json_post("/payments", &["payments"], &[], b"{}".to_vec()),
+            )
+            .await;
+
+        assert_eq!(result, Err(TransportError::Network));
         Ok(())
     }
 

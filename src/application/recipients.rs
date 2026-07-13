@@ -164,10 +164,39 @@ where
     if second_exists {
         return Err(RecipientResolutionError::AmbiguousUsername);
     }
-    if result.completion() != ExhaustiveSearchCompletion::Exhausted {
-        return Err(RecipientResolutionError::IncompleteUsernameSearch);
+    let Some(search_match) = first else {
+        return if result.completion() == ExhaustiveSearchCompletion::Exhausted {
+            Err(RecipientResolutionError::UsernameNotFound)
+        } else {
+            Err(RecipientResolutionError::IncompleteUsernameSearch)
+        };
+    };
+    let expected_user_id = search_match.user_id().clone();
+    let user = api
+        .user_by_id(
+            credential.access_token(),
+            credential.device_id(),
+            &expected_user_id,
+        )
+        .await
+        .map_err(|source| RecipientResolutionError::Api {
+            kind: source.kind(),
+            source: OperationFailure::new(source),
+        })?;
+    if user.user_id() != &expected_user_id {
+        return Err(RecipientResolutionError::LookupContract {
+            problem: "the recipient detail response returned a different user ID",
+        });
     }
-    first.ok_or(RecipientResolutionError::UsernameNotFound)
+    if !user
+        .username()
+        .is_some_and(|candidate| username_matches(candidate, username))
+    {
+        return Err(RecipientResolutionError::LookupContract {
+            problem: "the recipient detail response returned a different username",
+        });
+    }
+    Ok(user)
 }
 
 fn username_matches(candidate: &Username, requested: &Username) -> bool {
@@ -309,7 +338,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn username_requires_one_case_insensitive_exact_match_and_exhaustion() -> TestResult {
         let api = FakeApi {
-            lookups: RefCell::new(VecDeque::new()),
+            lookups: RefCell::new(VecDeque::from([Ok(user("123", Some("ALICE"))?)])),
             pages: RefCell::new(VecDeque::from([Ok(UserSearchPage::new(
                 vec![user("123", Some("alice"))?, user("124", Some("alice2"))?],
                 None,
@@ -322,8 +351,33 @@ mod tests {
         let resolved = resolve(&FakeStore { available: true }, &api, &input).await?;
 
         assert_eq!(resolved.user().user_id().as_str(), "123");
-        assert_eq!(api.lookup_calls.get(), 0);
+        assert_eq!(api.lookup_calls.get(), 1);
         assert_eq!(api.search_calls.get(), 1);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn username_requires_matching_authoritative_detail() -> TestResult {
+        for detail in [user("999", Some("alice"))?, user("123", Some("other"))?] {
+            let api = FakeApi {
+                lookups: RefCell::new(VecDeque::from([Ok(detail)])),
+                pages: RefCell::new(VecDeque::from([Ok(UserSearchPage::new(
+                    vec![user("123", Some("alice"))?],
+                    None,
+                ))])),
+                lookup_calls: Cell::new(0),
+                search_calls: Cell::new(0),
+            };
+            let input = RecipientInput::from_str("@alice")?;
+
+            let result = resolve(&FakeStore { available: true }, &api, &input).await;
+
+            assert!(matches!(
+                result,
+                Err(RecipientResolutionError::LookupContract { .. })
+            ));
+            assert_eq!(api.lookup_calls.get(), 1);
+        }
         Ok(())
     }
 
@@ -364,7 +418,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn exact_match_is_not_used_when_search_cannot_prove_exhaustion() -> TestResult {
+    async fn exact_match_is_verified_by_authoritative_detail_when_search_reaches_its_bound()
+    -> TestResult {
         let mut pages = VecDeque::new();
         for page_index in 0_u32..4 {
             let start = page_index * 50 + 1;
@@ -384,20 +439,18 @@ mod tests {
             )));
         }
         let api = FakeApi {
-            lookups: RefCell::new(VecDeque::new()),
+            lookups: RefCell::new(VecDeque::from([Ok(user("1", Some("Alice"))?)])),
             pages: RefCell::new(pages),
             lookup_calls: Cell::new(0),
             search_calls: Cell::new(0),
         };
         let input = RecipientInput::from_str("@alice")?;
 
-        let result = resolve(&FakeStore { available: true }, &api, &input).await;
+        let result = resolve(&FakeStore { available: true }, &api, &input).await?;
 
-        assert!(matches!(
-            result,
-            Err(RecipientResolutionError::IncompleteUsernameSearch)
-        ));
+        assert_eq!(result.user().user_id().as_str(), "1");
         assert_eq!(api.search_calls.get(), 4);
+        assert_eq!(api.lookup_calls.get(), 1);
         Ok(())
     }
 

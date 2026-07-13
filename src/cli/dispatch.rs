@@ -1,18 +1,20 @@
+use std::future::Future;
 use std::io::Write;
 
 use crate::application::ports::PromptError;
 use crate::application::{
-    activity, auth, balance, doctor, friends, payment_methods, requests, users,
+    activity, auth, balance, doctor, friends, pay, payment_methods, request_create, requests, users,
 };
 use crate::error::AppError;
 use crate::infrastructure::credentials::NativeCredentialStore;
-use crate::infrastructure::system::SystemClock;
+use crate::infrastructure::system::{SystemClientRequestIdGenerator, SystemClock};
 use crate::infrastructure::venmo_api::VenmoApiClient;
 
 use super::args::{
     ActivityArgs, ActivityOperation, AuthArgs, AuthOperation, Cli, Command, FriendsArgs,
-    FriendsOperation, LoginArgs, LogoutArgs, PaymentMethodsArgs, PaymentMethodsOperation,
-    RequestsArgs, RequestsOperation, UsersArgs, UsersOperation,
+    FriendsOperation, LoginArgs, LogoutArgs, PayArgs, PaymentMethodsArgs, PaymentMethodsOperation,
+    RequestCreateArgs, RequestInvocation, RequestsArgs, RequestsOperation, UsersArgs,
+    UsersOperation,
 };
 use super::completions;
 use super::prompt::{self, DialoguerPrompt};
@@ -30,10 +32,121 @@ pub fn run<W: Write, E: Write>(cli: Cli, stdout: &mut W, stderr: &mut E) -> Resu
         Command::Activity(args) => run_activity(args, stdout, stderr),
         Command::Requests(args) => run_requests(args, stdout, stderr),
         Command::Doctor => run_doctor(stdout),
-        command => Err(AppError::CommandUnavailable {
-            command: command.name(),
-        }),
+        Command::Pay(args) => run_pay(args, stdout, stderr),
+        Command::Request(args) => match args.into_invocation() {
+            Ok(RequestInvocation::Create(args)) => run_request_create(args, stdout),
+            Ok(RequestInvocation::Accept(_)) => unavailable("request accept"),
+            Err(_) => unavailable("request"),
+        },
     }
+}
+
+fn run_pay<W: Write, E: Write>(
+    args: PayArgs,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> Result<(), AppError> {
+    let store = NativeCredentialStore::new();
+    let prompt = DialoguerPrompt::new();
+    let runtime = runtime()?;
+    let api = production_api()?;
+    let generator = SystemClientRequestIdGenerator;
+    let prepared = runtime.block_on(pay::prepare(
+        &store,
+        &api,
+        &generator,
+        &prompt,
+        &args.recipient,
+        args.amount,
+        args.note,
+        args.from.as_ref(),
+    ))?;
+    output::write_pay_preflight(stderr, &prepared)
+        .and_then(|()| stderr.flush())
+        .map_err(|source| AppError::CommandOutput { source })?;
+    let authorized = pay::authorize(&prompt, prepared, args.yes)?;
+    let result = runtime.block_on(protect_financial_write(pay::execute(&api, authorized)))??;
+    output::write_pay_result(stdout, &result)
+        .and_then(|()| stdout.flush())
+        .map_err(|source| AppError::FinancialResultOutput { source })?;
+    Ok(())
+}
+
+fn run_request_create<W: Write>(args: RequestCreateArgs, stdout: &mut W) -> Result<(), AppError> {
+    let store = NativeCredentialStore::new();
+    let runtime = runtime()?;
+    let api = production_api()?;
+    let generator = SystemClientRequestIdGenerator;
+    let prepared = runtime.block_on(request_create::prepare(
+        &store,
+        &api,
+        &generator,
+        &args.recipient,
+        args.amount,
+        args.note,
+    ))?;
+    let result = runtime.block_on(protect_financial_write(request_create::execute(
+        &api, prepared,
+    )))??;
+    output::write_request_create_result(stdout, &result)
+        .and_then(|()| stdout.flush())
+        .map_err(|source| AppError::FinancialResultOutput { source })?;
+    Ok(())
+}
+
+#[cfg(unix)]
+async fn protect_financial_write<F>(future: F) -> Result<F::Output, AppError>
+where
+    F: Future,
+{
+    let mut interrupts = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+        .map_err(|source| AppError::SignalInitialization { source })?;
+    let mut terminations =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .map_err(|source| AppError::SignalInitialization { source })?;
+    let mut hangups = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
+        .map_err(|source| AppError::SignalInitialization { source })?;
+    let interruption = async {
+        tokio::select! {
+            _ = interrupts.recv() => {}
+            _ = terminations.recv() => {}
+            _ = hangups.recv() => {}
+        }
+    };
+    protect_with_interruption(future, interruption).await
+}
+
+#[cfg(any(unix, test))]
+async fn protect_with_interruption<F, S>(future: F, interruption: S) -> Result<F::Output, AppError>
+where
+    F: Future,
+    S: Future<Output = ()>,
+{
+    let mut future = std::pin::pin!(future);
+    let mut interruption = std::pin::pin!(interruption);
+    tokio::select! {
+        outcome = &mut future => Ok(outcome),
+        () = &mut interruption => Err(AppError::FinancialWriteInterruptedUnknown),
+    }
+}
+
+#[cfg(not(unix))]
+async fn protect_financial_write<F>(future: F) -> Result<F::Output, AppError>
+where
+    F: Future,
+{
+    let mut future = std::pin::pin!(future);
+    tokio::select! {
+        outcome = &mut future => Ok(outcome),
+        signal = tokio::signal::ctrl_c() => {
+            signal.map_err(|source| AppError::SignalInitialization { source })?;
+            Err(AppError::FinancialWriteInterruptedUnknown)
+        }
+    }
+}
+
+fn unavailable(command: &'static str) -> Result<(), AppError> {
+    Err(AppError::CommandUnavailable { command })
 }
 
 fn run_friends<W: Write, E: Write>(
@@ -280,5 +393,22 @@ fn finish_logout(
         Ok(())
     } else {
         Err(AppError::AuthLogoutIncomplete)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::{pending, ready};
+
+    use super::*;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn financial_interruption_is_always_ambiguous() {
+        let result = protect_with_interruption(pending::<()>(), ready(())).await;
+
+        assert!(matches!(
+            result,
+            Err(AppError::FinancialWriteInterruptedUnknown)
+        ));
     }
 }

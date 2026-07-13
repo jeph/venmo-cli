@@ -29,11 +29,13 @@ fn help_and_version_succeed_without_services() -> TestResult {
 #[test]
 fn usage_errors_exit_two_without_success_output() -> TestResult {
     Command::cargo_bin("venmo")?
-        .args(["pay", "alice", "1.00", "--note", "Dinner"])
+        .args(["balance", "--unexpected"])
         .assert()
         .code(2)
         .stdout(predicate::str::is_empty())
-        .stderr(predicate::str::contains("invalid value 'alice'"));
+        .stderr(predicate::str::contains(
+            "unexpected argument '--unexpected'",
+        ));
 
     Ok(())
 }
@@ -125,44 +127,6 @@ fn reauthenticate_rejects_secret_and_alternate_input_options() -> TestResult {
                     .and(predicate::str::contains("synthetic-secret-value").not()),
             );
     }
-
-    Ok(())
-}
-
-#[test]
-fn unfinished_commands_fail_truthfully() -> TestResult {
-    Command::cargo_bin("venmo")?
-        .args(["pay", "@alice", "0.01", "--note", "Test", "--yes"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::is_empty())
-        .stderr(predicate::eq(
-            "error: the `pay` command is not implemented in this development build\n",
-        ));
-
-    Ok(())
-}
-
-#[test]
-fn verbose_mode_does_not_echo_command_secrets_or_notes() -> TestResult {
-    Command::cargo_bin("venmo")?
-        .args([
-            "--verbose",
-            "pay",
-            "@alice",
-            "0.01",
-            "--note",
-            "private-test-note",
-            "--yes",
-        ])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::is_empty())
-        .stderr(
-            predicate::str::contains("not implemented in this development build")
-                .and(predicate::str::contains("private-test-note").not())
-                .and(predicate::str::contains("\u{1b}[").not()),
-        );
 
     Ok(())
 }

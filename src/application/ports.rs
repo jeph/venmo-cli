@@ -8,9 +8,10 @@ use time::OffsetDateTime;
 
 use crate::domain::{
     AccessToken, AccessTokenParseError, Account, AccountPassword, AccountPasswordParseError,
-    Activity, ActivityId, Balance, CredentialEnvelope, DeviceId, DeviceIdParseError,
-    LoginIdentifier, LoginIdentifierParseError, OtpCode, OtpCodeParseError, OtpSecret,
-    PasswordLoginStart, PaymentMethod, PendingRequest, RequestId, User, UserId, UserSearchQuery,
+    Activity, ActivityId, Balance, ClientRequestId, CreateRequestPlan, CreatedPayment,
+    CredentialEnvelope, DeviceId, DeviceIdParseError, EligibilityToken, LoginIdentifier,
+    LoginIdentifierParseError, OtpCode, OtpCodeParseError, OtpSecret, PasswordLoginStart, PayPlan,
+    PaymentMethod, PeerFundingMethod, PendingRequest, RequestId, User, UserId, UserSearchQuery,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -162,6 +163,90 @@ pub trait PaymentMethodsApi {
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
     ) -> impl Future<Output = Result<Vec<PaymentMethod>, Self::Error>> + Send + 'a;
+}
+
+#[allow(dead_code)]
+pub(crate) trait ClientRequestIdGenerator {
+    fn generate(&self) -> ClientRequestId;
+}
+
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub(crate) struct PaymentEligibility {
+    token: EligibilityToken,
+    fee_cents: u64,
+}
+
+#[allow(dead_code)]
+impl PaymentEligibility {
+    #[must_use]
+    pub const fn new(token: EligibilityToken, fee_cents: u64) -> Self {
+        Self { token, fee_cents }
+    }
+
+    #[must_use]
+    pub const fn token(&self) -> &EligibilityToken {
+        &self.token
+    }
+
+    #[must_use]
+    pub const fn fee_cents(&self) -> u64 {
+        self.fee_cents
+    }
+
+    #[must_use]
+    pub fn into_token(self) -> EligibilityToken {
+        self.token
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) trait PeerFundingApi {
+    type Error: ApiFailure;
+
+    fn peer_funding_methods<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a;
+}
+
+#[allow(dead_code)]
+pub(crate) trait PaymentEligibilityApi {
+    type Error: ApiFailure;
+
+    fn payment_eligibility<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        recipient: &'a User,
+        amount: crate::domain::Money,
+        note: &'a crate::domain::Note,
+    ) -> impl Future<Output = Result<PaymentEligibility, Self::Error>> + Send + 'a;
+}
+
+#[allow(dead_code)]
+pub(crate) trait PaymentCreationApi {
+    type Error: ApiFailure;
+
+    fn create_payment<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a PayPlan,
+    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a;
+}
+
+#[allow(dead_code)]
+pub(crate) trait RequestCreationApi {
+    type Error: ApiFailure;
+
+    fn create_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a CreateRequestPlan,
+    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a;
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]

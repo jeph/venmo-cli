@@ -16,7 +16,8 @@ use crate::domain::{
     name = "venmo",
     version,
     about = "An unofficial Venmo command-line client",
-    long_about = None
+    long_about = None,
+    after_long_help = "Financial exit code 3 means the write outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
 )]
 pub struct Cli {
     /// Write redacted diagnostics to stderr.
@@ -35,7 +36,7 @@ pub enum Command {
     /// Pay one person.
     Pay(PayArgs),
 
-    /// Request money from one person or accept an incoming request.
+    /// Create a request immediately; acceptance syntax is reserved but unavailable.
     Request(RequestArgs),
 
     /// Inspect friends of the active account.
@@ -124,6 +125,9 @@ pub struct LogoutArgs {
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app."
+)]
 pub struct PayArgs {
     /// Exact @username or positive numeric Venmo user ID.
     #[arg(value_name = "RECIPIENT")]
@@ -137,7 +141,7 @@ pub struct PayArgs {
     #[arg(long, value_name = "NOTE")]
     pub note: Note,
 
-    /// Payment-method ID shown by `payment-methods list`.
+    /// Preferred external/backup method ID; Venmo balance may be used first.
     #[arg(long, value_name = "METHOD_ID")]
     pub from: Option<PaymentMethodId>,
 
@@ -150,7 +154,8 @@ pub struct PayArgs {
 #[command(
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true,
-    flatten_help = true
+    flatten_help = true,
+    after_long_help = "Direct request creation writes immediately after validation. It does not prompt and has no `--yes` option. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app."
 )]
 pub struct RequestArgs {
     #[command(subcommand)]
@@ -194,7 +199,7 @@ impl RequestArgs {
 
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum RequestOperation {
-    /// Pay and settle one existing incoming request.
+    /// Reserved request-acceptance syntax; this operation is unavailable.
     Accept(AcceptRequestArgs),
 }
 
@@ -204,7 +209,7 @@ pub struct AcceptRequestArgs {
     #[arg(value_name = "REQUEST_ID")]
     pub request_id: RequestId,
 
-    /// Payment-method ID shown by `payment-methods list`.
+    /// Preferred external/backup method ID; Venmo balance may be used first.
     #[arg(long, value_name = "METHOD_ID")]
     pub from: Option<PaymentMethodId>,
 

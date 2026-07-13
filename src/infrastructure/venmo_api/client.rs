@@ -9,7 +9,8 @@ use time::format_description::well_known::Rfc3339;
 use time::{OffsetDateTime, PrimitiveDateTime};
 
 use super::dto::{
-    AccountEnvelope, AuthorizationDto, BalanceEnvelope, FriendsEnvelope, PasswordLoginRequest,
+    AccountEnvelope, AuthorizationDto, BalanceEnvelope, CreatePaymentRequest, CreateRequestRequest,
+    FriendsEnvelope, PasswordLoginRequest, PaymentEligibilityEnvelope, PaymentEligibilityRequest,
     PaymentMethodDto, PaymentMethodsEnvelope, PaymentRecordDto, PaymentsEnvelope, SmsOtpRequest,
     StoriesEnvelope, StoryDto, StoryEnvelope, TransferDto, UserDto, UserEnvelope, UsersEnvelope,
 };
@@ -19,16 +20,20 @@ use super::transport::{
 use crate::application::ports::{
     ActivityApi, ActivityPage, ActivityPageRequest, ActivityPageToken, ApiFailure, ApiFailureKind,
     AuthenticationApi, BalanceApi, DoctorApi, FriendsApi, FriendsPage, FriendsPageRequest,
-    FriendsPageToken, PasswordLoginApi, PaymentMethodsApi, PendingRequestsPage,
-    PendingRequestsPageRequest, PendingRequestsPageToken, RequestsApi, RequiredShape,
-    ShapeProbeOutcome, UserSearchPage, UserSearchPageRequest, UserSearchPageToken, UsersApi,
+    FriendsPageToken, PasswordLoginApi, PaymentCreationApi, PaymentEligibility,
+    PaymentEligibilityApi, PaymentMethodsApi, PeerFundingApi, PendingRequestsPage,
+    PendingRequestsPageRequest, PendingRequestsPageToken, RequestCreationApi, RequestsApi,
+    RequiredShape, ShapeProbeOutcome, UserSearchPage, UserSearchPageRequest, UserSearchPageToken,
+    UsersApi,
 };
 use crate::domain::{
     AccessToken, Account, AccountPassword, Activity, ActivityAction, ActivityBeforeId,
-    ActivityCounterparty, ActivityDirection, ActivityId, ActivityStatus, Balance, DeviceId,
-    LoginIdentifier, Money, OtpCode, OtpSecret, PasswordLoginStart, PaymentMethod, PaymentMethodId,
+    ActivityCounterparty, ActivityDirection, ActivityId, ActivityStatus, Balance,
+    CreateRequestPlan, CreatedPayment, DeviceId, EligibilityToken, FinancialStatus,
+    LoginIdentifier, Money, OtpCode, OtpSecret, PasswordLoginStart, PayPlan, PaymentId,
+    PaymentMethod, PaymentMethodId, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
     PendingRequest, RequestDirection, RequestId, RequestStatus, RequestsBefore, SignedUsdAmount,
-    User, UserId, UserSearchQuery, Username,
+    User, UserId, UserProfileKind, UserSearchQuery, Username,
 };
 
 const ACTIVITY_DETAIL_OPERATION: &str = "activity detail";
@@ -40,8 +45,16 @@ const FRIENDS_OPERATION: &str = "friend listing";
 const OTP_COMPLETION_OPERATION: &str = "OTP login completion";
 const OTP_REQUEST_OPERATION: &str = "SMS OTP request";
 const PASSWORD_LOGIN_OPERATION: &str = "password login";
+#[allow(dead_code)]
+const PAYMENT_CREATION_OPERATION: &str = "payment creation";
+#[allow(dead_code)]
+const PAYMENT_ELIGIBILITY_OPERATION: &str = "payment eligibility";
 const PAYMENT_METHODS_OPERATION: &str = "payment-method listing";
+#[allow(dead_code)]
+const PEER_FUNDING_OPERATION: &str = "peer funding-method listing";
 const REVOKE_TOKEN_OPERATION: &str = "token revocation";
+#[allow(dead_code)]
+const REQUEST_CREATION_OPERATION: &str = "request creation";
 const REQUEST_DETAIL_OPERATION: &str = "pending-request detail";
 const REQUEST_LIST_OPERATION: &str = "pending-request listing";
 const USER_LOOKUP_OPERATION: &str = "user lookup";
@@ -58,7 +71,7 @@ impl VenmoApiClient {
     }
 
     #[must_use]
-    pub fn new(transport: VenmoHttpTransport) -> Self {
+    pub(super) fn new(transport: VenmoHttpTransport) -> Self {
         Self { transport }
     }
 
@@ -289,6 +302,155 @@ impl VenmoApiClient {
             }
         })?;
         Ok(Balance::new(available, on_hold))
+    }
+
+    #[allow(dead_code)]
+    async fn fetch_peer_funding_methods(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+    ) -> Result<Vec<PeerFundingMethod>, VenmoApiError> {
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::read("/payment-methods", &["payment-methods"], &[]),
+            )
+            .await?;
+        let value = require_success_json(PEER_FUNDING_OPERATION, response)?;
+        let envelope: PaymentMethodsEnvelope =
+            serde_json::from_value(value).map_err(|_| VenmoApiError::Contract {
+                operation: PEER_FUNDING_OPERATION,
+                problem: "the peer funding-method response did not match the supported envelope",
+            })?;
+        map_peer_funding_methods(envelope.data.into_methods())
+    }
+
+    #[allow(dead_code)]
+    async fn fetch_payment_eligibility(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        recipient: &User,
+        amount: Money,
+        note: &crate::domain::Note,
+    ) -> Result<PaymentEligibility, VenmoApiError> {
+        let body = serde_json::to_vec(&PaymentEligibilityRequest {
+            funding_source_id: "",
+            action: "pay",
+            country_code: "1",
+            target_type: "user_id",
+            note: note.as_str(),
+            target_id: recipient.user_id().as_str(),
+            amount: amount.cents(),
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: PAYMENT_ELIGIBILITY_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::non_financial_json_post(
+                    "/protection/eligibility",
+                    &["protection", "eligibility"],
+                    &[],
+                    body,
+                ),
+            )
+            .await?;
+        let value = require_success_json(PAYMENT_ELIGIBILITY_OPERATION, response)?;
+        let envelope: PaymentEligibilityEnvelope =
+            serde_json::from_value(value).map_err(|_| VenmoApiError::Contract {
+                operation: PAYMENT_ELIGIBILITY_OPERATION,
+                problem: "the payment-eligibility response did not match the supported envelope",
+            })?;
+        let eligibility = envelope.data;
+        let _ = (&eligibility.fee_disclaimer, &eligibility.ineligible_reason);
+        if !eligibility.eligible {
+            return Err(VenmoApiError::EligibilityDenied);
+        }
+        let fee_cents = eligibility.fees.into_iter().try_fold(0_u64, |total, fee| {
+            let cents = fee.calculated_cents().ok_or(VenmoApiError::Contract {
+                operation: PAYMENT_ELIGIBILITY_OPERATION,
+                problem: "the payment-eligibility response contained an unknown fee shape",
+            })?;
+            total.checked_add(cents).ok_or(VenmoApiError::Contract {
+                operation: PAYMENT_ELIGIBILITY_OPERATION,
+                problem: "the payment-eligibility fee total overflowed",
+            })
+        })?;
+        let token = EligibilityToken::parse_owned(eligibility.eligibility_token).map_err(|_| {
+            VenmoApiError::Contract {
+                operation: PAYMENT_ELIGIBILITY_OPERATION,
+                problem: "the payment-eligibility response contained an invalid token",
+            }
+        })?;
+        Ok(PaymentEligibility::new(token, fee_cents))
+    }
+
+    #[allow(dead_code)]
+    async fn create_peer_payment(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        plan: &PayPlan,
+    ) -> Result<CreatedPayment, VenmoApiError> {
+        let request_id = plan.request_id().to_string();
+        let amount = money_json_number(plan.amount(), false, PAYMENT_CREATION_OPERATION)?;
+        let body = serde_json::to_vec(&CreatePaymentRequest {
+            uuid: &request_id,
+            user_id: plan.recipient().user_id().as_str(),
+            audience: "private",
+            amount: &amount,
+            note: plan.note().as_str(),
+            eligibility_token: plan.eligibility_token().expose(),
+            funding_source_id: plan.backup_method().method().id().as_str(),
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: PAYMENT_CREATION_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::financial_json_post("/payments", &["payments"], &[], body),
+            )
+            .await?;
+        let value = require_financial_success_json(PAYMENT_CREATION_OPERATION, response)?;
+        let payment = parse_created_payment(PAYMENT_CREATION_OPERATION, value)?;
+        validate_created_payment(PAYMENT_CREATION_OPERATION, payment, plan, false)
+    }
+
+    #[allow(dead_code)]
+    async fn create_peer_request(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        plan: &CreateRequestPlan,
+    ) -> Result<CreatedPayment, VenmoApiError> {
+        let request_id = plan.request_id().to_string();
+        let amount = money_json_number(plan.amount(), true, REQUEST_CREATION_OPERATION)?;
+        let body = serde_json::to_vec(&CreateRequestRequest {
+            uuid: &request_id,
+            user_id: plan.recipient().user_id().as_str(),
+            audience: "private",
+            amount: &amount,
+            note: plan.note().as_str(),
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: REQUEST_CREATION_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::financial_json_post("/payments", &["payments"], &[], body),
+            )
+            .await?;
+        let value = require_financial_success_json(REQUEST_CREATION_OPERATION, response)?;
+        let payment = parse_created_payment(REQUEST_CREATION_OPERATION, value)?;
+        validate_created_request(REQUEST_CREATION_OPERATION, payment, plan)
     }
 
     async fn fetch_friends_page(
@@ -765,6 +927,59 @@ impl PaymentMethodsApi for VenmoApiClient {
     }
 }
 
+impl PeerFundingApi for VenmoApiClient {
+    type Error = VenmoApiError;
+
+    fn peer_funding_methods<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
+        self.fetch_peer_funding_methods(access_token, device_id)
+    }
+}
+
+impl PaymentEligibilityApi for VenmoApiClient {
+    type Error = VenmoApiError;
+
+    fn payment_eligibility<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        recipient: &'a User,
+        amount: Money,
+        note: &'a crate::domain::Note,
+    ) -> impl Future<Output = Result<PaymentEligibility, Self::Error>> + Send + 'a {
+        self.fetch_payment_eligibility(access_token, device_id, recipient, amount, note)
+    }
+}
+
+impl PaymentCreationApi for VenmoApiClient {
+    type Error = VenmoApiError;
+
+    fn create_payment<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a PayPlan,
+    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a {
+        self.create_peer_payment(access_token, device_id, plan)
+    }
+}
+
+impl RequestCreationApi for VenmoApiClient {
+    type Error = VenmoApiError;
+
+    fn create_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a CreateRequestPlan,
+    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a {
+        self.create_peer_request(access_token, device_id, plan)
+    }
+}
+
 impl UsersApi for VenmoApiClient {
     type Error = VenmoApiError;
 
@@ -948,6 +1163,9 @@ pub enum VenmoApiError {
         code_suffix: ApiCodeSuffix,
     },
 
+    #[error("Venmo reported that this personal payment is not eligible")]
+    EligibilityDenied,
+
     #[error("the successful {operation} response was not valid JSON")]
     MalformedJson { operation: &'static str },
 
@@ -958,6 +1176,14 @@ pub enum VenmoApiError {
         "the successful {operation} response could not prove the issued token; authentication outcome is unknown and a remote token may remain active because {problem}"
     )]
     AuthenticationOutcomeUnknown {
+        operation: &'static str,
+        problem: &'static str,
+    },
+
+    #[error(
+        "the {operation} outcome is unknown and must be reconciled before retrying because {problem}"
+    )]
+    FinancialOutcomeUnknown {
         operation: &'static str,
         problem: &'static str,
     },
@@ -981,6 +1207,7 @@ impl ApiFailure for VenmoApiError {
             Self::Transport(TransportError::FinancialWriteOutcomeUnknown { .. }) => {
                 ApiFailureKind::AmbiguousWrite
             }
+            Self::FinancialOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
             Self::Transport(TransportError::AuthenticationOutcomeUnknown { .. }) => {
                 ApiFailureKind::Internal
             }
@@ -1000,7 +1227,9 @@ impl ApiFailure for VenmoApiError {
             )
             | Self::RequestEncoding { .. }
             | Self::AuthenticationOutcomeUnknown { .. } => ApiFailureKind::Internal,
-            Self::Http { .. } | Self::ApiFailure { .. } => ApiFailureKind::Rejected,
+            Self::Http { .. } | Self::ApiFailure { .. } | Self::EligibilityDenied => {
+                ApiFailureKind::Rejected
+            }
         }
     }
 }
@@ -1025,6 +1254,62 @@ fn require_success_json(
         operation,
         problem: "the response body was empty",
     })
+}
+
+#[allow(dead_code)]
+fn require_financial_success_json(
+    operation: &'static str,
+    response: HttpResponse,
+) -> Result<Value, VenmoApiError> {
+    let status = response.status();
+    if response.body().is_empty() {
+        return Err(VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the response body was empty",
+        });
+    }
+    let value = serde_json::from_slice::<Value>(response.body()).map_err(|_| {
+        VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the response body was not valid JSON",
+        }
+    })?;
+    let error_code = extract_error_code(&value);
+    let confirmed_error_code = extract_root_error_code(&value);
+    let confirmed_rejection = confirmed_error_code
+        .as_deref()
+        .is_some_and(|code| is_confirmed_financial_rejection(operation, status.as_u16(), code));
+    if !status.is_success() {
+        if confirmed_rejection {
+            return Err(VenmoApiError::Http {
+                operation,
+                status: status.as_u16(),
+                code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
+            });
+        }
+        return Err(VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the server response did not prove that no write occurred",
+        });
+    }
+    if error_code.as_deref().is_some_and(is_failure_error_code) {
+        if confirmed_rejection {
+            return Err(VenmoApiError::ApiFailure {
+                operation,
+                code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
+            });
+        }
+        return Err(VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the successful HTTP response contained an unverified API error",
+        });
+    }
+    Ok(value)
+}
+
+#[allow(dead_code)]
+fn is_confirmed_financial_rejection(operation: &str, status: u16, code: &str) -> bool {
+    operation == PAYMENT_CREATION_OPERATION && status == 400 && matches!(code, "1396" | "13006")
 }
 
 fn require_issued_token_json(
@@ -1160,6 +1445,18 @@ fn extract_error_code(value: &Value) -> Option<String> {
     None
 }
 
+#[allow(dead_code)]
+fn extract_root_error_code(value: &Value) -> Option<String> {
+    let code = value.get("error")?.as_object()?.get("code")?;
+    if let Some(code) = code.as_str() {
+        Some(code.to_owned())
+    } else if code.is_number() {
+        Some(code.to_string())
+    } else {
+        None
+    }
+}
+
 fn map_payment_methods(
     methods: Vec<PaymentMethodDto>,
 ) -> Result<Vec<PaymentMethod>, VenmoApiError> {
@@ -1190,6 +1487,246 @@ fn map_payment_methods(
     Ok(mapped)
 }
 
+#[allow(dead_code)]
+fn map_peer_funding_methods(
+    methods: Vec<PaymentMethodDto>,
+) -> Result<Vec<PeerFundingMethod>, VenmoApiError> {
+    let mut mapped = Vec::with_capacity(methods.len());
+    let mut ids = HashSet::with_capacity(methods.len());
+    for method in methods {
+        let PaymentMethodDto {
+            id,
+            name,
+            method_type,
+            last_four,
+            is_default: _,
+            role: _,
+            payment_method_role: _,
+            peer_payment_role,
+            merchant_payment_role: _,
+            fee,
+        } = method;
+        let id =
+            PaymentMethodId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
+                operation: PEER_FUNDING_OPERATION,
+                problem: "the peer funding-method response contained an invalid method ID",
+            })?;
+        if !ids.insert(id.clone()) {
+            return Err(VenmoApiError::Contract {
+                operation: PEER_FUNDING_OPERATION,
+                problem: "the peer funding-method response contained duplicate method IDs",
+            });
+        }
+        let role = peer_payment_role.ok_or(VenmoApiError::Contract {
+            operation: PEER_FUNDING_OPERATION,
+            problem: "the peer funding-method response omitted a peer-payment role",
+        })?;
+        let role = role.as_str().to_ascii_lowercase();
+        let role = match role.as_str() {
+            "default" => Some(PeerFundingRole::Default),
+            "backup" => Some(PeerFundingRole::Backup),
+            "none" => None,
+            _ => {
+                return Err(VenmoApiError::Contract {
+                    operation: PEER_FUNDING_OPERATION,
+                    problem: "the peer funding-method response contained an unknown peer-payment role",
+                });
+            }
+        };
+        let Some(role) = role else {
+            continue;
+        };
+        let funding_kind = method_type
+            .as_ref()
+            .ok_or(VenmoApiError::Contract {
+                operation: PEER_FUNDING_OPERATION,
+                problem: "the peer funding-method response omitted the method type",
+            })?
+            .as_str()
+            .to_ascii_lowercase();
+        match funding_kind.as_str() {
+            "balance" => continue,
+            "bank" | "card" => {}
+            _ => {
+                return Err(VenmoApiError::Contract {
+                    operation: PEER_FUNDING_OPERATION,
+                    problem: "the peer funding-method response did not prove an external bank or card source",
+                });
+            }
+        }
+        let fee = match fee.as_ref().and_then(super::dto::FeeDto::calculated_cents) {
+            None => PeerFundingFee::Unknown,
+            Some(0) => PeerFundingFee::ProvenZero,
+            Some(cents) => PeerFundingFee::NonZero { cents },
+        };
+        let payment_method = PaymentMethod::new(
+            id,
+            name.map(|value| value.into_string()),
+            method_type.map(|value| value.into_string()),
+            last_four.map(|value| value.into_string()),
+            matches!(role, PeerFundingRole::Default),
+        );
+        mapped.push(PeerFundingMethod::new(payment_method, role, fee));
+    }
+    Ok(mapped)
+}
+
+#[allow(dead_code)]
+fn money_json_number(
+    amount: Money,
+    negative: bool,
+    operation: &'static str,
+) -> Result<serde_json::Number, VenmoApiError> {
+    let amount = if negative {
+        format!("-{amount}")
+    } else {
+        amount.to_string()
+    };
+    serde_json::Number::from_str(&amount).map_err(|_| VenmoApiError::RequestEncoding { operation })
+}
+
+#[allow(dead_code)]
+fn parse_created_payment(
+    operation: &'static str,
+    value: Value,
+) -> Result<PaymentRecordDto, VenmoApiError> {
+    let envelope: super::dto::CreatedPaymentEnvelope =
+        serde_json::from_value(value).map_err(|_| VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the successful response did not match the supported payment envelope",
+        })?;
+    let payment = envelope.data.payment;
+    let created_at =
+        payment
+            .date_created
+            .as_deref()
+            .ok_or(VenmoApiError::FinancialOutcomeUnknown {
+                operation,
+                problem: "the successful response omitted the creation timestamp",
+            })?;
+    parse_timestamp_value(created_at).map_err(|()| VenmoApiError::FinancialOutcomeUnknown {
+        operation,
+        problem: "the successful response contained an invalid creation timestamp",
+    })?;
+    Ok(payment)
+}
+
+#[allow(dead_code)]
+fn validate_created_payment(
+    operation: &'static str,
+    payment: PaymentRecordDto,
+    plan: &PayPlan,
+    request: bool,
+) -> Result<CreatedPayment, VenmoApiError> {
+    validate_created_record(
+        operation,
+        payment,
+        plan.account(),
+        plan.recipient(),
+        plan.amount(),
+        plan.note(),
+        if request { "charge" } else { "pay" },
+        request,
+    )
+}
+
+#[allow(dead_code)]
+fn validate_created_request(
+    operation: &'static str,
+    payment: PaymentRecordDto,
+    plan: &CreateRequestPlan,
+) -> Result<CreatedPayment, VenmoApiError> {
+    validate_created_record(
+        operation,
+        payment,
+        plan.account(),
+        plan.recipient(),
+        plan.amount(),
+        plan.note(),
+        "charge",
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
+fn validate_created_record(
+    operation: &'static str,
+    payment: PaymentRecordDto,
+    account: &Account,
+    recipient: &User,
+    expected_amount: Money,
+    expected_note: &crate::domain::Note,
+    expected_action: &str,
+    request: bool,
+) -> Result<CreatedPayment, VenmoApiError> {
+    let PaymentRecordDto {
+        id,
+        status,
+        action,
+        amount,
+        actor,
+        target,
+        note,
+        audience,
+        date_created: _,
+    } = payment;
+    if action != expected_action {
+        return financial_contract_unknown(operation, "the response returned a different action");
+    }
+    let amount = Money::from_str(&amount.into_string()).map_err(|_| {
+        VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the response contained an invalid amount",
+        }
+    })?;
+    if amount != expected_amount {
+        return financial_contract_unknown(operation, "the response returned a different amount");
+    }
+    if actor.id.into_string() != account.user_id().as_str() {
+        return financial_contract_unknown(operation, "the response returned a different actor");
+    }
+    if target.user.id.into_string() != recipient.user_id().as_str() {
+        return financial_contract_unknown(operation, "the response returned a different target");
+    }
+    if note.as_deref() != Some(expected_note.as_str()) {
+        return financial_contract_unknown(operation, "the response returned a different note");
+    }
+    if audience.as_deref() != Some("private") {
+        return financial_contract_unknown(
+            operation,
+            "the response did not prove a private audience",
+        );
+    }
+    let status = match (request, status.as_str()) {
+        (true, "pending") => FinancialStatus::Pending,
+        (false, "settled") => FinancialStatus::Settled,
+        (false, "pending") => FinancialStatus::Pending,
+        (false, "held") => FinancialStatus::Held,
+        _ => {
+            return financial_contract_unknown(
+                operation,
+                "the response contained an unsupported financial status",
+            );
+        }
+    };
+    let id = PaymentId::from_str(&id.into_string()).map_err(|_| {
+        VenmoApiError::FinancialOutcomeUnknown {
+            operation,
+            problem: "the response contained an invalid payment ID",
+        }
+    })?;
+    Ok(CreatedPayment::new(id, status))
+}
+
+#[allow(dead_code)]
+fn financial_contract_unknown<T>(
+    operation: &'static str,
+    problem: &'static str,
+) -> Result<T, VenmoApiError> {
+    Err(VenmoApiError::FinancialOutcomeUnknown { operation, problem })
+}
+
 fn map_users(users: Vec<UserDto>, operation: &'static str) -> Result<Vec<User>, VenmoApiError> {
     users
         .into_iter()
@@ -1198,6 +1735,18 @@ fn map_users(users: Vec<UserDto>, operation: &'static str) -> Result<Vec<User>, 
 }
 
 fn map_user(user: UserDto, operation: &'static str) -> Result<User, VenmoApiError> {
+    let profile_kind = user.identity_type.as_deref().map(|value| {
+        if value.eq_ignore_ascii_case("personal") {
+            UserProfileKind::Personal
+        } else if value.eq_ignore_ascii_case("business") {
+            UserProfileKind::Business
+        } else if value.eq_ignore_ascii_case("charity") {
+            UserProfileKind::Charity
+        } else {
+            UserProfileKind::Unknown
+        }
+    });
+    let is_payable = user.is_payable;
     let user_id =
         UserId::from_str(&user.id.into_string()).map_err(|_| VenmoApiError::Contract {
             operation,
@@ -1219,7 +1768,8 @@ fn map_user(user: UserDto, operation: &'static str) -> Result<User, VenmoApiErro
         user_id,
         username,
         user.display_name.filter(|value| !value.is_empty()),
-    ))
+    )
+    .with_optional_financial_attributes(profile_kind, is_payable))
 }
 
 fn map_activity(
@@ -2531,6 +3081,393 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn peer_funding_uses_only_peer_roles_and_explicit_fee_evidence() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/payment-methods"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [
+                    {
+                        "id": "balance-1",
+                        "type": "balance",
+                        "name": "Venmo balance",
+                        "peer_payment_role": "default",
+                        "fee": {"calculated_fee_amount_in_cents": 0}
+                    },
+                    {
+                        "id": "bank-1",
+                        "type": "bank",
+                        "name": "Bank",
+                        "peer_payment_role": "backup",
+                        "merchant_payment_role": "none",
+                        "fee": {"calculated_fee_amount_in_cents": 0}
+                    },
+                    {
+                        "id": "card-1",
+                        "type": "card",
+                        "name": "Card",
+                        "peer_payment_role": "backup",
+                        "merchant_payment_role": "default",
+                        "fee": {"calculated_fee_amount_in_cents": 3}
+                    },
+                    {
+                        "id": "excluded-1",
+                        "peer_payment_role": "none",
+                        "merchant_payment_role": "default"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+
+        let methods = client.peer_funding_methods(&token, &device_id).await?;
+
+        assert_eq!(methods.len(), 2);
+        assert_eq!(methods[0].role(), PeerFundingRole::Backup);
+        assert_eq!(methods[0].fee(), PeerFundingFee::ProvenZero);
+        assert_eq!(methods[1].role(), PeerFundingRole::Backup);
+        assert_eq!(methods[1].fee(), PeerFundingFee::NonZero { cents: 3 });
+        assert!(
+            !methods
+                .iter()
+                .any(|method| matches!(method.method().id().as_str(), "balance-1" | "excluded-1"))
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn peer_funding_rejects_missing_unknown_or_duplicate_peer_contracts() -> TestResult {
+        for body in [
+            serde_json::json!({"data": [{"id": "one"}]}),
+            serde_json::json!({"data": [{"id": "one", "peer_payment_role": "surprise"}]}),
+            serde_json::json!({"data": [{
+                "id": "one",
+                "type": "mystery",
+                "peer_payment_role": "backup"
+            }]}),
+            serde_json::json!({"data": [
+                {"id": "one", "peer_payment_role": "none"},
+                {"id": "one", "peer_payment_role": "backup"}
+            ]}),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/v1/payment-methods"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = test_client(&server)?;
+            let (token, device_id) = test_session()?;
+
+            let result = client.peer_funding_methods(&token, &device_id).await;
+
+            assert!(matches!(result, Err(VenmoApiError::Contract { .. })));
+        }
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn peer_funding_preserves_an_unrecognized_method_fee_as_unknown() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/payment-methods"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{
+                    "id": "bank-1",
+                    "type": "bank",
+                    "name": "Bank",
+                    "peer_payment_role": "default",
+                    "fee": 0
+                }]
+            })))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+
+        let methods = client.peer_funding_methods(&token, &device_id).await?;
+
+        assert_eq!(methods.len(), 1);
+        assert_eq!(methods[0].fee(), PeerFundingFee::Unknown);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn payment_eligibility_uses_integer_cents_and_returns_a_redacted_token() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/protection/eligibility"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_json(serde_json::json!({
+                "funding_source_id": "",
+                "action": "pay",
+                "country_code": "1",
+                "target_type": "user_id",
+                "note": "Synthetic note",
+                "target_id": "456",
+                "amount": 1
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "eligibility_token": "synthetic-eligibility-token",
+                    "eligible": true,
+                    "fees": [{"calculated_fee_amount_in_cents": 0}],
+                    "fee_disclaimer": "Synthetic zero fee",
+                    "ineligible_reason": null
+                }
+            })))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let recipient = financial_user("456", "bob")?;
+        let amount = Money::from_cents(1)?;
+        let note = crate::domain::Note::from_str("Synthetic note")?;
+
+        let eligibility = client
+            .payment_eligibility(&token, &device_id, &recipient, amount, &note)
+            .await?;
+
+        assert_eq!(eligibility.fee_cents(), 0);
+        assert_eq!(eligibility.token().expose(), "synthetic-eligibility-token");
+        assert!(!format!("{:?}", eligibility.token()).contains("synthetic-eligibility-token"));
+        assert_request_count(&server, 1).await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ineligible_payment_is_a_confirmed_prewrite_rejection() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/protection/eligibility"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "eligibility_token": "synthetic-eligibility-token",
+                    "eligible": false,
+                    "fees": [],
+                    "fee_disclaimer": "Not eligible",
+                    "ineligible_reason": "synthetic_reason"
+                }
+            })))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let recipient = financial_user("456", "bob")?;
+        let note = crate::domain::Note::from_str("Synthetic note")?;
+
+        let result = client
+            .payment_eligibility(&token, &device_id, &recipient, Money::from_cents(1)?, &note)
+            .await;
+
+        assert!(matches!(result, Err(VenmoApiError::EligibilityDenied)));
+        assert_eq!(
+            result.as_ref().err().map(ApiFailure::kind),
+            Some(ApiFailureKind::Rejected)
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn payment_creation_sends_exact_candidate_body_and_validates_success() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/payments"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_json(serde_json::json!({
+                "uuid": "123e4567-e89b-12d3-a456-426614174000",
+                "user_id": "456",
+                "audience": "private",
+                "amount": 0.01,
+                "note": "Synthetic note",
+                "eligibility_token": "synthetic-eligibility-token",
+                "funding_source_id": "bank-1"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(created_payment_body(
+                    "payment-1",
+                    "pay",
+                    "settled",
+                    "123",
+                    "456",
+                )),
+            )
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let plan = pay_plan()?;
+
+        let created = client.create_payment(&token, &device_id, &plan).await?;
+
+        assert_eq!(created.id().as_str(), "payment-1");
+        assert_eq!(created.status(), FinancialStatus::Settled);
+        assert_request_count(&server, 1).await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn request_creation_sends_negative_amount_without_payment_only_fields() -> TestResult {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/payments"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_json(serde_json::json!({
+                "uuid": "123e4567-e89b-12d3-a456-426614174000",
+                "user_id": "456",
+                "audience": "private",
+                "amount": -0.01,
+                "note": "Synthetic note"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(created_payment_body(
+                    "request-1",
+                    "charge",
+                    "pending",
+                    "123",
+                    "456",
+                )),
+            )
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let plan = request_plan()?;
+
+        let created = client.create_request(&token, &device_id, &plan).await?;
+
+        assert_eq!(created.id().as_str(), "request-1");
+        assert_eq!(created.status(), FinancialStatus::Pending);
+        assert_request_count(&server, 1).await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn malformed_mismatched_and_unverified_write_responses_are_ambiguous() -> TestResult {
+        let direct_payment =
+            created_payment_body("payment-1", "pay", "settled", "123", "456")["data"]["payment"]
+                .clone();
+        let mut missing_timestamp =
+            created_payment_body("payment-1", "pay", "settled", "123", "456");
+        missing_timestamp["data"]["payment"]["date_created"] = Value::Null;
+        let mut invalid_timestamp = missing_timestamp.clone();
+        invalid_timestamp["data"]["payment"]["date_created"] = Value::String("invalid".to_owned());
+        let bodies = [
+            (200_u16, "not-json".to_owned()),
+            (200, serde_json::json!({"data": direct_payment}).to_string()),
+            (200, missing_timestamp.to_string()),
+            (200, invalid_timestamp.to_string()),
+            (
+                200,
+                created_payment_body("payment-1", "pay", "settled", "123", "999").to_string(),
+            ),
+            (
+                500,
+                serde_json::json!({"error": {"code": "unknown"}}).to_string(),
+            ),
+            (
+                500,
+                serde_json::json!({"error": {"code": "1396"}}).to_string(),
+            ),
+            (400, serde_json::json!({"error_code": "1396"}).to_string()),
+            (
+                200,
+                serde_json::json!({"error": {"code": "1396"}}).to_string(),
+            ),
+        ];
+        for (status, body) in bodies {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/v1/payments"))
+                .respond_with(ResponseTemplate::new(status).set_body_raw(body, "application/json"))
+                .mount(&server)
+                .await;
+            let client = test_client(&server)?;
+            let (token, device_id) = test_session()?;
+
+            let result = client
+                .create_payment(&token, &device_id, &pay_plan()?)
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+            ));
+            assert_eq!(
+                result.as_ref().err().map(ApiFailure::kind),
+                Some(ApiFailureKind::AmbiguousWrite)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn financial_json_numbers_preserve_every_cent_exactly() -> TestResult {
+        let largest = Money::from_cents(u64::MAX)?;
+
+        let payment = money_json_number(largest, false, PAYMENT_CREATION_OPERATION)?;
+        let request = money_json_number(largest, true, REQUEST_CREATION_OPERATION)?;
+
+        assert_eq!(payment.to_string(), "184467440737095516.15");
+        assert_eq!(request.to_string(), "-184467440737095516.15");
+        assert_eq!(serde_json::to_string(&payment)?, "184467440737095516.15");
+        assert_eq!(serde_json::to_string(&request)?, "-184467440737095516.15");
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn only_dossier_known_payment_errors_are_confirmed_rejections() -> TestResult {
+        for code in ["1396", "13006"] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/v1/payments"))
+                .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                    "error": {"code": code}
+                })))
+                .mount(&server)
+                .await;
+            let client = test_client(&server)?;
+            let (token, device_id) = test_session()?;
+
+            let result = client
+                .create_payment(&token, &device_id, &pay_plan()?)
+                .await;
+
+            assert!(matches!(result, Err(VenmoApiError::Http { .. })));
+            assert_eq!(
+                result.as_ref().err().map(ApiFailure::kind),
+                Some(ApiFailureKind::Rejected)
+            );
+        }
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/payments"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": {"code": "13006"}
+            })))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let request_result = client
+            .create_request(&token, &device_id, &request_plan()?)
+            .await;
+        assert_eq!(
+            request_result.as_ref().err().map(ApiFailure::kind),
+            Some(ApiFailureKind::AmbiguousWrite)
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn user_search_maps_users_and_uses_bounded_offset_queries() -> TestResult {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -2609,8 +3546,8 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn user_lookup_maps_supported_envelopes_and_exact_id() -> TestResult {
         for body in [
-            r#"{"data":{"user":{"id":123,"username":"alice","display_name":"Alice"}}}"#,
-            r#"{"data":{"id":"123","username":"@alice","name":"Alice"}}"#,
+            r#"{"data":{"user":{"id":123,"username":"alice","display_name":"Alice","identity_type":"personal","is_payable":true}}}"#,
+            r#"{"data":{"id":"123","username":"@alice","name":"Alice","identity_type":"personal","is_payable":true}}"#,
         ] {
             let server = MockServer::start().await;
             Mock::given(method("GET"))
@@ -2629,6 +3566,8 @@ mod tests {
             assert_eq!(user.user_id(), &user_id);
             assert_eq!(user.username().map(Username::as_str), Some("alice"));
             assert_eq!(user.display_name(), Some("Alice"));
+            assert_eq!(user.profile_kind(), Some(UserProfileKind::Personal));
+            assert_eq!(user.is_payable(), Some(true));
             assert_request_count(&server, 1).await;
         }
         Ok(())
@@ -3229,6 +4168,88 @@ mod tests {
             "audience": "private",
             "date_created": "2026-07-11T12:00:00"
         })
+    }
+
+    fn created_payment_body(
+        id: &str,
+        action: &str,
+        status: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Value {
+        serde_json::json!({
+            "data": {
+                "payment": {
+                    "id": id,
+                    "status": status,
+                    "action": action,
+                    "amount": "0.01",
+                    "actor": {"id": actor_id, "username": "owner"},
+                    "target": {"user": {"id": target_id, "username": "bob"}},
+                    "note": "Synthetic note",
+                    "audience": "private",
+                    "date_created": "2026-07-12T12:00:00"
+                }
+            }
+        })
+    }
+
+    fn financial_user(id: &str, username: &str) -> Result<User, Box<dyn Error>> {
+        Ok(User::new(
+            UserId::from_str(id)?,
+            Some(Username::from_bare(username)?),
+            Some("Synthetic user".to_owned()),
+        )
+        .with_financial_attributes(UserProfileKind::Personal, true))
+    }
+
+    fn test_account() -> Result<Account, Box<dyn Error>> {
+        Ok(Account::new(
+            UserId::from_str("123")?,
+            Username::from_bare("owner")?,
+            Some("Synthetic owner".to_owned()),
+        ))
+    }
+
+    fn zero_fee_peer_method() -> Result<PeerFundingMethod, Box<dyn Error>> {
+        let method = PaymentMethod::new(
+            PaymentMethodId::from_str("bank-1")?,
+            Some("Synthetic bank".to_owned()),
+            Some("bank".to_owned()),
+            Some("1234".to_owned()),
+            true,
+        );
+        Ok(PeerFundingMethod::new(
+            method,
+            PeerFundingRole::Default,
+            PeerFundingFee::ProvenZero,
+        ))
+    }
+
+    fn pay_plan() -> Result<PayPlan, Box<dyn Error>> {
+        Ok(PayPlan::new(
+            crate::domain::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
+            test_account()?,
+            financial_user("456", "bob")?,
+            Money::from_cents(1)?,
+            crate::domain::Note::from_str("Synthetic note")?,
+            Balance::new(
+                SignedUsdAmount::from_cents(0),
+                SignedUsdAmount::from_cents(0),
+            ),
+            zero_fee_peer_method()?,
+            EligibilityToken::parse_owned("synthetic-eligibility-token".to_owned())?,
+        ))
+    }
+
+    fn request_plan() -> Result<CreateRequestPlan, Box<dyn Error>> {
+        Ok(CreateRequestPlan::new(
+            crate::domain::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
+            test_account()?,
+            financial_user("456", "bob")?,
+            Money::from_cents(1)?,
+            crate::domain::Note::from_str("Synthetic note")?,
+        ))
     }
 
     fn test_session() -> Result<(AccessToken, DeviceId), Box<dyn Error>> {

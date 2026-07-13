@@ -2,6 +2,7 @@ mod account;
 mod activity;
 mod balance;
 mod credential;
+mod financial;
 mod identifiers;
 mod login;
 mod money;
@@ -21,7 +22,14 @@ pub use balance::{Balance, SignedUsdAmount, SignedUsdAmountParseError};
 pub use credential::{
     AccessToken, AccessTokenParseError, CredentialEnvelope, DeviceId, DeviceIdParseError,
 };
-pub use identifiers::{ActivityId, PaymentMethodId, RequestId, UserId, UserIdParseError};
+pub use financial::{
+    ClientRequestId, CreateRequestPlan, CreatedPayment, EligibilityToken,
+    EligibilityTokenParseError, FinancialStatus, PayPlan, PeerFundingFee, PeerFundingMethod,
+    PeerFundingRole,
+};
+pub use identifiers::{
+    ActivityId, PaymentId, PaymentMethodId, RequestId, UserId, UserIdParseError,
+};
 pub use login::{
     AccountPassword, AccountPasswordParseError, LoginIdentifier, LoginIdentifierParseError,
     OtpCode, OtpCodeParseError, OtpSecret, OtpSecretParseError, PasswordLoginStart,
@@ -41,4 +49,4 @@ pub use pending_request::{
 pub use recipient::{
     RecipientInput, RecipientParseError, ResolvedRecipient, Username, UsernameParseError,
 };
-pub use user::{User, UserSearchQuery, UserSearchQueryParseError};
+pub use user::{User, UserProfileKind, UserSearchQuery, UserSearchQueryParseError};

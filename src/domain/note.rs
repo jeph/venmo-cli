@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Note(String);
 
 impl Note {
@@ -23,6 +23,12 @@ impl Note {
 impl fmt::Display for Note {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(formatter)
+    }
+}
+
+impl fmt::Debug for Note {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Note([REDACTED])")
     }
 }
 

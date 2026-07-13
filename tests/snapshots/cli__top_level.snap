@@ -9,7 +9,7 @@ Usage: venmo [OPTIONS] <COMMAND>
 Commands:
   auth             Validate and manage the stored Venmo bearer token
   pay              Pay one person
-  request          Request money from one person or accept an incoming request
+  request          Create a request immediately; acceptance syntax is reserved but unavailable
   friends          Inspect friends of the active account
   users            Find Venmo users
   payment-methods  Inspect available payment methods
@@ -25,7 +25,9 @@ Options:
           Write redacted diagnostics to stderr
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
+
+Financial exit code 3 means the write outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app.

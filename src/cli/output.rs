@@ -11,11 +11,16 @@ use crate::application::auth::{
 use crate::application::balance::BalanceResult;
 use crate::application::doctor::DoctorReport;
 use crate::application::friends::FriendsResult;
+use crate::application::pay::{PayResult, PreparedPay};
 use crate::application::payment_methods::PaymentMethodsResult;
 use crate::application::ports::CredentialFormat;
+use crate::application::request_create::RequestCreateResult;
 use crate::application::requests::RequestsResult;
 use crate::application::users::UserSearchResult;
-use crate::domain::{ActivityBeforeId, ActivityCounterparty, Offset, RequestsBefore, User};
+use crate::domain::{
+    ActivityBeforeId, ActivityCounterparty, FinancialStatus, Offset, PeerFundingMethod,
+    RequestsBefore, User,
+};
 use crate::error::AppError;
 
 pub fn write_error<W: Write>(writer: &mut W, error: &AppError) -> io::Result<()> {
@@ -207,6 +212,94 @@ pub fn write_balance<W: Write>(writer: &mut W, result: &BalanceResult) -> io::Re
     writeln!(writer, "On hold: {}", result.balance().on_hold())
 }
 
+pub fn write_pay_preflight<W: Write>(writer: &mut W, prepared: &PreparedPay) -> io::Result<()> {
+    let plan = prepared.plan();
+    writeln!(writer, "Payment preflight:")?;
+    writeln!(
+        writer,
+        "  From account: {} (ID {})",
+        sanitize_terminal_text(&plan.account().username().to_string()),
+        plan.account().user_id()
+    )?;
+    writeln!(
+        writer,
+        "  Recipient: {} (ID {})",
+        sanitize_terminal_text(&financial_user_label(plan.recipient())),
+        plan.recipient().user_id()
+    )?;
+    writeln!(writer, "  Amount: ${}", plan.amount())?;
+    writeln!(
+        writer,
+        "  Note: {}",
+        sanitize_terminal_text(plan.note().as_str())
+    )?;
+    writeln!(writer, "  Audience: private")?;
+    writeln!(writer, "  Fee: $0.00")?;
+    writeln!(writer, "  Total: ${}", plan.amount())?;
+    writeln!(
+        writer,
+        "  Available Venmo balance: {}",
+        plan.balance().available()
+    )?;
+    write_backup_method(writer, plan.backup_method())?;
+    writeln!(
+        writer,
+        "  Warning: Venmo may use available balance before the submitted backup method."
+    )
+}
+
+pub fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> io::Result<()> {
+    writeln!(
+        writer,
+        "Payment ID: {}",
+        sanitize_terminal_text(result.created().id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Status: {}",
+        financial_status(result.created().status())
+    )?;
+    writeln!(
+        writer,
+        "Recipient: {}",
+        sanitize_terminal_text(&financial_user_label(result.plan().recipient()))
+    )?;
+    writeln!(writer, "Amount: ${}", result.plan().amount())?;
+    writeln!(writer, "Audience: private")?;
+    writeln!(
+        writer,
+        "Submitted backup method ID: {}",
+        sanitize_terminal_text(result.plan().backup_method().method().id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Venmo may have used available balance before the submitted backup method."
+    )
+}
+
+pub fn write_request_create_result<W: Write>(
+    writer: &mut W,
+    result: &RequestCreateResult,
+) -> io::Result<()> {
+    writeln!(
+        writer,
+        "Request ID: {}",
+        sanitize_terminal_text(result.created().id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Status: {}",
+        financial_status(result.created().status())
+    )?;
+    writeln!(
+        writer,
+        "Requested from: {}",
+        sanitize_terminal_text(&financial_user_label(result.plan().recipient()))
+    )?;
+    writeln!(writer, "Amount: ${}", result.plan().amount())?;
+    writeln!(writer, "Audience: private")
+}
+
 pub fn write_activity_list<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
@@ -373,6 +466,37 @@ fn user_label(user: &User) -> String {
         .unwrap_or_else(|| user.user_id().to_string())
 }
 
+fn financial_user_label(user: &User) -> String {
+    let identity = user_label(user);
+    match user.display_name() {
+        Some(display_name) => format!("{identity} ({display_name})"),
+        None => identity,
+    }
+}
+
+fn write_backup_method(writer: &mut impl Write, method: &PeerFundingMethod) -> io::Result<()> {
+    let method = method.method();
+    let name = sanitize_terminal_text(method.name().unwrap_or("Payment method"));
+    let method_type = sanitize_terminal_text(method.method_type().unwrap_or("unknown type"));
+    let last_four = method
+        .last_four()
+        .map(|value| format!(" ending {}", sanitize_terminal_text(value)))
+        .unwrap_or_default();
+    writeln!(
+        writer,
+        "  Submitted backup method: {name} ({method_type}{last_four}, ID {})",
+        sanitize_terminal_text(method.id().as_str())
+    )
+}
+
+const fn financial_status(status: FinancialStatus) -> &'static str {
+    match status {
+        FinancialStatus::Settled => "settled",
+        FinancialStatus::Pending => "pending",
+        FinancialStatus::Held => "held",
+    }
+}
+
 fn activity_counterparty_label(counterparty: &ActivityCounterparty) -> String {
     match counterparty {
         ActivityCounterparty::User(user) => user_label(user),
@@ -453,10 +577,12 @@ mod tests {
     use crate::application::friends::FriendsResult;
     use crate::application::requests::RequestsResult;
     use crate::domain::{
-        Account, Activity, ActivityAction, ActivityCounterparty, ActivityDirection, ActivityId,
-        ActivityStatus, Balance, Money, PaymentMethod, PaymentMethodId, PendingRequest,
-        RequestDirection, RequestDirectionFilter, RequestId, RequestStatus, SignedUsdAmount, User,
-        UserId, Username,
+        AccessToken, Account, Activity, ActivityAction, ActivityCounterparty, ActivityDirection,
+        ActivityId, ActivityStatus, Balance, ClientRequestId, CreateRequestPlan, CreatedPayment,
+        CredentialEnvelope, DeviceId, EligibilityToken, Money, Note, PayPlan, PaymentId,
+        PaymentMethod, PaymentMethodId, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+        PendingRequest, RequestDirection, RequestDirectionFilter, RequestId, RequestStatus,
+        SignedUsdAmount, User, UserId, Username,
     };
 
     type TestResult = Result<(), Box<dyn Error>>;
@@ -621,6 +747,60 @@ mod tests {
     }
 
     #[test]
+    fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used() -> TestResult
+    {
+        let prepared = PreparedPay::new(synthetic_credential()?, synthetic_pay_plan()?);
+        let mut preflight = Vec::new();
+
+        write_pay_preflight(&mut preflight, &prepared)?;
+
+        let preflight = String::from_utf8(preflight)?;
+        assert!(preflight.contains("Payment preflight"));
+        assert!(preflight.contains("Amount: $0.01"));
+        assert!(preflight.contains("Fee: $0.00"));
+        assert!(preflight.contains("Total: $0.01"));
+        assert!(preflight.contains("Available Venmo balance: $0.00"));
+        assert!(preflight.contains("Submitted backup method"));
+        assert!(preflight.contains("Venmo may use available balance"));
+        assert!(preflight.contains("Synthetic\\nrecipient"));
+        assert!(preflight.contains("Synthetic\\nnote"));
+        assert!(!preflight.contains("Synthetic\nrecipient"));
+        for hidden in [
+            "synthetic-token",
+            "synthetic-device",
+            "synthetic-eligibility",
+            "123e4567-e89b-12d3-a456-426614174000",
+        ] {
+            assert!(!preflight.contains(hidden));
+        }
+
+        let pay = PayResult::new(
+            synthetic_pay_plan()?,
+            CreatedPayment::new(PaymentId::from_str("payment-1")?, FinancialStatus::Settled),
+        );
+        let mut pay_output = Vec::new();
+        write_pay_result(&mut pay_output, &pay)?;
+        let pay_output = String::from_utf8(pay_output)?;
+        assert!(pay_output.contains("Payment ID: payment-1"));
+        assert!(pay_output.contains("Status: settled"));
+        assert!(pay_output.contains("Submitted backup method ID: bank-1"));
+        assert!(pay_output.contains("may have used available balance"));
+        assert!(!pay_output.contains("Actual funding"));
+
+        let request = RequestCreateResult::new(
+            synthetic_request_plan()?,
+            CreatedPayment::new(PaymentId::from_str("request-1")?, FinancialStatus::Pending),
+        );
+        let mut request_output = Vec::new();
+        write_request_create_result(&mut request_output, &request)?;
+        let request_output = String::from_utf8(request_output)?;
+        assert!(request_output.contains("Request ID: request-1"));
+        assert!(request_output.contains("Status: pending"));
+        assert!(request_output.contains("Audience: private"));
+        Ok(())
+    }
+
+    #[test]
     fn activity_list_and_show_render_authoritative_status_as_data() -> TestResult {
         let activity = synthetic_activity("failed", "note\n\u{1b}[31mline")?;
         let transfer = Activity::new(
@@ -762,6 +942,65 @@ mod tests {
             UserId::from_str(id)?,
             Some(Username::from_bare(username)?),
             Some("Synthetic User".to_owned()),
+        ))
+    }
+
+    fn synthetic_credential() -> Result<CredentialEnvelope, Box<dyn Error>> {
+        Ok(CredentialEnvelope::new(
+            AccessToken::from_str("synthetic-token")?,
+            DeviceId::from_str("synthetic-device")?,
+            UserId::from_str("123")?,
+            Username::from_bare("owner")?,
+            Some("Synthetic owner".to_owned()),
+            time::OffsetDateTime::UNIX_EPOCH,
+        ))
+    }
+
+    fn synthetic_pay_plan() -> Result<PayPlan, Box<dyn Error>> {
+        Ok(PayPlan::new(
+            ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
+            Account::new(
+                UserId::from_str("123")?,
+                Username::from_bare("owner")?,
+                Some("Synthetic owner".to_owned()),
+            ),
+            User::new(
+                UserId::from_str("456")?,
+                Some(Username::from_bare("bob")?),
+                Some("Synthetic\nrecipient".to_owned()),
+            ),
+            Money::from_cents(1)?,
+            Note::from_str("Synthetic\nnote")?,
+            Balance::new(
+                SignedUsdAmount::from_cents(0),
+                SignedUsdAmount::from_cents(0),
+            ),
+            PeerFundingMethod::new(
+                PaymentMethod::new(
+                    PaymentMethodId::from_str("bank-1")?,
+                    Some("Synthetic bank".to_owned()),
+                    Some("bank".to_owned()),
+                    Some("1234".to_owned()),
+                    true,
+                ),
+                PeerFundingRole::Default,
+                PeerFundingFee::ProvenZero,
+            ),
+            EligibilityToken::parse_owned("synthetic-eligibility".to_owned())?,
+        ))
+    }
+
+    fn synthetic_request_plan() -> Result<CreateRequestPlan, Box<dyn Error>> {
+        Ok(CreateRequestPlan::new(
+            ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
+            Account::new(
+                UserId::from_str("123")?,
+                Username::from_bare("owner")?,
+                Some("Synthetic owner".to_owned()),
+            ),
+            synthetic_user("456", "bob")?,
+            Money::from_cents(1)?,
+            Note::from_str("Synthetic note")?,
         ))
     }
 

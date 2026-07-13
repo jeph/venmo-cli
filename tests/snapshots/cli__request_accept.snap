@@ -2,7 +2,7 @@
 source: tests/cli.rs
 expression: help
 ---
-Pay and settle one existing incoming request
+Reserved request-acceptance syntax; this operation is unavailable
 
 Usage: accept [OPTIONS] <REQUEST_ID>
 
@@ -12,7 +12,7 @@ Arguments:
 
 Options:
       --from <METHOD_ID>
-          Payment-method ID shown by `payment-methods list`
+          Preferred external/backup method ID; Venmo balance may be used first
 
       --yes
           Skip only the final default-No confirmation

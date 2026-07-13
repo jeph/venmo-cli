@@ -27,8 +27,33 @@ fn main() -> ExitCode {
 
 fn render_error(stderr: &mut impl io::Write, error: &AppError) -> ExitCode {
     let exit_code = error.exit_code();
-    match output::write_error(stderr, error) {
-        Ok(()) => ExitCode::from(exit_code),
-        Err(_) => ExitCode::FAILURE,
+    let _ = output::write_error(stderr, error);
+    ExitCode::from(exit_code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FailingWriter;
+
+    impl io::Write for FailingWriter {
+        fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("synthetic output failure"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::other("synthetic output failure"))
+        }
+    }
+
+    #[test]
+    fn error_exit_code_survives_stderr_failure() {
+        let exit = render_error(
+            &mut FailingWriter,
+            &AppError::FinancialWriteInterruptedUnknown,
+        );
+
+        assert_eq!(exit, ExitCode::from(3));
     }
 }

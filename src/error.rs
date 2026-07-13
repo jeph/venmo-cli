@@ -6,9 +6,12 @@ use crate::application::activity::ActivityError;
 use crate::application::auth::{AuthStatusError, LoginError};
 use crate::application::balance::BalanceError;
 use crate::application::friends::FriendsError;
+use crate::application::funding::FundingSelectionError;
+use crate::application::pay::PayError;
 use crate::application::payment_methods::PaymentMethodsError;
 use crate::application::ports::{ApiFailureKind, PromptError};
 use crate::application::read::ReadFailureKind;
+use crate::application::request_create::RequestCreateError;
 use crate::application::requests::RequestsError;
 use crate::application::users::{UserSearchError, UserSearchFailureKind};
 use crate::infrastructure::venmo_api::TransportBuildError;
@@ -66,6 +69,17 @@ pub enum AppError {
         source: io::Error,
     },
 
+    #[error("failed to install financial-write interrupt protection")]
+    SignalInitialization {
+        #[source]
+        source: io::Error,
+    },
+
+    #[error(
+        "the financial operation was interrupted after transmission may have begun; do not retry until its status is verified independently"
+    )]
+    FinancialWriteInterruptedUnknown,
+
     #[error("failed to initialize the Venmo API client")]
     ApiInitialization {
         #[source]
@@ -96,6 +110,18 @@ pub enum AppError {
     PaymentMethods {
         #[from]
         source: PaymentMethodsError,
+    },
+
+    #[error(transparent)]
+    Pay {
+        #[from]
+        source: PayError,
+    },
+
+    #[error(transparent)]
+    RequestCreate {
+        #[from]
+        source: RequestCreateError,
     },
 
     #[error(transparent)]
@@ -136,6 +162,14 @@ pub enum AppError {
         #[source]
         source: io::Error,
     },
+
+    #[error(
+        "the financial operation succeeded, but its result could not be written; do not retry it and verify the result through activity or requests and the official Venmo app"
+    )]
+    FinancialResultOutput {
+        #[source]
+        source: io::Error,
+    },
 }
 
 impl AppError {
@@ -172,6 +206,32 @@ impl AppError {
                 Some(kind) => api_failure_category(kind),
                 None => ErrorCategory::Credential,
             },
+            Self::Pay { source } => match source {
+                PayError::MissingCredential | PayError::CredentialLoad { .. } => {
+                    ErrorCategory::Credential
+                }
+                PayError::FundingSelection(FundingSelectionError::Prompt {
+                    source: PromptError::Cancelled,
+                })
+                | PayError::ConfirmationDeclined
+                | PayError::Confirmation {
+                    source: PromptError::Cancelled,
+                } => ErrorCategory::Cancelled,
+                PayError::ConfirmationRequired => ErrorCategory::Usage,
+                PayError::Confirmation { .. } => ErrorCategory::Internal,
+                _ => match source.api_failure_kind() {
+                    Some(kind) => api_failure_category(kind),
+                    None => ErrorCategory::Api,
+                },
+            },
+            Self::RequestCreate { source } => match source {
+                RequestCreateError::MissingCredential
+                | RequestCreateError::CredentialLoad { .. } => ErrorCategory::Credential,
+                _ => match source.api_failure_kind() {
+                    Some(kind) => api_failure_category(kind),
+                    None => ErrorCategory::Api,
+                },
+            },
             Self::UserSearch { source } => match source.failure_kind() {
                 UserSearchFailureKind::Credential => ErrorCategory::Credential,
                 UserSearchFailureKind::Api(kind) => api_failure_category(kind),
@@ -183,10 +243,13 @@ impl AppError {
             Self::Activity { source } => read_failure_category(source.failure_kind()),
             Self::Requests { source } => read_failure_category(source.failure_kind()),
             Self::DoctorIncomplete => ErrorCategory::Api,
+            Self::FinancialWriteInterruptedUnknown => ErrorCategory::AmbiguousWrite,
+            Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
             Self::CommandUnavailable { .. }
             | Self::CompletionOutput { .. }
             | Self::LoggingInitialization { .. }
             | Self::RuntimeInitialization { .. }
+            | Self::SignalInitialization { .. }
             | Self::ApiInitialization { .. }
             | Self::CommandOutput { .. } => ErrorCategory::Internal,
         }
@@ -230,5 +293,27 @@ mod tests {
 
         assert_eq!(continuation.category(), ErrorCategory::ApiContract);
         assert_eq!(continuation.exit_code(), 1);
+    }
+
+    #[test]
+    fn payment_confirmation_failures_have_stable_categories() {
+        let required = AppError::from(PayError::ConfirmationRequired);
+        let declined = AppError::from(PayError::ConfirmationDeclined);
+
+        assert_eq!(required.category(), ErrorCategory::Usage);
+        assert_eq!(required.exit_code(), 2);
+        assert_eq!(declined.category(), ErrorCategory::Cancelled);
+        assert_eq!(declined.exit_code(), 1);
+
+        let interrupted = AppError::FinancialWriteInterruptedUnknown;
+        assert_eq!(interrupted.category(), ErrorCategory::AmbiguousWrite);
+        assert_eq!(interrupted.exit_code(), 3);
+
+        let output = AppError::FinancialResultOutput {
+            source: io::Error::other("synthetic output failure"),
+        };
+        assert_eq!(output.category(), ErrorCategory::AmbiguousWrite);
+        assert!(output.to_string().contains("succeeded"));
+        assert!(output.to_string().contains("do not retry"));
     }
 }

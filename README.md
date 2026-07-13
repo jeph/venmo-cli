@@ -40,7 +40,11 @@ The command interface is intentionally not backward-compatible:
 | `venmo search <QUERY>` | `venmo users search <QUERY>` |
 | `venmo payment-methods list` | `venmo payment-methods list` |
 
-The old `charge`, split-payment, and multi-recipient interfaces were removed. Financial commands in the Rust grammar remain unavailable until their current private-API contracts and safety checks are independently verified; the CLI does not fall back to the former implementation.
+The old `charge`, split-payment, and multi-recipient interfaces were removed. `pay` and direct request creation use the mobile-private API through independently verified Rust contracts; each passed exact synthetic HTTP tests and a separately approved, reconciled one-cent live validation on 2026-07-12. Both enforce a personal/payable recipient, private audience, one-write/no-retry behavior, strict success validation, and ambiguous-outcome classification. `pay` additionally requires transaction-specific proof of an exactly `$0.00` fee. Request creation has no funding or fee fields and never sends money from the authenticated account. Request acceptance remains blocked because no sufficiently current canonical acceptance contract has been established.
+
+For `pay`, `--from` identifies the preferred external or backup funding method submitted to Venmo. It does not guarantee that method is debited: Venmo may use available wallet balance first. Pay prompts only when both stdin and stderr are terminals; otherwise it requires `--yes`. The enabled scope is ordinary personal peer-to-peer operations whose transaction-specific eligibility response proves the fee is exactly `$0.00`. An explicit funding method whose own fee is unknown remains blocked.
+
+Direct request creation writes immediately after its account and recipient validation; it has no confirmation prompt and does not accept `--yes`. If any financial command exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
 
 ### Endpoint-native read pagination
 

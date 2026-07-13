@@ -70,6 +70,10 @@ pub(super) struct UserDto {
     pub username: Option<String>,
     #[serde(default, alias = "displayName", alias = "name")]
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub identity_type: Option<String>,
+    #[serde(default)]
+    pub is_payable: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -190,6 +194,18 @@ pub(super) struct PaymentEnvelope {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
+pub(super) struct CreatedPaymentEnvelope {
+    pub data: CreatedPaymentData,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+pub(super) struct CreatedPaymentData {
+    pub payment: PaymentRecordDto,
+}
+
+#[derive(Deserialize)]
 #[serde(untagged)]
 pub(super) enum PaymentData {
     Wrapped { payment: PaymentRecordDto },
@@ -282,6 +298,9 @@ pub(super) struct PaymentMethodDto {
     pub peer_payment_role: Option<StringOrInteger>,
     #[serde(default)]
     pub merchant_payment_role: Option<StringOrInteger>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub fee: Option<FeeDto>,
 }
 
 impl PaymentMethodDto {
@@ -302,6 +321,78 @@ impl PaymentMethodDto {
         ]
         .into_iter()
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub(super) enum FeeDto {
+    Calculated { calculated_fee_amount_in_cents: u64 },
+    Unknown(serde_json::Value),
+}
+
+impl FeeDto {
+    pub(super) const fn calculated_cents(&self) -> Option<u64> {
+        match self {
+            Self::Calculated {
+                calculated_fee_amount_in_cents,
+            } => Some(*calculated_fee_amount_in_cents),
+            Self::Unknown(value) => {
+                let _ = value;
+                None
+            }
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[allow(dead_code)]
+pub(super) struct PaymentEligibilityRequest<'a> {
+    pub funding_source_id: &'static str,
+    pub action: &'static str,
+    pub country_code: &'static str,
+    pub target_type: &'static str,
+    pub note: &'a str,
+    pub target_id: &'a str,
+    pub amount: u64,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+pub(super) struct PaymentEligibilityEnvelope {
+    pub data: PaymentEligibilityDto,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+pub(super) struct PaymentEligibilityDto {
+    pub eligibility_token: String,
+    pub eligible: bool,
+    pub fees: Vec<FeeDto>,
+    pub fee_disclaimer: String,
+    #[serde(default)]
+    pub ineligible_reason: Option<String>,
+}
+
+#[derive(Serialize)]
+#[allow(dead_code)]
+pub(super) struct CreatePaymentRequest<'a> {
+    pub uuid: &'a str,
+    pub user_id: &'a str,
+    pub audience: &'static str,
+    pub amount: &'a serde_json::Number,
+    pub note: &'a str,
+    pub eligibility_token: &'a str,
+    pub funding_source_id: &'a str,
+}
+
+#[derive(Serialize)]
+#[allow(dead_code)]
+pub(super) struct CreateRequestRequest<'a> {
+    pub uuid: &'a str,
+    pub user_id: &'a str,
+    pub audience: &'static str,
+    pub amount: &'a serde_json::Number,
+    pub note: &'a str,
 }
 
 #[derive(Debug, Deserialize)]

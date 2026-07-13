@@ -2,7 +2,7 @@
 source: tests/cli.rs
 expression: help
 ---
-Request money from one person or accept an incoming request
+Create a request immediately; acceptance syntax is reserved but unavailable
 
 Usage: request --note <NOTE> <RECIPIENT> <AMOUNT>
        request accept [OPTIONS] <REQUEST_ID>
@@ -20,12 +20,12 @@ Options:
           Non-empty request note
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
 request accept:
-Pay and settle one existing incoming request
+Reserved request-acceptance syntax; this operation is unavailable
       --from <METHOD_ID>
-          Payment-method ID shown by `payment-methods list`
+          Preferred external/backup method ID; Venmo balance may be used first
 
       --yes
           Skip only the final default-No confirmation
@@ -40,3 +40,5 @@ request help:
 Print this message or the help of the given subcommand(s)
   [COMMAND]...
           Print help for the subcommand(s)
+
+Direct request creation writes immediately after validation. It does not prompt and has no `--yes` option. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app.
