@@ -1,0 +1,9 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: decline_output
+---
+Request ID: request-1
+Server status: cancelled
+Declined requester: @requester (Synthetic\nrequester)
+Amount requested: $0.01
+Money sent: no

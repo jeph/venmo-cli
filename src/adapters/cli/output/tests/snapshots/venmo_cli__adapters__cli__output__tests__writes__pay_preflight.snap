@@ -1,0 +1,15 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: preflight
+---
+Payment preflight:
+  From account: @owner (ID 123)
+  Recipient: @bob (Synthetic\nrecipient) (ID 456)
+  Amount: $0.01
+  Note: Synthetic\nnote
+  Audience: private
+  Fee: $0.00
+  Total: $0.01
+  Available Venmo balance: $0.00
+  Submitted backup method: Synthetic bank (bank ending 1234, ID bank-1)
+  Warning: Venmo may use available balance before the submitted backup method.

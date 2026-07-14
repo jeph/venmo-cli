@@ -1,0 +1,655 @@
+use super::*;
+
+pub(super) type TestResult = Result<(), Box<dyn Error>>;
+pub(super) type Transcript = Rc<RefCell<Vec<Call>>>;
+
+pub(super) const ACCESS_TOKEN: &str = "synthetic-secret-access-token";
+pub(super) const DEVICE_ID: &str = "synthetic-secret-device-id";
+pub(super) const ELIGIBILITY_TOKEN: &str = "synthetic-secret-eligibility-token";
+pub(super) const REQUEST_UUID: &str = "123e4567-e89b-12d3-a456-426614174000";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum RedactedSecret {
+    Redacted,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct PayPlanCall {
+    pub(super) request_id: ClientRequestId,
+    pub(super) account: Account,
+    pub(super) recipient: User,
+    pub(super) amount: Money,
+    pub(super) note: Note,
+    pub(super) balance: Balance,
+    pub(super) backup_method: PeerFundingMethod,
+    pub(super) eligibility_token: RedactedSecret,
+}
+
+impl From<&PayPlan> for PayPlanCall {
+    fn from(plan: &PayPlan) -> Self {
+        Self {
+            request_id: plan.request_id(),
+            account: plan.account().clone(),
+            recipient: plan.recipient().clone(),
+            amount: plan.amount(),
+            note: plan.note().clone(),
+            balance: plan.balance().clone(),
+            backup_method: plan.backup_method().clone(),
+            eligibility_token: RedactedSecret::Redacted,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum Call {
+    ReadCredential,
+    CurrentAccount {
+        session: RedactedSecret,
+    },
+    UserLookup {
+        session: RedactedSecret,
+        user_id: UserId,
+    },
+    UserSearch {
+        session: RedactedSecret,
+        query: UserSearchQuery,
+        page: UserSearchPageRequest,
+    },
+    Balance {
+        session: RedactedSecret,
+    },
+    FundingMethods {
+        session: RedactedSecret,
+    },
+    SelectFundingChoice {
+        prompt: String,
+        choices: Vec<PaymentMethod>,
+    },
+    Eligibility {
+        session: RedactedSecret,
+        recipient: User,
+        amount: Money,
+        note: Note,
+    },
+    GenerateClientRequestId {
+        request_id: ClientRequestId,
+    },
+    PromptAvailability,
+    ConfirmDefaultNo {
+        prompt: String,
+    },
+    CreatePayment {
+        session: RedactedSecret,
+        plan: Box<PayPlanCall>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(super) struct Observation<Outcome> {
+    pub(super) outcome: Outcome,
+    pub(super) transcript: Vec<Call>,
+}
+
+impl<Outcome> Observation<Outcome> {
+    pub(super) const fn new(outcome: Outcome, transcript: Vec<Call>) -> Self {
+        Self {
+            outcome,
+            transcript,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ReaderScript {
+    Present,
+    Missing,
+    Failure,
+}
+
+pub(super) struct FakeReader {
+    script: ReaderScript,
+    transcript: Transcript,
+}
+
+impl FakeReader {
+    pub(super) fn new(script: ReaderScript, transcript: Transcript) -> Self {
+        Self { script, transcript }
+    }
+}
+
+#[derive(Clone, Copy, Debug, thiserror::Error)]
+#[error("synthetic credential failure")]
+pub(super) struct FakeCredentialError;
+
+impl CredentialStoreFailure for FakeCredentialError {
+    fn kind(&self) -> CredentialFailureKind {
+        CredentialFailureKind::Unavailable
+    }
+}
+
+impl CredentialCapability for FakeReader {
+    type Error = FakeCredentialError;
+}
+
+impl CredentialReader for FakeReader {
+    fn read_credential(&self) -> Result<Option<LoadedCredential>, Self::Error> {
+        self.transcript.borrow_mut().push(Call::ReadCredential);
+        match self.script {
+            ReaderScript::Present => loaded_credential().map(Some),
+            ReaderScript::Missing => Ok(None),
+            ReaderScript::Failure => Err(FakeCredentialError),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, thiserror::Error)]
+#[error("synthetic API failure")]
+pub(super) struct FakeApiError(pub(super) ApiFailureKind);
+
+impl ApiFailure for FakeApiError {
+    fn kind(&self) -> ApiFailureKind {
+        self.0
+    }
+}
+
+pub(super) struct PayScript {
+    account: Result<Account, FakeApiError>,
+    user: Result<User, FakeApiError>,
+    balance: Result<Balance, FakeApiError>,
+    methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    eligibility: Result<BlankSourceEligibility, FakeApiError>,
+    creation: Result<CreatedPayment, FakeApiError>,
+}
+
+impl PayScript {
+    pub(super) fn successful() -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
+            account: Ok(test_account()?),
+            user: Ok(financial_user()?),
+            balance: Ok(test_balance()),
+            methods: Ok(vec![peer_method(
+                "bank-1",
+                PeerFundingRole::Default,
+                PeerFundingFee::ProvenZero,
+            )?]),
+            eligibility: Ok(blank_eligibility(0)?),
+            creation: Ok(created_payment()?),
+        })
+    }
+
+    pub(super) fn with_account(self, account: Result<Account, FakeApiError>) -> Self {
+        Self { account, ..self }
+    }
+
+    pub(super) fn with_user(self, user: Result<User, FakeApiError>) -> Self {
+        Self { user, ..self }
+    }
+
+    pub(super) fn with_balance(self, balance: Result<Balance, FakeApiError>) -> Self {
+        Self { balance, ..self }
+    }
+
+    pub(super) fn with_methods(
+        self,
+        methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    ) -> Self {
+        Self { methods, ..self }
+    }
+
+    pub(super) fn with_eligibility(
+        self,
+        eligibility: Result<BlankSourceEligibility, FakeApiError>,
+    ) -> Self {
+        Self {
+            eligibility,
+            ..self
+        }
+    }
+
+    pub(super) fn with_creation(self, creation: Result<CreatedPayment, FakeApiError>) -> Self {
+        Self { creation, ..self }
+    }
+}
+
+pub(super) struct FakeApi {
+    account: Result<Account, FakeApiError>,
+    user: Result<User, FakeApiError>,
+    balance: Result<Balance, FakeApiError>,
+    methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    eligibility: RefCell<Option<Result<BlankSourceEligibility, FakeApiError>>>,
+    creation: Result<CreatedPayment, FakeApiError>,
+    transcript: Transcript,
+}
+
+impl FakeApi {
+    pub(super) fn new(script: PayScript, transcript: Transcript) -> Self {
+        Self {
+            account: script.account,
+            user: script.user,
+            balance: script.balance,
+            methods: script.methods,
+            eligibility: RefCell::new(Some(script.eligibility)),
+            creation: script.creation,
+            transcript,
+        }
+    }
+}
+
+impl CurrentAccountApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn current_account<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+    ) -> impl Future<Output = Result<Account, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::CurrentAccount {
+            session: RedactedSecret::Redacted,
+        });
+        ready(self.account.clone())
+    }
+}
+
+impl UserLookupApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn user_by_id<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        user_id: &'a UserId,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::UserLookup {
+            session: RedactedSecret::Redacted,
+            user_id: user_id.clone(),
+        });
+        ready(self.user.clone())
+    }
+}
+
+impl UserSearchApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn search_users<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        query: &'a UserSearchQuery,
+        page: UserSearchPageRequest,
+    ) -> impl Future<Output = Result<UserSearchPage, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::UserSearch {
+            session: RedactedSecret::Redacted,
+            query: query.clone(),
+            page,
+        });
+        ready(Err(FakeApiError(ApiFailureKind::Internal)))
+    }
+}
+
+impl BalanceApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn balance<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+    ) -> impl Future<Output = Result<Balance, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::Balance {
+            session: RedactedSecret::Redacted,
+        });
+        ready(self.balance.clone())
+    }
+}
+
+impl PeerFundingApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn peer_funding_methods<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::FundingMethods {
+            session: RedactedSecret::Redacted,
+        });
+        ready(self.methods.clone())
+    }
+}
+
+impl BlankSourceEligibilityApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn blank_source_eligibility<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        recipient: &'a User,
+        amount: Money,
+        note: &'a Note,
+    ) -> impl Future<Output = Result<BlankSourceEligibility, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::Eligibility {
+            session: RedactedSecret::Redacted,
+            recipient: recipient.clone(),
+            amount,
+            note: note.clone(),
+        });
+        let result = match self.eligibility.borrow_mut().take() {
+            Some(result) => result,
+            None => Err(FakeApiError(ApiFailureKind::Internal)),
+        };
+        ready(result)
+    }
+}
+
+impl PaymentCreationApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn create_payment<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        plan: &'a PayPlan,
+    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::CreatePayment {
+            session: RedactedSecret::Redacted,
+            plan: Box::new(PayPlanCall::from(plan)),
+        });
+        ready(self.creation.clone())
+    }
+}
+
+pub(super) struct FixedGenerator {
+    transcript: Transcript,
+}
+
+impl FixedGenerator {
+    pub(super) fn new(transcript: Transcript) -> Self {
+        Self { transcript }
+    }
+}
+
+impl ClientRequestIdGenerator for FixedGenerator {
+    fn generate(&self) -> ClientRequestId {
+        let request_id = fixed_request_id();
+        self.transcript
+            .borrow_mut()
+            .push(Call::GenerateClientRequestId { request_id });
+        request_id
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ConfirmationScript {
+    Answer(bool),
+    Cancelled,
+    Interaction,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum SelectionScript {
+    Index(usize),
+    Cancelled,
+    Interaction,
+}
+
+pub(super) struct FakePrompt {
+    interactive: bool,
+    confirmation: ConfirmationScript,
+    selection: SelectionScript,
+    transcript: Transcript,
+}
+
+impl FakePrompt {
+    pub(super) fn new(
+        interactive: bool,
+        confirmation: ConfirmationScript,
+        selection: SelectionScript,
+        transcript: Transcript,
+    ) -> Self {
+        Self {
+            interactive,
+            confirmation,
+            selection,
+            transcript,
+        }
+    }
+}
+
+impl PromptAvailability for FakePrompt {
+    fn can_prompt(&self) -> bool {
+        self.transcript.borrow_mut().push(Call::PromptAvailability);
+        self.interactive
+    }
+}
+
+impl DefaultNoConfirmation for FakePrompt {
+    fn confirm_default_no(&self, prompt: &str) -> Result<bool, PromptError> {
+        self.transcript.borrow_mut().push(Call::ConfirmDefaultNo {
+            prompt: prompt.to_owned(),
+        });
+        match self.confirmation {
+            ConfirmationScript::Answer(answer) => Ok(answer),
+            ConfirmationScript::Cancelled => Err(PromptError::Cancelled),
+            ConfirmationScript::Interaction => Err(PromptError::Interaction {
+                source: io::Error::other("synthetic confirmation failure"),
+            }),
+        }
+    }
+}
+
+impl FundingChoiceSelection for FakePrompt {
+    fn select_funding_choice(
+        &self,
+        prompt: &str,
+        choices: &[&PaymentMethod],
+    ) -> Result<usize, PromptError> {
+        self.transcript
+            .borrow_mut()
+            .push(Call::SelectFundingChoice {
+                prompt: prompt.to_owned(),
+                choices: choices.iter().map(|choice| (*choice).clone()).collect(),
+            });
+        match self.selection {
+            SelectionScript::Index(index) => Ok(index),
+            SelectionScript::Cancelled => Err(PromptError::Cancelled),
+            SelectionScript::Interaction => Err(PromptError::Interaction {
+                source: io::Error::other("synthetic selection failure"),
+            }),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_pay(
+    reader: &FakeReader,
+    api: &FakeApi,
+    generator: &FixedGenerator,
+    prompt: &FakePrompt,
+    amount: Money,
+    note: Note,
+    requested_method: Option<&PaymentMethodId>,
+    assume_yes: bool,
+) -> Result<PayResult, PayError> {
+    let recipient = RecipientInput::from_str("456").map_err(|_| {
+        PayError::Preflight(PeerPreflightError::Recipient(
+            crate::features::people::recipients::RecipientResolutionError::Internal {
+                problem: "synthetic recipient input was invalid",
+            },
+        ))
+    })?;
+    let prepared = prepare(
+        reader,
+        api,
+        generator,
+        prompt,
+        &recipient,
+        amount,
+        note,
+        requested_method,
+    )
+    .await?;
+    let authorized = authorize(prompt, prepared, assume_yes)?;
+    execute(api, authorized).await
+}
+
+pub(super) fn successful_calls(amount: Money, note: Note) -> Result<Vec<Call>, Box<dyn Error>> {
+    let recipient = financial_user()?;
+    let account = test_account()?;
+    let balance = test_balance();
+    let method = peer_method(
+        "bank-1",
+        PeerFundingRole::Default,
+        PeerFundingFee::ProvenZero,
+    )?;
+    Ok(vec![
+        Call::ReadCredential,
+        current_account_call(),
+        user_lookup_call("456")?,
+        balance_call(),
+        funding_methods_call(),
+        Call::Eligibility {
+            session: RedactedSecret::Redacted,
+            recipient: recipient.clone(),
+            amount,
+            note: note.clone(),
+        },
+        Call::GenerateClientRequestId {
+            request_id: fixed_request_id(),
+        },
+        Call::CreatePayment {
+            session: RedactedSecret::Redacted,
+            plan: Box::new(PayPlanCall {
+                request_id: fixed_request_id(),
+                account,
+                recipient,
+                amount,
+                note,
+                balance,
+                backup_method: method,
+                eligibility_token: RedactedSecret::Redacted,
+            }),
+        },
+    ])
+}
+
+pub(super) const fn current_account_call() -> Call {
+    Call::CurrentAccount {
+        session: RedactedSecret::Redacted,
+    }
+}
+
+pub(super) fn user_lookup_call(user_id: &str) -> Result<Call, Box<dyn Error>> {
+    Ok(Call::UserLookup {
+        session: RedactedSecret::Redacted,
+        user_id: UserId::from_str(user_id)?,
+    })
+}
+
+pub(super) const fn balance_call() -> Call {
+    Call::Balance {
+        session: RedactedSecret::Redacted,
+    }
+}
+
+pub(super) const fn funding_methods_call() -> Call {
+    Call::FundingMethods {
+        session: RedactedSecret::Redacted,
+    }
+}
+
+fn loaded_credential() -> Result<LoadedCredential, FakeCredentialError> {
+    Ok(LoadedCredential {
+        envelope: CredentialEnvelope::new(
+            AccessToken::from_str(ACCESS_TOKEN).map_err(|_| FakeCredentialError)?,
+            DeviceId::from_str(DEVICE_ID).map_err(|_| FakeCredentialError)?,
+            UserId::from_str("123").map_err(|_| FakeCredentialError)?,
+            Username::from_bare("owner").map_err(|_| FakeCredentialError)?,
+            Some("Synthetic owner".to_owned()),
+            OffsetDateTime::UNIX_EPOCH,
+        ),
+        format: CredentialFormat::Version1,
+    })
+}
+
+pub(super) fn fixed_request_id() -> ClientRequestId {
+    match ClientRequestId::from_str(REQUEST_UUID) {
+        Ok(request_id) => request_id,
+        Err(_) => ClientRequestId::generate(),
+    }
+}
+
+pub(super) fn test_account() -> Result<Account, Box<dyn Error>> {
+    Ok(Account::new(
+        UserId::from_str("123")?,
+        Username::from_bare("owner")?,
+        Some("Synthetic owner".to_owned()),
+    ))
+}
+
+pub(super) fn financial_user() -> Result<User, Box<dyn Error>> {
+    Ok(User::new(
+        UserId::from_str("456")?,
+        Some(Username::from_bare("bob")?),
+        Some("Synthetic recipient".to_owned()),
+    )
+    .with_financial_attributes(UserProfileKind::Personal, true))
+}
+
+pub(super) fn test_balance() -> Balance {
+    Balance::new(
+        SignedUsdAmount::from_cents(300),
+        SignedUsdAmount::from_cents(25),
+    )
+}
+
+pub(super) fn peer_method(
+    id: &str,
+    role: PeerFundingRole,
+    fee: PeerFundingFee,
+) -> Result<PeerFundingMethod, Box<dyn Error>> {
+    Ok(PeerFundingMethod::new(
+        PaymentMethod::new(
+            PaymentMethodId::from_str(id)?,
+            Some(format!("Synthetic {id}")),
+            Some("bank".to_owned()),
+            Some("1234".to_owned()),
+            matches!(role, PeerFundingRole::Default),
+        ),
+        role,
+        fee,
+    ))
+}
+
+pub(super) fn blank_eligibility(fee_cents: u64) -> Result<BlankSourceEligibility, Box<dyn Error>> {
+    Ok(BlankSourceEligibility::new(
+        EligibilityToken::parse_owned(ELIGIBILITY_TOKEN.to_owned())?,
+        fee_cents,
+    ))
+}
+
+pub(super) fn pay_plan(
+    account: Account,
+    recipient: User,
+    amount: Money,
+    note: Note,
+    balance: Balance,
+    method: PeerFundingMethod,
+) -> Result<PayPlan, Box<dyn Error>> {
+    Ok(PayPlan::new(
+        fixed_request_id(),
+        account,
+        recipient,
+        amount,
+        note,
+        balance,
+        method,
+        EligibilityToken::parse_owned(ELIGIBILITY_TOKEN.to_owned())?,
+    ))
+}
+
+pub(super) fn created_payment() -> Result<CreatedPayment, Box<dyn Error>> {
+    Ok(CreatedPayment::new(
+        PaymentId::from_str("payment-1")?,
+        FinancialStatus::Settled,
+    ))
+}

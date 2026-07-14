@@ -7,14 +7,15 @@ type TestResult = Result<(), Box<dyn Error>>;
 
 #[test]
 fn help_and_version_succeed_without_services() -> TestResult {
-    Command::cargo_bin("venmo")?
+    let help = Command::cargo_bin("venmo")?
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "An unofficial Venmo command-line client",
-        ))
         .stderr(predicate::str::is_empty());
+    insta::assert_snapshot!(
+        "child_process_help",
+        String::from_utf8(help.get_output().stdout.clone())?
+    );
 
     Command::cargo_bin("venmo")?
         .arg("--version")
@@ -28,14 +29,15 @@ fn help_and_version_succeed_without_services() -> TestResult {
 
 #[test]
 fn usage_errors_exit_two_without_success_output() -> TestResult {
-    Command::cargo_bin("venmo")?
+    let assertion = Command::cargo_bin("venmo")?
         .args(["balance", "--unexpected"])
         .assert()
         .code(2)
-        .stdout(predicate::str::is_empty())
-        .stderr(predicate::str::contains(
-            "unexpected argument '--unexpected'",
-        ));
+        .stdout(predicate::str::is_empty());
+    insta::assert_snapshot!(
+        "child_process_usage_error",
+        String::from_utf8(assertion.get_output().stderr.clone())?
+    );
 
     Ok(())
 }
@@ -121,8 +123,8 @@ fn candidate_request_mutations_fail_before_keychain_or_network_access() -> TestR
             .assert()
             .code(1)
             .stdout(predicate::str::is_empty())
-            .stderr(predicate::str::contains(format!(
-                "the `{command}` command is implemented as a candidate but unavailable pending controlled live validation"
+            .stderr(predicate::eq(format!(
+                "error: the `{command}` command is implemented as a candidate but unavailable pending controlled live validation\n"
             )));
     }
 
@@ -139,7 +141,7 @@ fn noninteractive_login_fails_before_keychain_or_network_access() -> TestResult 
         Command::cargo_bin("venmo")?
             .args(arguments)
             .assert()
-            .code(1)
+            .code(2)
             .stdout(predicate::str::is_empty())
             .stderr(predicate::eq(
                 "error: an interactive terminal is required\n",

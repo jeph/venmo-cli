@@ -12,7 +12,6 @@ Building requires Rust 1.95.0. The checked-in `rust-toolchain.toml` pins the req
 cargo build
 cargo test
 cargo run -- --help
-cargo run -- friends list
 ```
 
 To install the current checkout into Cargo's binary directory instead:
@@ -107,3 +106,16 @@ cargo run -- auth login --token
 ```
 
 Initial password login refuses to replace a readable stored credential. Use `auth reauthenticate` to renew the same account while retaining its device identity. Run `cargo run -- auth logout` first only when intentionally switching accounts; omit `--revoke` unless remote revocation is also intended.
+
+## Contributor documentation
+
+Routine contributor verification is service-free. Do not run ignored/manual tests or live probes,
+load the production credential for tests, or run a real financial command as a development check.
+The user-facing command descriptions above are not contributor test instructions.
+
+- [Contributing and required verification](CONTRIBUTING.md)
+- [Architecture and dependency boundaries](docs/architecture.md)
+- [Testing strategy](docs/testing.md)
+- [Retained integration/manual contracts](docs/retained-test-contracts.md)
+- [Evidence-gated follow-ups](docs/evidence-gated-follow-ups.md)
+- [Public facade inventory and 0.1 compatibility](docs/public-api.md)

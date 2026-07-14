@@ -1,0 +1,7 @@
+---
+source: src/adapters/cli/output/tests/activity_requests.rs
+expression: stdout
+---
+ ID        | DIRECTION | COUNTERPARTY | AMOUNT | CREATED              | STATUS  | NOTE
+-----------+-----------+--------------+--------+----------------------+---------+---------------------
+ request-1 | incoming  | @bob         | $0.01  | 1970-01-01T00:00:00Z | pending | request\u{202E}note

@@ -1,0 +1,9 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: request_output
+---
+Request ID: request-1
+Status: pending
+Requested from: @bob (Synthetic User)
+Amount: $0.01
+Audience: private

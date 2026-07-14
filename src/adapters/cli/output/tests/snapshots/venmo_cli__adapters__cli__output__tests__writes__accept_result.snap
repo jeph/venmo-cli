@@ -1,0 +1,10 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: accept_output
+---
+Accepted request ID: request-1
+Payment ID: request-1
+Status: settled
+Paid requester: @requester (Synthetic\nrequester)
+Amount: $0.01
+Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source.

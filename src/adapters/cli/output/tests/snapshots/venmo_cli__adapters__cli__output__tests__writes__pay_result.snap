@@ -1,0 +1,11 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: pay_output
+---
+Payment ID: payment-1
+Status: settled
+Recipient: @bob (Synthetic\nrecipient)
+Amount: $0.01
+Audience: private
+Submitted backup method ID: bank-1
+Venmo may have used available balance before the submitted backup method.

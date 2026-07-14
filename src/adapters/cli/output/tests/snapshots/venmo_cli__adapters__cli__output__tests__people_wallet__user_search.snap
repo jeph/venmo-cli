@@ -1,0 +1,7 @@
+---
+source: src/adapters/cli/output/tests/people_wallet.rs
+expression: stdout
+---
+ ID  | USERNAME | NAME
+-----+----------+-------------------
+ 123 | @alice   | Alice\u{001B}[31m

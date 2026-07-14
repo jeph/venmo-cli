@@ -1,5 +1,10 @@
-use clap::{Command as ClapCommand, CommandFactory, Parser};
-use venmo_cli::cli::args::{AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg};
+use std::io;
+
+use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
+use venmo_cli::cli::{
+    AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg,
+    handle_runtime_initialization_failure, run,
+};
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
     for name in path {
@@ -20,6 +25,43 @@ fn assert_rejected(arguments: &[&str]) {
         Cli::try_parse_from(arguments).is_err(),
         "accepted {arguments:?}"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn public_production_dispatch_owns_policy_and_terminal_detection() {
+    let cli = Cli::try_parse_from(["venmo", "completions", "bash"]);
+    assert!(cli.is_ok());
+    if let Ok(cli) = cli {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let result = run(cli, &mut stdout, &mut stderr).await;
+
+        assert!(result.is_ok());
+        assert!(String::from_utf8_lossy(&stdout).contains("_venmo"));
+        assert!(stderr.is_empty());
+    }
+}
+
+#[test]
+fn public_runtime_fallback_owns_policy_and_terminal_detection() {
+    let cli = Cli::try_parse_from(["venmo", "completions", "fish"]);
+    assert!(cli.is_ok());
+    if let Ok(cli) = cli {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let result = handle_runtime_initialization_failure(
+            cli,
+            &mut stdout,
+            &mut stderr,
+            io::Error::other("synthetic runtime failure"),
+        );
+
+        assert!(result.is_ok());
+        assert!(String::from_utf8_lossy(&stdout).contains("complete -c venmo"));
+        assert!(stderr.is_empty());
+    }
 }
 
 #[test]
@@ -193,7 +235,7 @@ fn direction_and_completion_shell_are_typed_enums() {
     let request_values = match requests {
         Ok(cli) => match cli.command {
             Command::Requests(args) => match args.operation {
-                venmo_cli::cli::args::RequestsOperation::List(list) => {
+                venmo_cli::cli::RequestsOperation::List(list) => {
                     Some((list.direction, list.limit.get()))
                 }
             },
@@ -297,7 +339,7 @@ fn before_token_parsers_are_strict_and_cli_debug_is_redacted() {
         }
     }
 
-    for (arguments, label, secret_fragment) in [
+    for (arguments, expected_message, secret_fragment) in [
         (
             &[
                 "venmo",
@@ -306,7 +348,7 @@ fn before_token_parsers_are_strict_and_cli_debug_is_redacted() {
                 "--before-id",
                 "sensitive activity token",
             ][..],
-            "invalid before-id continuation token",
+            "error: invalid before-id continuation token: continuation token must not contain whitespace or control characters",
             "sensitive activity",
         ),
         (
@@ -317,15 +359,21 @@ fn before_token_parsers_are_strict_and_cli_debug_is_redacted() {
                 "--before",
                 "sensitive request token",
             ][..],
-            "invalid before continuation token",
+            "error: invalid before continuation token: continuation token must not contain whitespace or control characters",
+            "sensitive request",
+        ),
+        (
+            &["venmo", "accept", "sensitive request id"][..],
+            "error: invalid request ID: request ID must be non-empty, at most 512 bytes, and contain no whitespace or control characters",
             "sensitive request",
         ),
     ] {
         let invalid = Cli::try_parse_from(arguments);
         assert!(invalid.is_err());
         if let Err(error) = invalid {
+            assert_eq!(error.kind(), ErrorKind::ValueValidation);
             let rendered = error.to_string();
-            assert!(rendered.contains(label));
+            assert_eq!(rendered.lines().next(), Some(expected_message));
             assert!(!rendered.contains(secret_fragment));
         }
     }
@@ -343,7 +391,7 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
     let values = match parsed {
         Ok(cli) => match cli.command {
             Command::Friends(args) => match args.operation {
-                venmo_cli::cli::args::FriendsOperation::List(list) => {
+                venmo_cli::cli::FriendsOperation::List(list) => {
                     Some((list.limit.get(), list.offset.get()))
                 }
             },

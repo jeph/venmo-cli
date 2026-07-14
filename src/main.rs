@@ -4,9 +4,7 @@ use std::io;
 use std::process::ExitCode;
 
 use clap::Parser;
-use venmo_cli::cli::{Cli, dispatch, output};
-use venmo_cli::error::AppError;
-use venmo_cli::infrastructure::logging;
+use venmo_cli::cli::{AppError, Cli, handle_runtime_initialization_failure, run, write_error};
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -15,11 +13,15 @@ fn main() -> ExitCode {
     let mut stdout = stdout.lock();
     let mut stderr = stderr.lock();
 
-    if let Err(source) = logging::initialize(cli.verbose) {
-        return render_error(&mut stderr, &AppError::LoggingInitialization { source });
-    }
+    let result = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime.block_on(run(cli, &mut stdout, &mut stderr)),
+        Err(source) => handle_runtime_initialization_failure(cli, &mut stdout, &mut stderr, source),
+    };
 
-    match dispatch::run(cli, &mut stdout, &mut stderr) {
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => render_error(&mut stderr, &error),
     }
@@ -27,7 +29,7 @@ fn main() -> ExitCode {
 
 fn render_error(stderr: &mut impl io::Write, error: &AppError) -> ExitCode {
     let exit_code = error.exit_code();
-    let _ = output::write_error(stderr, error);
+    let _ = write_error(stderr, error);
     ExitCode::from(exit_code)
 }
 

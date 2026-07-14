@@ -1,0 +1,1288 @@
+---
+source: src/adapters/cli/completions.rs
+expression: output
+---
+_venmo() {
+    local i cur prev opts cmd
+    COMPREPLY=()
+    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+        cur="$2"
+    else
+        cur="${COMP_WORDS[COMP_CWORD]}"
+    fi
+    prev="$3"
+    cmd=""
+    opts=""
+
+    for i in "${COMP_WORDS[@]:0:COMP_CWORD}"
+    do
+        case "${cmd},${i}" in
+            ",$1")
+                cmd="venmo"
+                ;;
+            venmo,accept)
+                cmd="venmo__subcmd__accept"
+                ;;
+            venmo,activity)
+                cmd="venmo__subcmd__activity"
+                ;;
+            venmo,auth)
+                cmd="venmo__subcmd__auth"
+                ;;
+            venmo,balance)
+                cmd="venmo__subcmd__balance"
+                ;;
+            venmo,completions)
+                cmd="venmo__subcmd__completions"
+                ;;
+            venmo,decline)
+                cmd="venmo__subcmd__decline"
+                ;;
+            venmo,doctor)
+                cmd="venmo__subcmd__doctor"
+                ;;
+            venmo,friends)
+                cmd="venmo__subcmd__friends"
+                ;;
+            venmo,help)
+                cmd="venmo__subcmd__help"
+                ;;
+            venmo,pay)
+                cmd="venmo__subcmd__pay"
+                ;;
+            venmo,payment-methods)
+                cmd="venmo__subcmd__payment__subcmd__methods"
+                ;;
+            venmo,request)
+                cmd="venmo__subcmd__request"
+                ;;
+            venmo,requests)
+                cmd="venmo__subcmd__requests"
+                ;;
+            venmo,users)
+                cmd="venmo__subcmd__users"
+                ;;
+            venmo__subcmd__activity,help)
+                cmd="venmo__subcmd__activity__subcmd__help"
+                ;;
+            venmo__subcmd__activity,list)
+                cmd="venmo__subcmd__activity__subcmd__list"
+                ;;
+            venmo__subcmd__activity,show)
+                cmd="venmo__subcmd__activity__subcmd__show"
+                ;;
+            venmo__subcmd__activity__subcmd__help,help)
+                cmd="venmo__subcmd__activity__subcmd__help__subcmd__help"
+                ;;
+            venmo__subcmd__activity__subcmd__help,list)
+                cmd="venmo__subcmd__activity__subcmd__help__subcmd__list"
+                ;;
+            venmo__subcmd__activity__subcmd__help,show)
+                cmd="venmo__subcmd__activity__subcmd__help__subcmd__show"
+                ;;
+            venmo__subcmd__auth,help)
+                cmd="venmo__subcmd__auth__subcmd__help"
+                ;;
+            venmo__subcmd__auth,login)
+                cmd="venmo__subcmd__auth__subcmd__login"
+                ;;
+            venmo__subcmd__auth,logout)
+                cmd="venmo__subcmd__auth__subcmd__logout"
+                ;;
+            venmo__subcmd__auth,reauthenticate)
+                cmd="venmo__subcmd__auth__subcmd__reauthenticate"
+                ;;
+            venmo__subcmd__auth,status)
+                cmd="venmo__subcmd__auth__subcmd__status"
+                ;;
+            venmo__subcmd__auth__subcmd__help,help)
+                cmd="venmo__subcmd__auth__subcmd__help__subcmd__help"
+                ;;
+            venmo__subcmd__auth__subcmd__help,login)
+                cmd="venmo__subcmd__auth__subcmd__help__subcmd__login"
+                ;;
+            venmo__subcmd__auth__subcmd__help,logout)
+                cmd="venmo__subcmd__auth__subcmd__help__subcmd__logout"
+                ;;
+            venmo__subcmd__auth__subcmd__help,reauthenticate)
+                cmd="venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate"
+                ;;
+            venmo__subcmd__auth__subcmd__help,status)
+                cmd="venmo__subcmd__auth__subcmd__help__subcmd__status"
+                ;;
+            venmo__subcmd__friends,help)
+                cmd="venmo__subcmd__friends__subcmd__help"
+                ;;
+            venmo__subcmd__friends,list)
+                cmd="venmo__subcmd__friends__subcmd__list"
+                ;;
+            venmo__subcmd__friends__subcmd__help,help)
+                cmd="venmo__subcmd__friends__subcmd__help__subcmd__help"
+                ;;
+            venmo__subcmd__friends__subcmd__help,list)
+                cmd="venmo__subcmd__friends__subcmd__help__subcmd__list"
+                ;;
+            venmo__subcmd__help,accept)
+                cmd="venmo__subcmd__help__subcmd__accept"
+                ;;
+            venmo__subcmd__help,activity)
+                cmd="venmo__subcmd__help__subcmd__activity"
+                ;;
+            venmo__subcmd__help,auth)
+                cmd="venmo__subcmd__help__subcmd__auth"
+                ;;
+            venmo__subcmd__help,balance)
+                cmd="venmo__subcmd__help__subcmd__balance"
+                ;;
+            venmo__subcmd__help,completions)
+                cmd="venmo__subcmd__help__subcmd__completions"
+                ;;
+            venmo__subcmd__help,decline)
+                cmd="venmo__subcmd__help__subcmd__decline"
+                ;;
+            venmo__subcmd__help,doctor)
+                cmd="venmo__subcmd__help__subcmd__doctor"
+                ;;
+            venmo__subcmd__help,friends)
+                cmd="venmo__subcmd__help__subcmd__friends"
+                ;;
+            venmo__subcmd__help,help)
+                cmd="venmo__subcmd__help__subcmd__help"
+                ;;
+            venmo__subcmd__help,pay)
+                cmd="venmo__subcmd__help__subcmd__pay"
+                ;;
+            venmo__subcmd__help,payment-methods)
+                cmd="venmo__subcmd__help__subcmd__payment__subcmd__methods"
+                ;;
+            venmo__subcmd__help,request)
+                cmd="venmo__subcmd__help__subcmd__request"
+                ;;
+            venmo__subcmd__help,requests)
+                cmd="venmo__subcmd__help__subcmd__requests"
+                ;;
+            venmo__subcmd__help,users)
+                cmd="venmo__subcmd__help__subcmd__users"
+                ;;
+            venmo__subcmd__help__subcmd__activity,list)
+                cmd="venmo__subcmd__help__subcmd__activity__subcmd__list"
+                ;;
+            venmo__subcmd__help__subcmd__activity,show)
+                cmd="venmo__subcmd__help__subcmd__activity__subcmd__show"
+                ;;
+            venmo__subcmd__help__subcmd__auth,login)
+                cmd="venmo__subcmd__help__subcmd__auth__subcmd__login"
+                ;;
+            venmo__subcmd__help__subcmd__auth,logout)
+                cmd="venmo__subcmd__help__subcmd__auth__subcmd__logout"
+                ;;
+            venmo__subcmd__help__subcmd__auth,reauthenticate)
+                cmd="venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate"
+                ;;
+            venmo__subcmd__help__subcmd__auth,status)
+                cmd="venmo__subcmd__help__subcmd__auth__subcmd__status"
+                ;;
+            venmo__subcmd__help__subcmd__friends,list)
+                cmd="venmo__subcmd__help__subcmd__friends__subcmd__list"
+                ;;
+            venmo__subcmd__help__subcmd__payment__subcmd__methods,list)
+                cmd="venmo__subcmd__help__subcmd__payment__subcmd__methods__subcmd__list"
+                ;;
+            venmo__subcmd__help__subcmd__requests,list)
+                cmd="venmo__subcmd__help__subcmd__requests__subcmd__list"
+                ;;
+            venmo__subcmd__help__subcmd__users,search)
+                cmd="venmo__subcmd__help__subcmd__users__subcmd__search"
+                ;;
+            venmo__subcmd__payment__subcmd__methods,help)
+                cmd="venmo__subcmd__payment__subcmd__methods__subcmd__help"
+                ;;
+            venmo__subcmd__payment__subcmd__methods,list)
+                cmd="venmo__subcmd__payment__subcmd__methods__subcmd__list"
+                ;;
+            venmo__subcmd__payment__subcmd__methods__subcmd__help,help)
+                cmd="venmo__subcmd__payment__subcmd__methods__subcmd__help__subcmd__help"
+                ;;
+            venmo__subcmd__payment__subcmd__methods__subcmd__help,list)
+                cmd="venmo__subcmd__payment__subcmd__methods__subcmd__help__subcmd__list"
+                ;;
+            venmo__subcmd__requests,help)
+                cmd="venmo__subcmd__requests__subcmd__help"
+                ;;
+            venmo__subcmd__requests,list)
+                cmd="venmo__subcmd__requests__subcmd__list"
+                ;;
+            venmo__subcmd__requests__subcmd__help,help)
+                cmd="venmo__subcmd__requests__subcmd__help__subcmd__help"
+                ;;
+            venmo__subcmd__requests__subcmd__help,list)
+                cmd="venmo__subcmd__requests__subcmd__help__subcmd__list"
+                ;;
+            venmo__subcmd__users,help)
+                cmd="venmo__subcmd__users__subcmd__help"
+                ;;
+            venmo__subcmd__users,search)
+                cmd="venmo__subcmd__users__subcmd__search"
+                ;;
+            venmo__subcmd__users__subcmd__help,help)
+                cmd="venmo__subcmd__users__subcmd__help__subcmd__help"
+                ;;
+            venmo__subcmd__users__subcmd__help,search)
+                cmd="venmo__subcmd__users__subcmd__help__subcmd__search"
+                ;;
+            *)
+                ;;
+        esac
+    done
+
+    case "${cmd}" in
+        venmo)
+            opts="-v -h -V --verbose --help --version auth pay request accept decline friends users payment-methods balance activity requests doctor completions help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__accept)
+            opts="-v -h --yes --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__activity)
+            opts="-v -h --verbose --help list show help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__activity__subcmd__help)
+            opts="list show help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__activity__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__activity__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__activity__subcmd__help__subcmd__show)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__activity__subcmd__list)
+            opts="-v -h --limit --before-id --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --before-id)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__activity__subcmd__show)
+            opts="-v -h --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth)
+            opts="-v -h --verbose --help login reauthenticate logout status help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__help)
+            opts="login reauthenticate logout status help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__help__subcmd__login)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__help__subcmd__logout)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__help__subcmd__status)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__login)
+            opts="-v -h --token --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__logout)
+            opts="-v -h --revoke --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__reauthenticate)
+            opts="-v -h --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__auth__subcmd__status)
+            opts="-v -h --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__balance)
+            opts="-v -h --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__completions)
+            opts="-v -h --verbose --help bash zsh fish powershell"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__decline)
+            opts="-v -h --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__doctor)
+            opts="-v -h --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__friends)
+            opts="-v -h --verbose --help list help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__friends__subcmd__help)
+            opts="list help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__friends__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__friends__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__friends__subcmd__list)
+            opts="-v -h --limit --offset --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --offset)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help)
+            opts="auth pay request accept decline friends users payment-methods balance activity requests doctor completions help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__accept)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__activity)
+            opts="list show"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__activity__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__activity__subcmd__show)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__auth)
+            opts="login reauthenticate logout status"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__auth__subcmd__login)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__auth__subcmd__logout)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__auth__subcmd__status)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__balance)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__completions)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__decline)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__doctor)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__friends)
+            opts="list"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__friends__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__pay)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__payment__subcmd__methods)
+            opts="list"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__payment__subcmd__methods__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__request)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__requests)
+            opts="list"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__requests__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__users)
+            opts="search"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__help__subcmd__users__subcmd__search)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__pay)
+            opts="-v -h --note --from --yes --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --note)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --from)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__payment__subcmd__methods)
+            opts="-v -h --verbose --help list help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__payment__subcmd__methods__subcmd__help)
+            opts="list help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__payment__subcmd__methods__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__payment__subcmd__methods__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__payment__subcmd__methods__subcmd__list)
+            opts="-v -h --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__request)
+            opts="-v -h --note --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --note)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__requests)
+            opts="-v -h --verbose --help list help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__requests__subcmd__help)
+            opts="list help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__requests__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__requests__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__requests__subcmd__list)
+            opts="-v -h --direction --limit --before --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --direction)
+                    COMPREPLY=($(compgen -W "all incoming outgoing" -- "${cur}"))
+                    return 0
+                    ;;
+                --limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --before)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__users)
+            opts="-v -h --verbose --help search help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__users__subcmd__help)
+            opts="search help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__users__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__users__subcmd__help__subcmd__search)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        venmo__subcmd__users__subcmd__search)
+            opts="-v -h --limit --offset --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --offset)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+    esac
+}
+
+if [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -ge 4 || "${BASH_VERSINFO[0]}" -gt 4 ]]; then
+    complete -F _venmo -o nosort -o bashdefault -o default venmo
+else
+    complete -F _venmo -o bashdefault -o default venmo
+fi

@@ -1,0 +1,140 @@
+use std::io::Write;
+
+use super::{auth, doctor, reads, writes};
+use crate::adapters::credentials::NativeCredentialStore;
+use crate::adapters::system::SystemClientRequestIdGenerator;
+use crate::adapters::venmo::VenmoApiClient;
+
+use super::super::args::Command;
+use super::super::completions;
+use super::super::error::AppError;
+use super::super::prompt::{DialoguerPrompt, TerminalCapabilities};
+
+/// A deliberately small, stateless production factory. Each method is called only from the
+/// command branch that needs it; constructing the factory itself initializes no service.
+#[derive(Clone, Copy)]
+pub(super) struct ProductionProvider {
+    terminal_capabilities: TerminalCapabilities,
+}
+
+impl ProductionProvider {
+    const fn new(terminal_capabilities: TerminalCapabilities) -> Self {
+        Self {
+            terminal_capabilities,
+        }
+    }
+
+    pub(super) fn credential_store(self) -> NativeCredentialStore {
+        NativeCredentialStore::new()
+    }
+
+    pub(super) fn api(self) -> Result<VenmoApiClient, AppError> {
+        VenmoApiClient::production().map_err(|source| AppError::ApiInitialization { source })
+    }
+
+    pub(super) fn credential_store_and_api(
+        self,
+    ) -> Result<(NativeCredentialStore, VenmoApiClient), AppError> {
+        Ok((self.credential_store(), self.api()?))
+    }
+
+    pub(super) fn prompt(self) -> DialoguerPrompt {
+        DialoguerPrompt::new(self.terminal_capabilities)
+    }
+}
+
+pub(super) async fn run_production<W, E>(
+    command: Command,
+    stdout: &mut W,
+    stderr: &mut E,
+    terminal_capabilities: TerminalCapabilities,
+) -> Result<(), AppError>
+where
+    W: Write,
+    E: Write,
+{
+    let provider = ProductionProvider::new(terminal_capabilities);
+    match command {
+        Command::Completions(args) => completions::write(args.shell, stdout)
+            .map_err(|source| AppError::CompletionOutput { source }),
+        Command::Auth(args) => auth::run_production(args, provider, stdout, stderr).await,
+        Command::PaymentMethods(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            reads::run_payment_methods(args, &store, &api, stdout).await
+        }
+        Command::Users(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            reads::run_users(args, &store, &api, stdout, stderr).await
+        }
+        Command::Friends(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            reads::run_friends(args, &store, &api, stdout, stderr).await
+        }
+        Command::Balance => {
+            let (store, api) = provider.credential_store_and_api()?;
+            reads::run_balance(&store, &api, stdout).await
+        }
+        Command::Activity(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            reads::run_activity(args, &store, &api, stdout, stderr).await
+        }
+        Command::Requests(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            reads::run_requests(args, &store, &api, stdout, stderr).await
+        }
+        Command::Doctor => doctor::run_production(provider, stdout).await,
+        Command::Pay(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            let prompt = provider.prompt();
+            writes::run_pay_with(
+                args,
+                &store,
+                &api,
+                &SystemClientRequestIdGenerator,
+                &prompt,
+                stdout,
+                stderr,
+                writes::production_financial_interruption,
+            )
+            .await
+        }
+        Command::Request(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            writes::run_request_create(
+                args,
+                &store,
+                &api,
+                &SystemClientRequestIdGenerator,
+                stdout,
+                writes::production_financial_interruption,
+            )
+            .await
+        }
+        Command::Accept(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            let prompt = provider.prompt();
+            writes::run_accept_with(
+                args,
+                &store,
+                &api,
+                &prompt,
+                stdout,
+                stderr,
+                writes::production_financial_interruption,
+            )
+            .await
+        }
+        Command::Decline(args) => {
+            let (store, api) = provider.credential_store_and_api()?;
+            writes::run_decline_with(
+                args,
+                &store,
+                &api,
+                stdout,
+                stderr,
+                writes::production_financial_interruption,
+            )
+            .await
+        }
+    }
+}

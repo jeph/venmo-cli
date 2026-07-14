@@ -1,13 +1,18 @@
 # venmo-cli Rust Product Plan
 
 **Status:** Active; root Rust-only repository cutover completed; local read-only MCP server planned
-**Last updated:** 2026-07-12
+**Last updated:** 2026-07-13
 **Package:** `venmo-cli`
 **Binaries:** `venmo`; planned `venmo-mcp`
 
+> **Contributor safety:** Command forms and controlled-live protocols in this plan record product
+> contracts and owner-only release gates; they are not routine verification instructions. Routine
+> contributors must not execute ignored/manual tests, live probes, or real financial commands. Use
+> only the service-free checks in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## 1. Product direction
 
-The product is one repository-root Rust package with a shared `venmo_cli` library and two thin native entry points: the terminal CLI `venmo` and the planned local stdio MCP server `venmo-mcp`. Both adapters must call the same application use cases, domain types, credential implementation, and Venmo API client; only protocol parsing, presentation, and process composition differ. The completed language and repository cutover was also an intentional redesign of the command interface; the former TypeScript command surface remains only historical behavioral evidence, not a compatibility requirement or shipped implementation.
+The product is one repository-root Rust package with a shared `venmo_cli` library and two thin native entry points: the terminal CLI `venmo` and the planned local stdio MCP server `venmo-mcp`. Both adapters must call the same feature use cases, feature/shared models, credential implementation, and Venmo API client; only protocol parsing, presentation, and process composition differ. The completed language and repository cutover was also an intentional redesign of the command interface; the former TypeScript command surface remains only historical behavioral evidence, not a compatibility requirement or shipped implementation.
 
 The first release should make the common workflow obvious:
 
@@ -29,7 +34,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Use Rust 1.95.0 for the pinned toolchain and MSRV, package version `0.1.0`, and the MIT license.
 - Use [`clap`](https://docs.rs/clap/) with its derive API.
 - Use [`dialoguer`](https://docs.rs/dialoguer/) behind a narrow prompt adapter for hidden token input, default-No confirmation, and funding-method selection.
-- Prefer mature, popular, actively community-maintained off-the-shelf crates for common functionality instead of rolling project-owned replacements; keep custom code focused on Venmo-specific domain behavior, application orchestration, and safety policy.
+- Prefer mature, popular, actively community-maintained off-the-shelf crates for common functionality instead of rolling project-owned replacements; keep custom code focused on Venmo-specific model behavior, feature orchestration, and safety policy.
 - Use a hybrid command hierarchy: frequent actions are top-level; related management operations are grouped.
 - Use [`keyring`](https://docs.rs/keyring/) as the only persistent credential backend.
 - `venmo auth login` uses the legacy mobile-private trusted-device-ID plus username/password and SMS-OTP flow by default; `venmo auth login --token` preserves hidden import of an existing bearer token. `venmo auth reauthenticate` explicitly repeats full password/optional-OTP issuance for the stored account while reusing its stored trusted device ID; it is not a refresh operation.
@@ -40,7 +45,9 @@ The initial MCP release provides structured, read-only access to the already imp
 - Document the unsupported password/SMS-OTP login risk and the optional existing-token import path in the README.
 - Support one recipient per new `pay` or `request` invocation and one request ID per `accept` or `decline` invocation.
 - Release `pay`, request creation, request acceptance, and request decline independently. `pay` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation gates on 2026-07-12 and are enabled. Top-level `accept` and `decline` have candidate implementations and exact synthetic contracts but remain unavailable until their separate controlled live validations and reconciliations pass.
-- Treat the controlled-live-test boundary as absolute: send only one $0.01 payment at a time to `@georgecma`, create only one $0.01 request at a time from `@georgecma`, and reconcile that mutation before authorizing another. This restriction governs operator testing even though synthetic tests may use invented users and amounts.
+- Own candidate-command release policy inside private CLI production composition. The public facade exposes neither release-gate nor terminal-capability values, and neither normal dispatch nor runtime-initialization fallback accepts caller-supplied policy or terminal state. Both candidate gates are hard-coded closed and prompt capability comes from the actual process; only crate-private unit tests may construct open gates while delegating exclusively to fake handlers.
+- Initialize verbose CLI logging only after service-free dispatch preconditions. Completion generation, closed `accept`/`decline`, and noninteractive login/reauthentication do not install the global subscriber. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
+- Treat the controlled-live-test boundary as absolute: send only one $0.01 payment at a time to an owner-approved test counterparty configured outside the repository, create only one $0.01 request at a time from that counterparty, and reconcile that mutation before authorizing another. This restriction governs operator testing even though synthetic tests may use invented users and amounts.
 - Keep direct request creation as `venmo request ...`. Make the frequent request-state actions top-level `venmo accept ...` and `venmo decline ...`; reject the never-released nested `venmo request accept ...` form and add no compatibility alias.
 - Call transaction history `activity`.
 - Keep payment audience private in the first release.
@@ -58,7 +65,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Use local stdio as the only initial MCP transport. Do not enable Streamable HTTP, SSE, remote authentication, or network listening in the first MCP release.
 - Register only the nine read tools in Section 3.11 initially. Do not expose resources or prompts until a concrete use case requires them.
 - Keep the entire credential lifecycle terminal-CLI-only. MCP may report authenticated status but must never offer login, token import, password/OTP collection, reauthentication, logout, revocation, credential overrides, or secret-bearing tool inputs.
-- Give MCP its own explicit input/output DTO and JSON Schema boundary. Do not serialize secret domain types, stored credential envelopes, raw private-API DTOs, headers, bodies, or keychain errors.
+- Give MCP its own explicit input/output DTO and JSON Schema boundary. Do not serialize secret-bearing feature/shared types, stored credential envelopes, raw private-API DTOs, headers, bodies, or keychain errors.
 - Reload the native credential for every MCP tool invocation and drop it afterward. Never cache a bearer token or device ID in long-lived server state; MCP startup and `tools/list` must touch neither the keychain nor Venmo.
 - Serialize MCP Venmo operations through one asynchronous operation permit, preserve zero retries and one-page endpoint-native pagination, and never add hidden fetch-all behavior.
 - Annotate every MCP tool accurately with the standard read-only/destructive/idempotent/open-world hints, while treating annotations as advisory metadata rather than authorization enforcement.
@@ -137,7 +144,7 @@ venmo [--verbose] <COMMAND>
 - Prompts, warnings, diagnostics, and errors go to stderr.
 - `--help` and `--version` must not touch the keychain or network.
 - Human output uses color only on a terminal and honors `NO_COLOR`.
-- Machine-readable **CLI** output is deferred, but command handlers must return typed results so JSON can be added without rewriting application logic. MCP structured results are a separate protocol requirement and do not settle the future `venmo --json` product decision.
+- Machine-readable **CLI** output is deferred, but command handlers must return typed results so JSON can be added without rewriting feature logic. MCP structured results are a separate protocol requirement and do not settle the future `venmo --json` product decision.
 
 Proposed stable exit codes:
 
@@ -220,7 +227,7 @@ Funding-source selection order:
 4. An interactive selection when a terminal is available.
 5. A clear failure in non-interactive use.
 
-Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact external `bank`/`card` type; wallet balance, merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible backup source. The live response can omit a usable method-level fee for the automatic default external source, so only that exact default may proceed with an unknown method fee to the transaction-specific eligibility check; the immutable plan upgrades it to proven-zero only when that response totals exactly zero cents. A known nonzero method fee always fails, and an explicit `--from` or non-default source with an unknown method fee remains blocked because the eligibility request's blank funding-source field does not bind its proof to an override. Duplicate IDs, unknown peer roles, or multiple defaults are contract failures; an explicit unavailable ID fails; and multiple non-default methods require an explicit proven-zero `--from` or interactive selection among already proven-zero methods followed by the same transaction eligibility check.
+Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact external `bank`/`card` type; wallet balance, merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible backup source. The live response can omit a usable method-level fee for the automatic default external source, so only that exact default may proceed with an unknown method fee to the transaction-specific blank-source eligibility check. A zero total from that check proves the candidate transaction's overall fee, while the selected default method correctly remains `Unknown` because the request's empty funding-source field does not bind the proof to that method. A known nonzero method fee always fails, and an explicit `--from` or non-default source with an unknown method fee remains blocked for the same reason. Duplicate IDs, unknown peer roles, or multiple defaults are contract failures; an explicit unavailable ID fails; and multiple non-default methods require an explicit proven-zero `--from` or interactive selection among already proven-zero methods followed by the same transaction eligibility check.
 
 Before confirmation, show:
 
@@ -411,7 +418,7 @@ venmo completions powershell
 ```
 
 - Generates completion source to stdout using `clap_complete`.
-- Requires no authentication, keychain, or network access.
+- Requires no logging-subscriber initialization, authentication, keychain, or network access.
 - Release archives should also include pre-generated completion files.
 
 ### 3.11 Local MCP server
@@ -426,7 +433,7 @@ Before adopting the SDK transport, prove or add a bounded stdio boundary: each i
 
 Initial tool catalog:
 
-| Tool | Input | Structured result | Shared application behavior |
+| Tool | Input | Structured result | Shared feature behavior |
 | --- | --- | --- | --- |
 | `venmo_auth_status` | Empty object | Safe account identity, local credential saved-at time, credential format | Same current-account validation as `venmo auth status` |
 | `venmo_balance` | Empty object | Exact available and on-hold USD strings | Same typed balance read |
@@ -438,7 +445,7 @@ Initial tool catalog:
 | `venmo_requests_list` | `direction` (default `all`), `limit` 1–50 (default 10), nullable `before` (default null) | Pending-request records, applied direction, always-present nullable `next_before` | Same one source page and local direction filtering |
 | `venmo_doctor` | Empty object | Overall health and six structured check results | Same read-only diagnostic orchestration |
 
-Every tool declares strict `inputSchema` and `outputSchema`. Input DTOs use runtime unknown-field rejection and schemas with `additionalProperties: false`, then convert into existing domain types before any credential or network access. Output DTOs use string IDs, exact decimal money strings rather than floats, normalized RFC 3339 timestamps, explicit JSON `null` for absent values, tagged activity/counterparty variants, and always-present endpoint-native continuation fields whose values may be null. They never expose raw next URLs. Every success must conform to its declared `outputSchema` and should include the same JSON serialized as text content for clients that do not yet consume `structuredContent`.
+Every tool declares strict `inputSchema` and `outputSchema`. Input DTOs use runtime unknown-field rejection and schemas with `additionalProperties: false`, then convert into existing feature/shared model types before any credential or network access. Output DTOs use string IDs, exact decimal money strings rather than floats, normalized RFC 3339 timestamps, explicit JSON `null` for absent values, tagged activity/counterparty variants, and always-present endpoint-native continuation fields whose values may be null. They never expose raw next URLs. Every success must conform to its declared `outputSchema` and should include the same JSON serialized as text content for clients that do not yet consume `structuredContent`.
 
 Do not register tools for:
 
@@ -446,7 +453,7 @@ Do not register tools for:
 - Passwords, OTPs, OTP secrets, bearer tokens, device IDs, cookies, CSRF values, or alternate credential sources.
 - Help, version, shell completion generation, or package management.
 - `pay`, request creation, request acceptance, or request decline until their CLI contracts and the later MCP write phase are complete.
-- Internal exact-recipient resolution, funding-method selection, pending-request detail, or any lower-level API merely because implementation code exists.
+- Internal exact-recipient resolution, funding-method selection, request detail, or any lower-level API merely because implementation code exists.
 
 “Auth-status-only” describes the MCP authentication command surface: `venmo_auth_status` is the sole auth-oriented tool. `venmo_doctor` may still report its existing read-only credential-store, credential-presence/schema, and current-account checks, but it cannot mutate credentials or disclose authentication material.
 
@@ -547,7 +554,7 @@ Requirements:
 - Reject `--dry-run` everywhere; it is not part of the schema.
 - Use `ValueEnum` for request direction and shell selection.
 - Put validation that depends only on one value in `clap` parsers.
-- Put cross-field and network-dependent validation in the application layer.
+- Put cross-field and network-dependent validation in the owning feature.
 - Snapshot top-level and every subcommand's help output.
 - Source version output from Cargo metadata; do not hardcode it separately.
 
@@ -563,15 +570,15 @@ Prompt adapter rules:
 - Render through `dialoguer::console::Term::stderr()` so prompts never contaminate stdout data.
 - Use `interact_opt` for confirm/select so Escape or `q` maps to `Cancelled`. Map password interruption, Ctrl-C, EOF, and terminal failures into typed cancellation or terminal errors rather than panics; ordinary token text such as `q` remains valid password input.
 - Use `SimpleTheme` by default. Any later color theme must follow the CLI's TTY and `NO_COLOR` policy.
-- Sanitize every prompt and choice label inside the concrete CLI prompt adapter immediately before passing it to `dialoguer`; application code may provide typed/raw display fields but cannot bypass this terminal boundary.
-- Keep `dialoguer` types out of the application and domain layers; tests should substitute a fake prompt port.
+- Sanitize every prompt and choice label inside the concrete CLI prompt adapter immediately before passing it to `dialoguer`; feature code may provide typed/raw display fields but cannot bypass this terminal boundary.
+- Keep `dialoguer` types out of features and shared models; tests should substitute a fake prompt port.
 - Disable unused default features and enable only password support unless implementation proves another feature is required.
 
 ## 6. Bearer-token storage
 
 ### 6.1 Selected backend
 
-Follow the same high-level model as `pmail`: use the native OS credential store behind narrow `CredentialStore` and read-only `CredentialReader` capabilities.
+Follow the same high-level model as `pmail`: use the native OS credential store behind independent `CredentialReader`, `CredentialWriter`, and `CredentialDeleter` capabilities with one shared error type.
 
 Use the maintained Rust `keyring` convenience crate's default `v1` API as the **only persistent credential backend**. Do not compose `keyring-core` and platform-store crates directly, expose a backend selector, or add an encrypted/plaintext file fallback in the first release.
 
@@ -598,9 +605,9 @@ Envelope fields:
 - User ID.
 - Username.
 - Optional display name.
-- Credential creation time.
+- Credential save time (serialized as the compatibility key `createdAt`).
 
-Construct `Authorization: Bearer <token>` only at the HTTP boundary. The domain token type must have redacted `Debug`/`Display`, and logs and errors must never receive the exposed token value.
+Construct `Authorization: Bearer <token>` only at the HTTP boundary. `AccessToken` must have redacted `Debug`/`Display`, and logs and errors must never receive the exposed token value.
 
 ### 6.3 Keyring selection due diligence
 
@@ -632,9 +639,9 @@ Popularity does not replace review. Recheck release status, advisories, licenses
 
 `venmo-mcp` uses the same fixed service/account entry but receives only a read capability:
 
-- Refactor all non-mutating application use cases, including auth status, to require `CredentialReader` rather than `CredentialStore`.
-- Add a production `NativeCredentialReader` wrapper, or an equivalent concrete composition, that implements only `read_credential`; MCP server state must not have save/delete methods available by type.
-- Split the current mixed `AuthenticationApi` into a read-only `CurrentAccountApi` and a mutating `TokenRevocationApi`; terminal login composes the read capability with `PasswordLoginApi`, while MCP receives neither revocation nor password/device-trust capability.
+- Feature paths that only load credentials, including auth status, require only `CredentialReader`. Login and reauthentication require reader plus writer for verified persistence; local logout requires only `CredentialDeleter`; revoking logout adds reader solely for revocation.
+- Add a private production read-only credential façade, or equivalent concrete composition, that implements only `read_credential`; MCP server state must not have save/delete methods available by type.
+- Keep `CurrentAccountApi`, `TokenRevocationApi`, and `PasswordLoginApi` as independent capabilities; terminal login composes only the capabilities it needs, while MCP receives neither revocation nor password/device-trust capability.
 - Load and decode the credential separately for every tool call, use it only for that call, and drop it afterward. Never cache the bearer token, device ID, or whole `CredentialEnvelope` in the server.
 - Constructing the server and handling `initialize` or `tools/list` must not instantiate a keyring entry, trigger an OS approval prompt, or make a network request.
 - No MCP tool input, server flag, environment variable, config file, stdin payload, or alternate backend may supply or override authentication material.
@@ -662,7 +669,7 @@ These still require fresh Rust contract tests; existing behavior does not prove 
 
 Read-only Firefox inspection on 2026-07-11 established that the current Venmo web application uses short-lived secure cookies/session state and GraphQL rather than exposing the planned long-lived `Authorization: Bearer` mobile token. Raw browser session values accidentally entered transient tooling output, so that session was invalidated and browser DevTools inspection is prohibited until a structural redactor is in place. The web session model remains out of scope.
 
-The private `jeffreyshi17/venmo-safe-mcp` project was then reviewed with authorization. It pins `venmo-api==0.3.1` and attempts the historical mobile flow: `POST /oauth/access_token` with identifier/password/device ID, SMS challenge via `/account/two-factor/token`, OTP completion through `/oauth/access_token`, and device trust through `/users/devices`. Its token-only mode merely imports an existing token. Its helper is not copied: it has no contract tests, relies on broad exception handling/private assumptions, stores secrets in a dotenv file, and appears incompatible with the pinned library's response type and OTP-secret handling.
+An authorized private reference implementation was then reviewed. It pins `venmo-api==0.3.1` and attempts the historical mobile flow: `POST /oauth/access_token` with identifier/password/device ID, SMS challenge via `/account/two-factor/token`, OTP completion through `/oauth/access_token`, and device trust through `/users/devices`. Its token-only mode merely imports an existing token. Its helper is not copied: it has no contract tests, relies on broad exception handling/private assumptions, stores secrets in a dotenv file, and appears incompatible with the pinned library's response type and OTP-secret handling.
 
 The Rust CLI independently implements the narrow historical wire contract using typed, zeroizing values, fixed-origin transport methods, bounded responses, allowlisted response headers, native keyring persistence, and mock-server tests. A human-driven test on 2026-07-11 used a newly generated device ID and received a structured HTTP `403` with error code `240` before OTP or token issuance. No credential was stored. This matches public 2024 reports that Venmo rejects the historical password endpoint for untrusted device IDs; the code is generic and does not prove an incorrect password. Do not repeatedly retry that path.
 
@@ -674,7 +681,7 @@ Follow-up public-source research on 2026-07-11 found no evidence of an endpoint 
 
 The only evidenced route for minting the historically reusable mobile token is a credential login using a device identifier that Venmo already trusts. It sends one `POST /v1/oauth/access_token` request with the trusted browser `v_id`/`deviceId` as the sensitive `device-id` header and JSON fields `phone_email_or_username`, `client_id: "1"`, and `password`; a successful response contains `access_token`. If Venmo returns the recognized `81109` challenge, the historical flow requests SMS through `/v1/account/two-factor/token`, submits the OTP to `/v1/oauth/access_token?client_id=1`, and then best-effort trusts the device through `/v1/users/devices`. Public reports from March through December 2024 say that a `v_id` or `/api/auth` `deviceId` obtained after a completed browser login allowed this flow where a generated ID failed, and the June 2026 `aaymeloglu/venmo-mcp` instructions independently switched from generated IDs to a browser-derived device identifier for the same reason. The web access token is not an input to this issuance flow.
 
-Those sources are unofficial and do not prove present-day token lifetime. The historical client says a newly issued mobile token remains valid until explicit logout, and issue participants reported reusing such tokens, but no controlled current expiry test or official guarantee was found. The web cookie's archived 30-minute `maxAge` also does not establish the underlying bearer's lifetime. On 2026-07-11 the owner selected a single trusted-device mobile-login experiment: password login hidden-prompts for a manually obtained trusted browser device ID instead of generating one. It performs one non-retried issuance attempt, follows OTP only after the exact recognized challenge, validates any issued token with the current-account endpoint, stores nothing before validation, and emits no credential, identifier, header, body, or account data. The existing Rust transport and application flow enforce the remaining issuance safeguards; a live attempt occurs only while the owner enters secrets locally.
+Those sources are unofficial and do not prove present-day token lifetime. The historical client says a newly issued mobile token remains valid until explicit logout, and issue participants reported reusing such tokens, but no controlled current expiry test or official guarantee was found. The web cookie's archived 30-minute `maxAge` also does not establish the underlying bearer's lifetime. On 2026-07-11 the owner selected a single trusted-device mobile-login experiment: password login hidden-prompts for a manually obtained trusted browser device ID instead of generating one. It performs one non-retried issuance attempt, follows OTP only after the exact recognized challenge, validates any issued token with the current-account endpoint, stores nothing before validation, and emits no credential, identifier, header, body, or account data. The existing Rust transport and authentication feature flow enforce the remaining issuance safeguards; a live attempt occurs only while the owner enters secrets locally.
 
 That single trusted-device mobile-login experiment succeeded on 2026-07-11. The initial credential request issued a bearer token without an SMS-OTP challenge, the current-account validation passed, and the exact credential was saved and reloaded from the OS keychain. The then-current implementation made an unnecessary post-save `/users/devices` request even after direct password success; Venmo rejected only that redundant request with HTTP 400 and code `81124`. No credible public mapping for `81124` was found, so the code does not assign it a guessed meaning. The historical reference flow calls `/users/devices` only after OTP, and the Rust orchestration now likewise treats direct password success as proof that the existing trusted device was accepted and skips the redundant mutation. The issued token remained valid throughout this outcome.
 
@@ -694,7 +701,7 @@ Immediately afterward, separate processes successfully used the mobile-issued to
 
 The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `payment-methods list` all succeeded. User search confirmed the inherited endpoint is fuzzy even when the query begins with `@` and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. The implementation preserves that exact query distinction in every public page request and in the separate internal exhaustive traversal. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
 
-The root Rust package implements `friends list`, `balance`, `activity list/show`, `requests list`, and `doctor` behind typed application ports and strict response mapping. Their synthetic HTTP/application/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
+The root Rust package implements `friends list`, `balance`, `activity list/show`, `requests list`, and `doctor` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
 
 ### 7.2 New read capabilities required by the redesign
 
@@ -722,7 +729,7 @@ On 2026-07-11, a purpose-built ignored test used the authorized keychain credent
 - `GET /payments?action=charge&status=pending,held&limit=<N>` returned HTTP 200 with actual payment/request records and pagination, not counts. Records had a canonical request/payment ID, `action=charge`, pending-state status, actor, target user, positive amount, note, audience, and dates. Direction is derived relative to the authenticated user: actor=self is outgoing and target.user=self is incoming. The next link used the fixed payments route and only `action`, `before`, `limit`, and `status`.
 - `GET /payments/{request-id}` returned HTTP 200 with the corresponding pending charge record and additional fee/medium/refund fields. Unlike the pending-request list, which accepts only `action=charge` and `status=pending|held`, detail mapping preserves `charge` or `pay` plus any understood status so mutation preflight can reject stale, terminal, or action-changed records safely. Detail still requires exactly one authenticated-account party, a positive exact amount, and an exact returned request ID. Acceptance mutation semantics remain wholly unverified.
 
-The Rust adapters encode these findings with endpoint-specific opaque tokens, exact path/query/header assertions, strict typed IDs/money/timestamps, exact detail-ID checks, and same-origin/same-route continuation validation. Synthetic fixtures cover malformed records, unsupported state/action values, duplicate/conflicting IDs, oversized pages, and untrusted next links. Each public application call buffers one complete source page before stdout, applies request direction locally, preserves server order and source continuation, and rejects repeated/no-progress values. Only internal exact-recipient resolution performs a bounded multi-page traversal.
+The Rust adapters encode these findings with endpoint-specific opaque tokens, exact path/query/header assertions, strict typed IDs/money/timestamps, exact detail-ID checks, and same-origin/same-route continuation validation. Synthetic fixtures cover malformed records, unsupported state/action values, duplicate/conflicting IDs, oversized pages, and untrusted next links. Each public feature call buffers one complete source page before stdout, applies request direction locally, preserves server order and source continuation, and rejects repeated/no-progress values. Only internal exact-recipient resolution performs a bounded multi-page traversal.
 
 This evidence proves immediate read compatibility only. The imported web token rotates quickly, current mobile-client header/User-Agent behavior remains unverified, final-page exhaustion should receive an additional live boundary check, and no financial write may rely on these findings without completing its separate Phase 0 contract.
 
@@ -758,11 +765,11 @@ Public-source research completed on 2026-07-12 produced the candidate contracts 
 - Official Venmo payment documentation archived on 2021-06-12 describes `PUT /payments/:payment` as “Complete a Payment Request.” It explicitly assigns `approve` or `deny` to a request received by the authenticated user and `cancel` to a request made by that user. Historical `deet/govenmo` commit `21492682f08bb876a9a8cabaf249733e642e9c20` independently sends form-encoded `action=approve|deny|cancel` to that route. Its success assumption is a direct `data` Payment with a nonempty ID; the archived approval example shows resulting `action=pay`, `status=settled`, and completion data. This is strong historical evidence, not current-production proof.
 - Maintained descendants support bearer-authenticated JSON `PUT /v1/payments/{id}` with `action: "cancel"` or `"remind"`, but their listing scope proves only outgoing/requester-owned requests. They do not establish incoming denial. A 2022 client contains a conflicting, weakly evidenced `action: "pay"` plus actor/funding-source candidate. A current June 2026 client implements pay and request creation but no request completion. The candidate Rust contract therefore combines the current mobile authentication/JSON update convention with the historically explicit incoming actions `approve` and `deny`, while treating every unverified error or response mismatch as ambiguous.
 - Acceptance exposes no `--from` and is restricted to requests whose entire amount is covered by authoritative available Venmo balance. Current official product guidance says full available balance takes priority and personal balance-funded payments have zero Venmo fee, but the `approve` request does not bind the balance snapshot or return proven actual funding/fee fields. The guard prevents guessing a funding field but is not sufficient by itself to release acceptance. If balance is insufficient, acceptance fails before the write. Decline submits no funding fields and sends no money. `pay --from` remains a backup preference and never claims an actual debit source without authoritative result evidence.
-- A read-only live CLI preflight resolved the exact `@georgecma` search match through an authoritative user-detail fetch, proved a personal/payable non-self target, excluded wallet balance from external backup selection, and received a transaction-specific eligibility result totaling exactly zero fee. The fuzzy search reached its bounded traversal limit, so the verified rule now accepts one exact username match only after detail-by-ID returns the same ID and case-insensitive exact username; no match still fails when traversal is incomplete.
+- A read-only live CLI preflight resolved the exact approved test counterparty through an authoritative user-detail fetch, proved a personal/payable non-self target, excluded wallet balance from external backup selection, and received a transaction-specific eligibility result totaling exactly zero fee. The fuzzy search reached its bounded traversal limit, so the verified rule now accepts one exact username match only after detail-by-ID returns the same ID and case-insensitive exact username; no match still fails when traversal is incomplete.
 - After separate immediate approval, the Rust `pay` command sent exactly one private $0.01 payment with a unique generated note and zero retries. Its response matched `data.payment` and the submitted action, parties, amount, note, private audience, supported status, creation timestamp, and canonical ID. A separate CLI activity read found the matching latest one-cent pay, and the owner independently confirmed exactly one matching payment in the official Venmo mobile app.
 - After the payment was reconciled and a second immediate approval was obtained, the Rust request command sent exactly one private $0.01 request with a distinct generated note and zero retries. Its response passed the same operation-specific strict checks, a separate CLI request read found the matching pending outgoing request, and the owner independently confirmed exactly one matching request in the official mobile app. No token, device ID, user/payment/request ID, note, raw body, account identity, funding details, or mobile traffic was retained.
 
-The project owner declined mobile-app traffic capture. Do not install a proxy certificate or intercept the official mobile app. Pay and request creation are verified through exact synthetic tests, one separately approved controlled mutation per operation, strict response validation, CLI read reconciliation, and manual official-app confirmation. For `accept` and `decline`, the owner explicitly selected one controlled candidate probe per operation if static evidence remained insufficient. That choice authorizes neither immediate execution nor blind guessing: each probe still requires a complete single candidate request, exact synthetic tests, a fresh incoming $0.01 request from `@georgecma`, and a separate immediate approval. No retries or field variation are allowed. Each command remains unavailable until its own probe and reconciliation pass; acceptance additionally requires resolution of the request-bound funding/fee gap rather than treating one successful canary as general proof.
+The project owner declined mobile-app traffic capture. Do not install a proxy certificate or intercept the official mobile app. Pay and request creation are verified through exact synthetic tests, one separately approved controlled mutation per operation, strict response validation, CLI read reconciliation, and manual official-app confirmation. For `accept` and `decline`, the owner explicitly selected one controlled candidate probe per operation if static evidence remained insufficient. That choice authorizes neither immediate execution nor blind guessing: each probe still requires a complete single candidate request, exact synthetic tests, a fresh incoming $0.01 request from the approved test counterparty, and a separate immediate approval. No retries or field variation are allowed. Each command remains unavailable until its own probe and reconciliation pass; acceptance additionally requires resolution of the request-bound funding/fee gap rather than treating one successful canary as general proof.
 
 ### 7.4 Establishing verified HTTP request shapes
 
@@ -773,7 +780,7 @@ Phase 0 must produce a dated, sanitized contract dossier for every API operation
 1. Prefer the official Venmo web application in a dedicated visible/headed browser session using `agent-browser --headed`; live web discovery must not run headlessly. If Venmo blocks its security challenge, do not bypass it: close the browser and use only the already authenticated CLI for bounded reads plus manual official-mobile-app identity/result verification, without capturing mobile traffic.
 2. Prompt the prompter/project owner to complete Venmo login manually in that visible browser, then pause until they explicitly confirm login is complete. The agent must not request, read, type, or store the username, password, MFA code, or other login secret and must not inspect or capture login traffic.
 3. Verify the intended active account after login, then clear the tracked request log. Record the relevant read-only pre-state immediately before the one action and capture only `fetch`/XHR traffic associated with it.
-4. Read-only exploration may exercise account, user/friend search, payment-method, balance, activity, and request listing/detail views. For any mutation, obtain explicit human approval immediately before the action and follow Section 13.6. Request acceptance and decline must each use a separate fresh $0.01 incoming request from the authorized `@georgecma` counterparty.
+4. Read-only exploration may exercise account, user/friend search, payment-method, balance, activity, and request listing/detail views. For any mutation, obtain explicit human approval immediately before the action and follow Section 13.6. Request acceptance and decline must each use a separate fresh $0.01 incoming request from the approved test counterparty.
 5. Use `agent-browser network requests` to identify candidate calls and `agent-browser network request <NETWORK_REQUEST_ID>` to inspect the selected call's method, route, headers, body, response, and status. The network detail command can expose full secrets and bodies, so its raw output must pass through a purpose-built local structural redactor before it reaches agent/model output, logs, terminal history, or any saved artifact.
 6. Keep `Authorization`, cookies, CSRF values, device IDs, account/user/request/payment IDs, notes, and all unrelated response values out of the dossier. Preserve only header names, field names, types, safe enums, amount-unit evidence, route templates, placeholder relationships, statuses, and other facts required to implement the contract.
 7. Do not export a HAR by default. A HAR may be used only when request correlation cannot otherwise be completed, must live outside the repository in an approved temporary location, must never be emitted into agent context, and must be destroyed after a sanitized structural record is produced.
@@ -797,7 +804,7 @@ Never discover a write contract by blind endpoint/body fuzzing, replaying a capt
 ### 7.5 Discovery rules
 
 - Validate candidate endpoints only with an account the developer is authorized to use.
-- Use only the controlled live-mutation protocol in Section 13.6 for payment, request, acceptance, and decline discovery. Every live amount is exactly **$0.01**, and the only approved counterparty is `@georgecma` after the account owner authorizes the test session.
+- Use only the controlled live-mutation protocol in Section 13.6 for payment, request, acceptance, and decline discovery. Every live amount is exactly **$0.01**, and the only approved counterparty is the test counterparty configured outside the repository after the account owner authorizes the test session.
 - Reconcile every discovery write through the official app and activity/request reads before another attempt.
 - Capture the minimum sanitized fixtures necessary for contract tests.
 - Remove access tokens, device IDs, user IDs, names, notes, payment IDs, account fragments, and other personal data from fixtures.
@@ -807,20 +814,31 @@ Never discover a write contract by blind endpoint/body fuzzing, replaying a capt
 - `accept` and `decline` require a fresh authoritative request record; a feed summary, count, or guessed association is insufficient.
 - If pending-request records or their acceptance contract cannot be retrieved reliably, treat that as a release-scope blocker requiring an explicit product decision rather than fabricating results or sending a substitute payment.
 
-### 7.6 Application-facing API ports
+### 7.6 Feature-facing API ports
 
-Application interfaces express product operations rather than arbitrary HTTP paths. The implemented `application::ports` module deliberately uses narrow traits instead of one monolithic API object:
+Feature interfaces express product operations rather than arbitrary HTTP paths. Each feature owns
+the narrow ports it consumes under `src/features/<feature>/ports.rs`; there is no monolithic
+service or shared ports module:
 
-- `CurrentAccountApi`, `TokenRevocationApi`, and `PasswordLoginApi`, with no mixed read/revocation authentication trait.
-- `PaymentMethodsApi`, `UsersApi`, `FriendsApi`, and `BalanceApi`.
-- `ActivityApi`, `RequestsApi`, and `DoctorApi`.
-- Endpoint-scoped page request/result and continuation types.
+- Authentication owns `CurrentAccountApi`, `TokenRevocationApi`, and `PasswordLoginApi`.
+- Wallet, people, activity, requests, payments, and doctor own their endpoint-specific read or
+  write capabilities.
+- Page requests store `Limit` plus their endpoint-specific validated continuation (`Offset`,
+  `ActivityBeforeId`, or `RequestsBefore`) directly.
+- Request creation, payment creation, request acceptance, and request decline return distinct
+  feature-owned result values.
 
-`VenmoApiClient` may implement several of these traits, while each application use case and fake requires only the capability it consumes. Add a `ReadOnlyVenmoApi` production façade with a private inner client that forwards only `CurrentAccountApi`, `PaymentMethodsApi`, `UsersApi`, `FriendsApi`, `BalanceApi`, `ActivityApi`, `RequestsApi`, and `DoctorApi`; MCP server state holds this façade rather than a directly reachable `VenmoApiClient`. The MCP adapter should remain generic over this concrete read-only façade and call the shared use cases; do not add a second MCP-specific HTTP client or collapse the return-position `impl Future` traits into one large dynamic service solely for protocol convenience. Pure domain and keychain work stays synchronous where appropriate.
+`adapters::venmo::VenmoApiClient` implements several of these traits, while every feature use case
+and fake requires only the capabilities it consumes. A future `ReadOnlyVenmoApi` production façade
+for MCP should forward only read traits and keep its inner client private. The MCP adapter should
+call the same feature use cases; do not add a second HTTP client or collapse the return-position
+`impl Future` traits into one large dynamic service solely for protocol convenience. Pure model
+and credential-store work stays synchronous where appropriate.
 
 ## 8. Architecture
 
-Use one Cargo package with a shared library target and two thin binary targets:
+Use one Cargo package with a shared library target and a thin terminal binary. The feature and
+adapter layout is:
 
 ```text
 Cargo.toml
@@ -828,89 +846,75 @@ Cargo.lock
 rust-toolchain.toml
 src/
   lib.rs
-  error.rs
   main.rs                 # venmo terminal entry point
-  bin/
-    venmo-mcp.rs          # stdio composition only
+  model.rs                # curated frontend-neutral public model facade
   cli/
-    args.rs
-    completions.rs
-    dispatch.rs
-    output.rs
-    prompt.rs
-  mcp/
-    mod.rs
-    server.rs
-    tools.rs
-    views.rs
-    error.rs
-    services.rs           # optional production composition
-  application/
-    auth.rs
-    activity.rs
-    balance.rs
-    doctor.rs
-    friends.rs
-    funding.rs
-    payment_methods.rs
-    ports.rs
-    read.rs
-    recipients.rs
-    requests.rs
-    users.rs
-  domain/
+    mod.rs                # narrow public terminal facade
+  adapters/
+    cli/
+      args/
+      dispatch/
+      output/
+      completions.rs
+      error.rs
+      logging.rs
+      prompt.rs
+    credentials/
+      codec.rs
+      keyring/
+    system/
+    venmo/
+      client/
+      dto/
+      transport/
+  features/
+    activity/
+    auth/
+    doctor/
+    payments/
+    people/
+    requests/
+    wallet/
+  shared/
     account.rs
-    activity.rs
-    balance.rs
     credential.rs
-    identifiers.rs
-    login.rs
     money.rs
     note.rs
     pagination.rs
-    payment_method.rs
-    pending_request.rs
-    recipient.rs
-    user.rs
-  infrastructure/
-    credentials/
-      codec.rs
-      native.rs
-    logging.rs
-    system.rs
-    venmo_api/
-      client.rs
-      dto.rs
-      transport.rs
+    user_id.rs
+    username.rs
 tests/
   cli.rs
   domain.rs
   errors.rs
   process.rs
-  mcp_protocol.rs
-  mcp_process.rs
 ```
 
-Set package `default-run = "venmo"` and explicitly declare both binaries. Adding the MCP entry point must not make existing `cargo run -- ...` commands ambiguous. The binary files contain process composition only; reusable MCP behavior belongs in the library.
+The `venmo` binary contains process composition only. If the planned MCP entry point is added, it
+must be explicitly declared without making existing `cargo run -- ...` commands ambiguous, and its
+reusable behavior must live in the library.
 
 ### 8.1 Layer boundaries
 
-#### CLI
+#### CLI adapter
 
 - Defines the `clap` command schema.
-- Converts raw values into typed application input.
+- Converts raw values into typed feature input.
 - Handles `std::io::IsTerminal` checks, the narrowly allowed prompts, result rendering, and exit codes.
+- Owns closed production release gates and actual-process terminal detection; public callers cannot
+  inject either. Private test-only constructors may open gates only with fake executors.
+- Resolves service-free preconditions before delegated production logging and service composition.
 - Does not construct HTTP payloads or contain financial policy.
 
 #### MCP
 
 - Defines the local stdio server, exact tool registry, protocol schemas, tool annotations, and explicit MCP view DTOs.
-- Converts protocol input into existing validated domain types and invokes the same application functions as CLI dispatch.
-- Converts typed application results into structured protocol output without parsing or reusing terminal rendering.
+- Converts protocol input into existing validated feature/shared models and invokes the same feature use cases as CLI dispatch.
+- Converts typed feature results into structured protocol output without parsing or reusing terminal rendering.
 - Owns no Venmo business rule, private HTTP DTO, credential mutation, retry loop, or financial authorization policy.
 - Treats stdout as an exclusive protocol channel and all Venmo-returned names, notes, and labels as untrusted external data.
 
-#### Application
+#### Features
 
 - Orchestrates each command.
 - Loads credentials only when required.
@@ -920,13 +924,13 @@ Set package `default-run = "venmo"` and explicitly declare both binaries. Adding
 - Requires only `CredentialReader` for every read-only use case. Credential mutation remains confined to explicitly mutating terminal authentication operations.
 - Supports static/generic composition over the existing return-position `impl Future` ports; do not replace the narrow ports with one large object-safe service trait merely for MCP.
 
-#### Domain
+#### Feature and shared models
 
 - Contains validated value types and financial-operation policy.
 - Has no dependency on `clap`, `reqwest`, `keyring`, Tokio, or terminal rendering.
 - Represents money as checked integer cents, never binary floating point.
 
-#### Infrastructure
+#### Service adapters
 
 - Implements private HTTP endpoints and DTO mapping.
 - Implements the sole native keyring adapter.
@@ -934,7 +938,7 @@ Set package `default-run = "venmo"` and explicitly declare both binaries. Adding
 - Initializes redacted tracing.
 - Contains platform-specific behavior behind narrow interfaces.
 
-### 8.2 Core domain types
+### 8.2 Core feature and shared types
 
 - `AccessToken`: secret value with redacted formatting.
 - `CredentialEnvelope`: versioned stored session.
@@ -944,9 +948,10 @@ Set package `default-run = "venmo"` and explicitly declare both binaries. Adding
 - `PaymentMethod` and `PaymentMethodId`.
 - `Balance`: available amount and optional verified held amount.
 - `Activity` and `ActivityId`.
-- `PendingRequest`, `RequestId`, and `RequestDirection`.
-- `PayPlan`, `CreateRequestPlan`, and `AcceptRequestPlan`.
-- `WriteOutcome`: confirmed result, confirmed failure, or ambiguous outcome.
+- `RequestRecord`, `RequestAction`, `RequestId`, and `RequestDirection`.
+- `CreatedPayment` and request-owned `CreatedRequest`.
+- `PayPlan`, `CreateRequestPlan`, `AcceptRequestPlan`, and `DeclineRequestPlan`.
+- `PayResult`, `RequestCreateResult`, `AcceptResult`, and `DeclineResult`; ambiguous outcomes remain typed failures rather than success models.
 - `Limit`: positive server page size bounded to 50, and `Offset`: a nonnegative `u32`.
 - `ActivityBeforeId` and `RequestsBefore`: endpoint-scoped, bounded continuation inputs with redacted formatting, plus internal endpoint page request/result types.
 
@@ -956,14 +961,14 @@ The stdio server is long-lived, unlike the terminal dispatcher:
 
 - Start one multi-thread Tokio runtime with only the additional features required by the reviewed MCP stdio transport, synchronization, and server tasks.
 - Construct one shared production `ReadOnlyVenmoApi` façade backed privately by `VenmoApiClient`; constructing either must not contact Venmo. Share concrete generic state with `Arc` where required rather than introducing a global singleton or exposing mutating client capabilities to MCP.
-- Keep a one-permit `tokio::sync::Semaphore` in server state. After schema/domain validation, use non-waiting acquisition before rate admission or any keychain/Venmo operation; if the permit is unavailable, return `server_busy` immediately without consuming rate budget. This prevents unbounded pending calls, concurrent OS approval prompts, credential races, private-API rate bursts, and overlapping future financial operations.
+- Keep a one-permit `tokio::sync::Semaphore` in server state. After schema/model validation, use non-waiting acquisition before rate admission or any keychain/Venmo operation; if the permit is unavailable, return `server_busy` immediately without consuming rate budget. This prevents unbounded pending calls, concurrent OS approval prompts, credential races, private-API rate bursts, and overlapping future financial operations.
 - Do not hold a standard mutex across `.await`, spawn detached retries, or let cancellation launch a replacement operation.
-- Reload credentials inside each permitted invocation. If synchronous native keychain access proves disruptive, load it through `spawn_blocking` and add narrow application seams that accept a loaded credential; do not make all domain or API ports async merely to accommodate keyring I/O. Move the owned operation permit into the blocking task and return it with the loaded credential, so cancellation of the awaiting MCP request cannot release the permit while keychain work continues. A dedicated serialized credential worker is the fallback if the SDK/runtime cannot preserve that lifetime.
+- Reload credentials inside each permitted invocation. If synchronous native keychain access proves disruptive, load it through `spawn_blocking` and add narrow feature seams that accept a loaded credential; do not make all model or API ports async merely to accommodate keyring I/O. Move the owned operation permit into the blocking task and return it with the loaded credential, so cancellation of the awaiting MCP request cannot release the permit while keychain work continues. A dedicated serialized credential worker is the fallback if the SDK/runtime cannot preserve that lifetime.
 - Verify production server state is `Send + Sync`. Cancellation of an MCP request must stop further local work where possible, while accurately acknowledging that synchronous keychain work or an already-transmitted HTTP operation may not be cancellable.
 
 ### 8.4 MCP serialization boundary
 
-MCP has explicit input and output DTOs deriving only the serialization and JSON Schema traits required by the reviewed SDK. Keep these types in `src/mcp/`; do not add broad serialization derives to domain or credential types for convenience.
+MCP has explicit input and output DTOs deriving only the serialization and JSON Schema traits required by the reviewed SDK. Keep these types in the private MCP frontend adapter; do not add broad serialization derives to feature/shared or credential types for convenience.
 
 Never serialize or schema-expose:
 
@@ -979,9 +984,9 @@ Select current compatible versions during scaffolding, minimize features, commit
 
 ### 9.1 Library-first policy
 
-Use an established community crate by default for non-domain functionality that is common across Rust applications. Do not build project-owned substitutes for capabilities such as argument parsing, hidden prompts, HTTP/TLS, URL handling, serialization, native credential storage, terminal capability detection, logging, shell completions, manpage generation, secure temporary files, date/time handling, signal handling, backoff primitives, or test servers when a suitable mature crate exists.
+Use an established community crate by default for non-feature functionality that is common across Rust applications. Do not build project-owned substitutes for capabilities such as argument parsing, hidden prompts, HTTP/TLS, URL handling, serialization, native credential storage, terminal capability detection, logging, shell completions, manpage generation, secure temporary files, date/time handling, signal handling, backoff primitives, or test servers when a suitable mature crate exists.
 
-This policy is not a mandate to maximize dependency count. Keep Venmo-specific domain rules, financial-safety decisions, typed adapter glue, and small straightforward transformations in this repository. A new dependency must still reduce total implementation and maintenance risk compared with the local code it replaces.
+This policy is not a mandate to maximize dependency count. Keep Venmo-specific feature/model rules, financial-safety decisions, typed adapter glue, and small straightforward transformations in this repository. A new dependency must still reduce total implementation and maintenance risk compared with the local code it replaces.
 
 For each material dependency:
 
@@ -1002,15 +1007,15 @@ Rolling a common component locally despite an appropriate crate requires an expl
 | Manpages | `clap_mangen` | Generate release documentation |
 | Runtime | `tokio` 1.52 | CLI keeps its current-thread runtime; MCP additionally needs reviewed stdio I/O, sync, and multi-thread runtime features |
 | HTTP/TLS | `reqwest` 0.13.4 with `rustls` | Confirmed; defaults disabled and only JSON plus rustls enabled |
-| Serialization | `serde`, `serde_json` | Endpoint DTOs separate from domain |
+| Serialization | `serde`, `serde_json` | Endpoint DTOs separate from feature/shared models |
 | MCP protocol | Official `rmcp` crate | Planned; server/macros/stdio transport only after published-version/MSRV review |
-| MCP schemas | `schemars` through the SDK-compatible version | Explicit MCP input/output JSON Schema only; never credential/domain secrets |
+| MCP schemas | `schemars` through the SDK-compatible version | Explicit MCP input/output JSON Schema only; never credential or feature/shared secrets |
 | Terminal tables | `tabled` 0.21.0 | Confirmed; defaults disabled and only `std` enabled; all cells sanitized before rendering |
 | Errors | `thiserror` | Typed categories and source chains |
 | UTC timestamps | `time` | Typed UTC instants and RFC 3339 storage/output; no local-time dependency |
 | Persistent secrets | `keyring` default `v1` API | Confirmed sole backend |
 | Secret memory handling | Redacted newtype; evaluate `zeroize` | Not a persistence backend |
-| IDs | Validated domain newtypes | Device IDs are imported or reused, never generated by the CLI |
+| IDs | Validated model newtypes | Device IDs are imported or reused, never generated by the CLI |
 | Logging | `tracing`, `tracing-subscriber` | Stderr only with explicit redaction |
 | Prompts | `dialoguer` | Confirmed; separate from `clap`, behind a prompt adapter |
 | Binary tests | `assert_cmd`, `predicates` | End-to-end process assertions |
@@ -1104,7 +1109,7 @@ User-visible contract:
 - Friends and user search accept only a typed nonnegative `u32` `--offset`, defaulting to 0. Activity accepts only its endpoint-native `--before-id <TOKEN>`; pending requests accept only their endpoint-native `--before <TOKEN>`.
 - When a validated continuation remains, successful records stay on stdout and exactly one copyable native value is written to stderr after record rendering succeeds: `Next offset: <N>`, `Next before-id: <TOKEN>`, or `Next before: <TOKEN>`. Raw next URLs are never output.
 - There is no universal continuation input, page number, page-size alias, or public multi-page collector. Payment methods and single-resource reads remain unchanged.
-- `ActivityBeforeId` and `RequestsBefore` are nonempty, bounded to 1,024 bytes, reject whitespace, control, and invisible format-control characters, and redact `Debug`, `Display`, and parse errors. Application output has narrow crate-private access solely to print a successful copyable next value.
+- `ActivityBeforeId` and `RequestsBefore` are nonempty, bounded to 1,024 bytes, reject whitespace, control, and invisible format-control characters, and redact `Debug`, `Display`, and parse errors. The CLI output adapter has narrow crate-private access solely to print a successful copyable next value.
 - Native continuations are best-effort endpoint state, not snapshots. Additions, removals, or reordering between invocations can produce the private API's normal gaps or duplicates.
 
 Public page and server-continuation contract:
@@ -1149,13 +1154,13 @@ An identified connection-establishment failure, including DNS/TCP/TLS setup fail
 
 ### 10.4 MCP invocation and cancellation policy
 
-- Each MCP tool call executes the same application use case and exact private-API request policy as its CLI equivalent. MCP is not a second HTTP implementation.
-- After strict input validation, acquire the one-operation permit without queuing; return `server_busy` when another operation owns it. Apply rate admission only after acquiring the permit, and release it immediately on `rate_limited`. Hold an admitted permit through credential loading, application completion, and bounded result conversion.
+- Each MCP tool call executes the same feature use case and exact private-API request policy as its CLI equivalent. MCP is not a second HTTP implementation.
+- After strict input validation, acquire the one-operation permit without queuing; return `server_busy` when another operation owns it. Apply rate admission only after acquiring the permit, and release it immediately on `rate_limited`. Hold an admitted permit through credential loading, feature completion, and bounded result conversion.
 - Public list tools fetch exactly one source page. Never hide pagination, follow all pages, refill a locally filtered request page, or convert endpoint-native continuations into a generic MCP cursor.
 - The server and shared HTTP transport perform zero automatic retries. Tool annotations, host retries, reconnects, and repeated JSON-RPC IDs do not authorize replay.
 - A cancellation before network transmission should stop the operation cleanly. Any blocking credential task retains the operation permit until it actually finishes even if its requester is cancelled. Cancellation or transport loss after a future write might have been sent is an ambiguous financial outcome; never report it as a normal cancelled failure or start a replacement call.
 - Malformed tool input must fail before credential/network access. A later-page concept does not exist for initial tools because each invocation is exactly one page.
-- The stdio connection may remain alive after an application/tool error. A protocol framing failure, impossible server invariant, or stdout write failure is a fatal server error and must not be hidden behind a successful tool result.
+- The stdio connection may remain alive after a feature/tool error. A protocol framing failure, impossible server invariant, or stdout write failure is a fatal server error and must not be hidden behind a successful tool result.
 
 ## 11. Financial-write safety model
 
@@ -1226,7 +1231,7 @@ Execution rules:
 
 ### 11.5 Future MCP financial-write gate
 
-The initial MCP server registers no financial tools. A later financial MCP phase cannot begin until the corresponding CLI application operations and private-API contracts have satisfied Sections 7, 11, and 13.6. Even then, financial tools remain absent from `tools/list` by default.
+The initial MCP server registers no financial tools. A later financial MCP phase cannot begin until the corresponding CLI feature operations and private-API contracts have satisfied Sections 7, 11, and 13.6. Even then, financial tools remain absent from `tools/list` by default.
 
 Future registration requires all of the following:
 
@@ -1269,9 +1274,9 @@ Rendering rules:
 
 - Reserve MCP-process stdout exclusively for SDK-managed JSON-RPC framing. Never write banners, terminal tables, prompt UI, tracing, panic reports, diagnostics, or ad hoc acknowledgements to stdout.
 - Send redacted tracing and fatal startup diagnostics only to stderr. Do not log tool arguments, structured results, account/user/payment/request IDs, notes, continuation values, keychain source chains, or protocol payloads.
-- Filter SDK and stdio transport logging independently from application verbosity so `--verbose` can never enable raw JSON-RPC/frame diagnostics.
+- Filter SDK and stdio transport logging independently from server verbosity so `--verbose` can never enable raw JSON-RPC/frame diagnostics.
 - Return successful data through explicit structured output conforming to the declared `outputSchema`; provide an equivalent serialized JSON text content item only for MCP client compatibility, not a second independently formatted representation.
-- Map domain/application failures to stable categories such as `invalid_input`, `authentication_required`, `credential_unavailable`, `server_busy`, `rate_limited`, `network`, `timeout`, `remote_rejected`, `remote_contract`, `pagination_contract`, and `internal`. Return normal application and validated-input failures as tool execution errors with `isError: true`; malformed JSON-RPC, unknown tools, and invalid protocol shapes remain protocol errors.
+- Map feature failures to stable categories such as `invalid_input`, `authentication_required`, `credential_unavailable`, `server_busy`, `rate_limited`, `network`, `timeout`, `remote_rejected`, `remote_contract`, `response_contract`, and `internal`. Return normal feature and validated-input failures as tool execution errors with `isError: true`; malformed JSON-RPC, unknown tools, and invalid protocol shapes remain protocol errors.
 - Never expose `Debug`, nested source chains, raw platform errors, raw response text, input values, query text, IDs, notes, or continuation tokens in an error. Messages should be static or category-based and provide a safe remediation where known.
 - Treat Venmo notes, names, merchant labels, institution labels, and all other remote text as untrusted external content and potential prompt injection. Keep it only in clearly named structured fields, rely on correct JSON escaping, and never interpolate it into tool descriptions, server instructions, errors, annotations, logs, or authorization decisions.
 - MCP hosts may persist tool inputs and results in model context, transcripts, telemetry, or cloud logs. Documentation must prominently warn that read-only tools expose private account, financial, social, and transaction data even though they do not mutate Venmo.
@@ -1279,7 +1284,7 @@ Rendering rules:
 
 ## 13. Testing strategy
 
-### 13.1 Domain tests
+### 13.1 Model and policy tests
 
 - Amount syntax, bounds, formatting, and checked arithmetic.
 - Recipient syntax and exact username matching.
@@ -1307,8 +1312,13 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Exact endpoint-native pagination grammar, default limit/offset values, rejection of cross-endpoint or page/page-size forms, and redacted before-token debug/error formatting.
 - Absence of old `init`, `deinit`, `charge`, split, token-source, and multi-recipient forms.
 - Help/version paths that never initialize keyring or HTTP dependencies.
+- Compile/API coverage that the public CLI facade exports no release-gate or terminal-capability
+  injection and that production dispatch/runtime fallback accept no caller policy.
+- Injected logging-initializer coverage proving completions, closed candidate gates, and
+  noninteractive authentication make zero logging/service calls; delegated fake commands preserve
+  logging errors and initialize before execution.
 
-### 13.3 Application tests with fakes
+### 13.3 Feature tests with fakes
 
 - Login is interactive and hidden-prompt only.
 - Reauthentication fails before credential/network access when noninteractive, requires one readable stored credential, reuses its exact device ID without prompting, and never requires the old token to validate.
@@ -1319,7 +1329,7 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Corrupt credentials can be replaced and deleted.
 - Auth status identifies the active account.
 - Friends/search output exposes copyable recipient identifiers.
-- Every public paginated application flow makes exactly one source request, uses `--limit` as its page size, validates and buffers the page before output, preserves source continuation after local request-direction filtering, and rejects oversized/conflicting/no-progress pages.
+- Every public paginated feature flow makes exactly one source request, uses `--limit` as its page size, validates and buffers the page before output, preserves source continuation after local request-direction filtering, and rejects oversized/conflicting/no-progress pages.
 - The separate internal exact-recipient traversal remains limited to four 50-record pages/200 unique users and accepts no public continuation. Exhaustion is required for normal not-found; one exact match found at the bound still requires matching authoritative detail-by-ID before use.
 - Balance does not infer unsupported values.
 - Funding is displayed before confirmation: `pay` has transaction-specific fee proof and shows its backup method, while candidate `accept` shows full available-balance coverage, submits no external method, and explicitly does not claim request-bound source/fee proof.
@@ -1358,7 +1368,7 @@ For every verified operation, test:
 - Zero retries for payment creation, request creation, request acceptance, and request decline.
 - Ambiguous write classification.
 
-Friends, balance, activity, activity detail, pending requests, pending-request detail, request acceptance, and request decline require dedicated sanitized fixtures before their commands are considered implemented.
+Friends, balance, activity, activity detail, pending requests, request detail, request acceptance, and request decline require dedicated sanitized fixtures before their commands are considered implemented.
 
 ### 13.5 Native and packaged tests
 
@@ -1380,12 +1390,12 @@ Automated tests use fakes and mock HTTP servers; their synthetic amounts are not
 - Prefer the Venmo web application with `agent-browser --headed`. Prompt the prompter/project owner to log in manually in the visible browser and wait for their confirmation before testing. Never ask them to send login credentials through chat, automate credential/MFA entry, inspect login traffic, or persist the authenticated browser state in the repository. If Venmo blocks the security challenge, do not bypass it; close the browser and use bounded authenticated CLI reads plus manual official-mobile-app verification without capturing mobile traffic.
 - After login, read-only tests may inspect the active account and exercise user/friend search, payment-method, balance, activity, and request list/detail workflows. Clear any network capture only after login is complete and keep all observed data under the redaction rules in Section 7.4.
 - Use exactly **$0.01 USD** per live payment or request—never a larger amount. If Venmo rejects one cent or requires a higher minimum, stop and report the capability as blocked; never increase the amount to make the test pass.
-- Send test money only to `@georgecma` and create test requests only from `@georgecma`, and do either only after the owner of that account has explicitly authorized the current test session.
-- Resolve `@georgecma` to one exact account before each session and verify the displayed username, display identity, and immutable user ID against the official Venmo application. Keep the expected ID only in ignored local test configuration; never commit it or any returned user record.
-- Test sending with one $0.01 payment to `@georgecma`.
-- Test receiving by creating one $0.01 request from `@georgecma` (with `@georgecma` as the request target); any fulfillment by the counterparty must also be exactly $0.01.
-- Test request acceptance only from a fresh $0.01 incoming request created by `@georgecma` for the authenticated test account.
-- Only after acceptance has been fully reconciled, test request decline with a different fresh $0.01 incoming request created by `@georgecma`. Confirm that no money moved and that the request reached the expected terminal state in CLI reads and the official app.
+- Send test money only to the owner-approved test counterparty configured outside the repository and create test requests only from that counterparty, and do either only after the owner of that account has explicitly authorized the current test session.
+- Resolve the approved test counterparty to one exact account before each session and verify the displayed username, display identity, and immutable user ID against the official Venmo application. Keep the expected handle and ID only in ignored local test configuration; never commit either value or any returned user record.
+- Test sending with one $0.01 payment to the approved test counterparty.
+- Test receiving by creating one $0.01 request from the approved test counterparty; any fulfillment by the counterparty must also be exactly $0.01.
+- Test request acceptance only from a fresh $0.01 incoming request created by the approved test counterparty for the authenticated test account.
+- Only after acceptance has been fully reconciled, test request decline with a different fresh $0.01 incoming request created by the approved test counterparty. Confirm that no money moved and that the request reached the expected terminal state in CLI reads and the official app.
 - Use a unique, non-sensitive test note so identical one-cent operations can be reconciled, but never commit the note or raw response.
 - Run one mutation at a time. Require an explicit human go-ahead immediately before invocation and never fuzz, loop, schedule, or batch-probe a financial route. Prefer the default-No terminal prompt. When the trusted execution harness has no TTY, `--yes` may carry only the immediately preceding human approval for that exact rendered preflight; it is never standing, unattended, inferred, or reusable authorization.
 - After each mutation, verify the counterparty, amount, request/payment ID, status, audience, and funding result through the CLI reads and official Venmo application before continuing.
@@ -1402,7 +1412,7 @@ MCP tests must be service-free unless a separately ignored native test explicitl
 - Unit-test every input DTO conversion and output view, including exact decimal money, string IDs, RFC 3339 timestamps, explicit nulls, tagged activity/counterparty forms, request direction, and endpoint-specific continuation field names.
 - Snapshot the exact nine-tool allowlist, titles, descriptions, JSON Schema 2020-12 input/output schemas, defaults, required/nullable fields, and annotations. Every input schema must set `additionalProperties: false`, and runtime deserialization must reject unknown fields. No auth mutation, secret, financial, internal-helper, resource, or prompt surface may appear.
 - Exercise `initialize`, `tools/list`, and representative `tools/call` requests through the SDK's in-process or duplex transport using fake services. Initialization and listing must prove zero credential-reader and API calls.
-- Build handler tests around a fake that implements only `CredentialReader`, `CurrentAccountApi`, and the required read API traits—not `CredentialStore`, `TokenRevocationApi`, or `PasswordLoginApi`—so MCP code cannot compile if it attempts local or remote authentication mutation. Verify production state holds only the read-only façade.
+- Build handler tests around a fake that implements only `CredentialReader`, `CurrentAccountApi`, and the required read API traits—not `CredentialWriter`, `CredentialDeleter`, `TokenRevocationApi`, or `PasswordLoginApi`—so MCP code cannot compile if it attempts local or remote authentication mutation. Verify production state holds only the read-only façade.
 - Prove each invocation reloads the credential and that a changed fake credential is observed on the next call; no credential material remains cached in server state.
 - Prove non-waiting one-permit admission returns `server_busy` for overlap, creates no pending queue, does not hold a standard mutex across await, and retains the permit until any cancelled `spawn_blocking` credential operation actually finishes.
 - Prove the capacity-one/two-second-refill limiter returns `rate_limited` without sleep, queue, retry, credential access, or network access, and that initialization/tool discovery do not consume its budget.
@@ -1510,7 +1520,7 @@ Deliverables:
 - For operations exposed by the Venmo web application, use the sanitized `agent-browser` network-observation workflow in Section 7.4 to establish the proper request shape; never commit or emit raw captures.
 - Produce a dated sanitized contract dossier, typed DTO outline, fixture, and exact mock-server assertion for every retained API operation.
 - Prove that accepting by canonical request ID settles that request with request-bound, prewrite fee/source safety and well-understood stale and ambiguous outcomes; independently prove that decline terminally refuses the exact incoming request without moving money.
-- Perform any necessary live mutation only under the exactly-$0.01, `@georgecma` protocol in Section 13.6.
+- Perform any necessary live mutation only under the exactly-$0.01 approved-counterparty protocol in Section 13.6.
 - Produce fully sanitized fixtures.
 - For every paginated endpoint, verify ordering, continuation or offset semantics, reliable end/has-more signaling, filtering behavior, default and hard limits, per-page size, and maximum page/request bounds.
 - Prove or reject legacy keychain interoperability.
@@ -1543,18 +1553,18 @@ Exit criteria:
 - Old command forms are rejected intentionally.
 - Help, version, and completions require no services.
 
-### Phase 2: Domain and HTTP foundation
+### Phase 2: Model and HTTP foundation
 
 Deliverables:
 
-- Domain value types and pagination model.
+- Feature/shared value types and pagination models.
 - `reqwest` client, deadlines, response limits, and enforced zero-retry policy.
 - Endpoint DTOs and mapping.
 - Mock-server contract suite.
 
 Exit criteria:
 
-- Domain invariants and all verified read contracts pass.
+- Model invariants and all verified read contracts pass.
 - Financial-mutation retry count is provably zero regardless of HTTP method.
 
 ### Phase 3: Keyring and authentication
@@ -1633,6 +1643,11 @@ Exit criteria:
 Deliverables:
 
 - Complete README, including verified password/SMS-OTP login behavior and existing-token import.
+- Contributor architecture documentation for feature/shared ownership, hexagonal dependency
+  direction, dependency injection, the single Venmo client/transport, and future frontend
+  composition.
+- Testing, retained-contract, mutation-policy, and evidence-gated follow-up documentation.
+- Curated `cli`/`model` facade inventory and pre-1.0 semver expectations.
 - Manpage and completion generation.
 - LICENSE and security policy.
 - Release archives containing every completed binary, checksums, and native smoke tests.
@@ -1640,6 +1655,9 @@ Deliverables:
 Exit criteria:
 
 - A user can install, retrieve and store a token, find a recipient, inspect funding, safely perform a payment, create a request, and safely accept an incoming request using only shipped documentation.
+- README and CONTRIBUTING link the architecture, testing, retained-contract, and evidence-gated
+  records, and routine contributor guidance prohibits ignored/live tests and real financial
+  commands.
 - Every declared release target passes keyring and all shipped-binary smoke tests.
 
 ### Phase 8: Root Rust-only cutover (completed 2026-07-12)
@@ -1654,12 +1672,12 @@ Exit criteria:
 
 Deliverables:
 
-- Refactor auth status and every non-mutating application entry point from `CredentialStore` to `CredentialReader`, split `AuthenticationApi` into current-account and revocation capabilities, and add production read-only credential/API façades without changing CLI behavior.
+- Keep auth status and every non-mutating feature entry point bounded by `CredentialReader`, keep credential writes and deletion behind their independent capabilities, split authentication API access into current-account and revocation capabilities, and add production read-only credential/API façades without changing CLI behavior.
 - Add defensive bounds for every arbitrary ID accepted through MCP before any credential or network access.
 - Review and lock the official `rmcp` stable release and minimal stdio/server/schema feature set against Rust 1.95, supported targets, and cargo-deny.
 - Add explicit MCP input/output DTOs, JSON Schema, exact money/time/ID conversions, tagged activity views, safe error mapping, and hostile-content tests.
 - Add the exact nine-tool registry in Section 3.11 with accurate annotations and no resources, prompts, auth mutation, secret input, internal helper, or financial tools.
-- Add generic handlers over the existing application/API ports, one shared production read-only API façade, per-call credential loading, and a one-permit async operation gate.
+- Add generic handlers over the existing feature/API ports, one shared production read-only API façade, per-call credential loading, and a one-permit async operation gate.
 - Add bounded 64 KiB ingress, 2 MiB serialized-result enforcement, non-waiting `server_busy` admission, capacity-one/two-second-refill rate limiting, and SDK payload-log suppression.
 - Add the `venmo-mcp` stdio binary with protocol-only stdout and stderr-only diagnostics while preserving `default-run = "venmo"`.
 - Add protocol, process, schema, permission-matrix, no-cache, concurrency, cancellation, nonleakage, and service-free startup/list tests.
@@ -1669,7 +1687,7 @@ Deliverables:
 Exit criteria:
 
 - `initialize` and `tools/list` succeed without keychain or network access and list exactly the nine read-only tools.
-- Every tool calls the same application use case as its CLI counterpart, preserves one-page endpoint-native pagination, and returns schema-valid structured output.
+- Every tool calls the same feature use case as its CLI counterpart, preserves one-page endpoint-native pagination, and returns schema-valid structured output.
 - Server state has no credential save/delete capability and caches no bearer token, device ID, or loaded credential between calls.
 - Stdout contains only valid MCP protocol frames; stderr and tool errors contain no arguments, results, account data, notes, continuations, or secrets.
 - Exact tool schemas and annotations are regression-tested, and no tool capable of mutation is registered.
@@ -1680,14 +1698,14 @@ Exit criteria:
 
 Entry criteria:
 
-- Phase 6 has complete verified CLI application/API contracts for the exact proposed MCP write tools, including stale-state, no-retry, and ambiguous-outcome behavior.
+- Phase 6 has complete verified CLI feature/API contracts for the exact proposed MCP write tools, including stale-state, no-retry, and ambiguous-outcome behavior.
 - A named supported MCP host exposes a trustworthy approval policy on the execute tools and can present every server-resolved safety-critical field immediately before execution.
 - The project owner explicitly approves the concrete tool schemas, host integration, startup flag, replay/cancellation model, and documentation.
 
 Potential deliverables only after those gates:
 
 - A non-secret `--allow-financial-writes` startup mode whose tool registry is absent by default and fixed for that server process.
-- A short-lived, single-use, process-local prepare/execute plan protocol (or reviewed stronger attestation) that binds host approval to the immutable shared application plan.
+- A short-lived, single-use, process-local prepare/execute plan protocol (or reviewed stronger attestation) that binds host approval to the immutable shared feature plan.
 - Financial execute tools that require exact plan equality, fresh authoritative preflight, one-operation serialization, no retry, and post-state/ambiguity handling.
 - Destructive, non-idempotent, open-world annotations and host configuration requiring human approval for every invocation.
 - Protocol/process tests proving default absence, no model-supplied confirmation bypass, no duplicate execution, and truthful cancellation/unknown-outcome behavior.
@@ -1728,13 +1746,16 @@ Exit criteria:
 - Public paginated commands fetch one bounded source page, reject invalid native inputs or API continuations with distinct typed categories, emit only the endpoint-native next value after successful output, and never expose or follow a raw next URL.
 - Corrupt credentials can be replaced or deleted.
 - Every terminal-bound untrusted string is sanitized.
-- Unit, property, application, HTTP, keyring, CLI, and release smoke tests pass.
+- Unit, property, feature, HTTP, keyring, CLI, and release smoke tests pass.
 - Packaged verbose logging works and leaks no secrets.
+- Public production dispatch and runtime fallback own closed candidate gates and actual terminal
+  detection; no external caller can inject an open gate or synthetic TTY state.
+- Service-free dispatch preconditions do not initialize the process-global logging subscriber.
 - Production and release paths require only the Rust/Cargo toolchain and documented native platform services.
 - No live financial write occurs in automated tests or release validation.
-- Every manually approved live payment, request, acceptance, or decline test uses exactly $0.01 and the authorized `@georgecma` counterparty under Section 13.6.
+- Every manually approved live payment, request, acceptance, or decline test uses exactly $0.01 and the approved test counterparty under Section 13.6.
 - No material contradiction or ambiguity discovered during implementation is resolved without clarification from the prompter/project owner and a recorded plan/test update; finished CLI users are never asked to make implementation decisions.
-- `venmo` and `venmo-mcp` are thin adapters over the same shared application, domain, credential, and private-API implementations; MCP does not parse terminal output or duplicate HTTP contracts.
+- `venmo` and `venmo-mcp` are thin adapters over the same feature use cases, shared models, credential implementation, and private-API client; MCP does not parse terminal output or duplicate HTTP contracts.
 - The initial MCP registry exposes exactly the nine Section 3.11 read tools, no resources/prompts, no auth mutation or secret input, and no financial/internal-helper tools.
 - Every initial MCP tool has accurate read-only/non-destructive/open-world annotations, strict input/output schemas, and structured results using exact money, time, ID, tagged activity, and native continuation representations.
 - MCP initialization and tool listing are keychain/network-free; every tool reloads credentials per call through read-only capability and leaves no credential cached.
@@ -1750,7 +1771,7 @@ Exit criteria:
 | --- | --- |
 | Private endpoints changed or disappear | Phase 0 validation, isolated DTOs, sanitized fixtures, doctor diagnostics |
 | Pending request records, acceptance, or decline are unavailable | Gate only the affected command; never substitute counts, incomplete guesses, an ordinary payment, outgoing cancellation, or local-only dismissal |
-| Live discovery moves money | Use only the Section 13.6 protocol: exactly $0.01 with authorized `@georgecma`, one immediately confirmed mutation at a time, no unattended authorization, and immediate reconciliation |
+| Live discovery moves money | Use only the Section 13.6 protocol: exactly $0.01 with the approved test counterparty, one immediately confirmed mutation at a time, no unattended authorization, and immediate reconciliation |
 | A timed-out write actually succeeded | Never retry; classify as ambiguous; use activity detail, request state, and the official app for verification |
 | Wrong recipient | Exact resolution and one recipient; show identity before default-No `pay` confirmation and in the confirmed request-creation result |
 | Wrong funding source | Resolve before confirmation, support `--from`, display safe method label and ID |
@@ -1788,16 +1809,16 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 6. What product decision to make if complete pending-request list/detail, acceptance, or decline contracts cannot be verified. Each mutation has an independent release gate.
 7. Whether a legitimate current native-mobile onboarding contract or official device-authorization flow can eliminate manual trusted-device bootstrap without reproducing browser anti-bot controls. The observed web flow is explicitly not a production candidate.
 8. The exact published official `rmcp` release and minimal feature set that satisfy Rust 1.95, macOS/Linux, schema, license, advisory, and cargo-deny requirements.
-9. Whether native MCP validation shows synchronous keychain reads need a `spawn_blocking`/loaded-credential application seam rather than relying only on a multi-thread runtime.
+9. Whether native MCP validation shows synchronous keychain reads need a `spawn_blocking`/loaded-credential feature seam rather than relying only on a multi-thread runtime.
 10. Which local MCP hosts, if any, can provide a trustworthy per-call human approval contract sufficient to unlock the separately gated future financial phase. Until one is selected and tested, writes remain unavailable.
 11. Whether any later release should add a remote MCP transport. The initial release is definitively local stdio only and must not accumulate HTTP/OAuth features speculatively.
 
 ## 21. Immediate next steps
 
-1. Complete formatting, lint, test, rustdoc, dependency-policy, and independent safety review for the candidate top-level `accept` and `decline` implementations while both normal dispatch gates remain closed.
+1. Complete formatting, lint, test, rustdoc, dependency-policy, and independent safety review for the candidate top-level `accept` and `decline` implementations while both production dispatch gates remain closed, private, and impossible for public callers to override.
 2. Resolve the acceptance funding contradiction before any live call: the candidate can prove a sufficient balance snapshot and omit an external funding field, but cannot bind that snapshot or prove the final source/fee. Ask the project owner whether to keep acceptance gated pending stronger evidence or authorize one explicitly risk-disclosed $0.01 discovery probe; a successful canary alone does not establish atomic funding safety for release.
-3. Only after acceptance reconciliation, arrange a different fresh incoming $0.01 request from `@georgecma`, verify official-app removal semantics, and obtain separate immediate approval for exactly one development-only `deny` candidate write. Keep the normal decline release gate closed during the probe; prove terminal state with no money movement, then consider a separate gate change only after the evidence passes review.
-4. Refactor auth status and every shared read application use case to `CredentialReader`, split current-account from revocation/login ports, add read-only native credential/API façades, and prove existing CLI behavior remains unchanged.
+3. Only after acceptance reconciliation, arrange a different fresh incoming $0.01 request from the approved test counterparty, verify official-app removal semantics, and obtain separate immediate approval for exactly one development-only `deny` candidate write. Keep the normal decline release gate closed during the probe; prove terminal state with no money movement, then consider a separate gate change only after the evidence passes review.
+4. Keep auth status and every shared read feature use case bounded by `CredentialReader`, keep current-account separate from revocation/login ports, add read-only native credential/API façades, and prove existing CLI behavior remains unchanged.
 5. Revalidate and lock the official `rmcp` stable release, minimal stdio/server/schema features, MSRV, license, advisories, and transitive graph.
 6. Implement explicit MCP DTOs, schemas, conversions, annotations, generic read-only handlers, the exact registry, bounded framing/results, and the thin `venmo-mcp` stdio binary with protocol/process/nonleak tests.
 7. Update local/release validation, release packaging, and README with both binaries, local host configuration, transcript privacy, prompt-injection treatment, annotations, and troubleshooting.

@@ -1,0 +1,14 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: decline_preflight
+---
+Request decline preflight:
+  Request ID: request-1
+  Requester: @requester (Synthetic\nrequester) (ID 456)
+  Amount: $0.01
+  Note: Synthetic\nrequest
+  Audience: private
+  Current request status: pending
+  Created: 1970-01-01T00:00:00Z
+  Action: decline this exact incoming request without sending money.
+  This command does not pause for confirmation after displaying this validated plan.

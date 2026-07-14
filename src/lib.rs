@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
-pub mod application;
+mod adapters;
 pub mod cli;
-pub mod domain;
-pub mod error;
-pub mod infrastructure;
+pub(crate) mod features;
+pub mod model;
+pub(crate) mod shared;

@@ -1,0 +1,1117 @@
+---
+source: src/adapters/cli/completions.rs
+expression: output
+---
+#compdef venmo
+
+autoload -U is-at-least
+
+_venmo() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_venmo_commands" \
+"*::: :->venmo" \
+&& ret=0
+    case $state in
+    (venmo)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-command-$line[1]:"
+        case $line[1] in
+            (auth)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_venmo__subcmd__auth_commands" \
+"*::: :->auth" \
+&& ret=0
+
+    case $state in
+    (auth)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-auth-command-$line[1]:"
+        case $line[1] in
+            (login)
+_arguments "${_arguments_options[@]}" : \
+'--token[Import a bearer token and prompt for its matching device ID when needed]' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(reauthenticate)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(logout)
+_arguments "${_arguments_options[@]}" : \
+'--revoke[Attempt to revoke the bearer token before deleting it locally]' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__auth__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-auth-help-command-$line[1]:"
+        case $line[1] in
+            (login)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reauthenticate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(logout)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(pay)
+_arguments "${_arguments_options[@]}" : \
+'--note=[Non-empty payment note]:NOTE:_default' \
+'--from=[Preferred external/backup method ID; Venmo balance may be used first]:METHOD_ID:_default' \
+'--yes[Skip only the final default-No confirmation]' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':recipient -- Exact @username or positive numeric Venmo user ID:_default' \
+':amount -- Positive USD amount with at most two fractional digits:_default' \
+&& ret=0
+;;
+(request)
+_arguments "${_arguments_options[@]}" : \
+'--note=[Non-empty request note]:NOTE:_default' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':recipient -- Exact @username or positive numeric Venmo user ID:_default' \
+':amount -- Positive USD amount with at most two fractional digits:_default' \
+&& ret=0
+;;
+(accept)
+_arguments "${_arguments_options[@]}" : \
+'--yes[Skip only the final default-No confirmation]' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':request_id -- Canonical incoming request ID:_default' \
+&& ret=0
+;;
+(decline)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':request_id -- Canonical incoming request ID:_default' \
+&& ret=0
+;;
+(friends)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_venmo__subcmd__friends_commands" \
+"*::: :->friends" \
+&& ret=0
+
+    case $state in
+    (friends)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-friends-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'--limit=[Server request page size]:N:_default' \
+'--offset=[Zero-based friend-list offset]:N:_default' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__friends__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-friends-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(users)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_venmo__subcmd__users_commands" \
+"*::: :->users" \
+&& ret=0
+
+    case $state in
+    (users)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-users-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+'--limit=[Server request page size]:N:_default' \
+'--offset=[Zero-based user-search offset]:N:_default' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':query -- Search text:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__users__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-users-help-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(payment-methods)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_venmo__subcmd__payment-methods_commands" \
+"*::: :->payment-methods" \
+&& ret=0
+
+    case $state in
+    (payment-methods)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-payment-methods-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__payment-methods__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-payment-methods-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(balance)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(activity)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_venmo__subcmd__activity_commands" \
+"*::: :->activity" \
+&& ret=0
+
+    case $state in
+    (activity)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-activity-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'--limit=[Server request page size]:N:_default' \
+'--before-id=[Fetch activity before this endpoint-native token]:TOKEN:_default' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':activity_id -- Canonical activity ID:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__activity__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-activity-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(requests)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_venmo__subcmd__requests_commands" \
+"*::: :->requests" \
+&& ret=0
+
+    case $state in
+    (requests)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-requests-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'--direction=[Filter by the request'\''s direction]:DIRECTION:(all incoming outgoing)' \
+'--limit=[Server request page size before local direction filtering]:N:_default' \
+'--before=[Fetch pending requests before this endpoint-native token]:TOKEN:_default' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__requests__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-requests-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(doctor)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':shell -- Shell whose completion source should be generated:(bash zsh fish powershell)' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-command-$line[1]:"
+        case $line[1] in
+            (auth)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help__subcmd__auth_commands" \
+"*::: :->auth" \
+&& ret=0
+
+    case $state in
+    (auth)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-auth-command-$line[1]:"
+        case $line[1] in
+            (login)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reauthenticate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(logout)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(pay)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(request)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(accept)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(decline)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(friends)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help__subcmd__friends_commands" \
+"*::: :->friends" \
+&& ret=0
+
+    case $state in
+    (friends)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-friends-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(users)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help__subcmd__users_commands" \
+"*::: :->users" \
+&& ret=0
+
+    case $state in
+    (users)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-users-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(payment-methods)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help__subcmd__payment-methods_commands" \
+"*::: :->payment-methods" \
+&& ret=0
+
+    case $state in
+    (payment-methods)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-payment-methods-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(balance)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(activity)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help__subcmd__activity_commands" \
+"*::: :->activity" \
+&& ret=0
+
+    case $state in
+    (activity)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-activity-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(requests)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help__subcmd__requests_commands" \
+"*::: :->requests" \
+&& ret=0
+
+    case $state in
+    (requests)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-requests-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(doctor)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_venmo_commands] )) ||
+_venmo_commands() {
+    local commands; commands=(
+'auth:Validate and manage the stored Venmo bearer token' \
+'pay:Pay one person' \
+'request:Create a request immediately' \
+'accept:Candidate incoming-request acceptance; unavailable pending live validation' \
+'decline:Candidate incoming-request decline; unavailable pending live validation' \
+'friends:Inspect friends of the active account' \
+'users:Find Venmo users' \
+'payment-methods:Inspect available payment methods' \
+'balance:Show the Venmo wallet balance' \
+'activity:Inspect account activity' \
+'requests:Inspect pending requests' \
+'doctor:Run read-only diagnostics' \
+'completions:Generate shell completion source' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__accept_commands] )) ||
+_venmo__subcmd__accept_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo accept commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__activity_commands] )) ||
+_venmo__subcmd__activity_commands() {
+    local commands; commands=(
+'list:List recent activity' \
+'show:Show one activity record' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo activity commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__activity__subcmd__help_commands] )) ||
+_venmo__subcmd__activity__subcmd__help_commands() {
+    local commands; commands=(
+'list:List recent activity' \
+'show:Show one activity record' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo activity help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__activity__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__activity__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo activity help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__activity__subcmd__help__subcmd__list_commands] )) ||
+_venmo__subcmd__activity__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo activity help list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__activity__subcmd__help__subcmd__show_commands] )) ||
+_venmo__subcmd__activity__subcmd__help__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo activity help show commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__activity__subcmd__list_commands] )) ||
+_venmo__subcmd__activity__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo activity list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__activity__subcmd__show_commands] )) ||
+_venmo__subcmd__activity__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo activity show commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth_commands] )) ||
+_venmo__subcmd__auth_commands() {
+    local commands; commands=(
+'login:Authenticate with a trusted device and password/SMS OTP, or import a bearer token' \
+'reauthenticate:Replace an expired token using the stored trusted device and password/SMS OTP' \
+'logout:Remove the locally stored credential' \
+'status:Validate the credential and show the active account' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo auth commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__help_commands] )) ||
+_venmo__subcmd__auth__subcmd__help_commands() {
+    local commands; commands=(
+'login:Authenticate with a trusted device and password/SMS OTP, or import a bearer token' \
+'reauthenticate:Replace an expired token using the stored trusted device and password/SMS OTP' \
+'logout:Remove the locally stored credential' \
+'status:Validate the credential and show the active account' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo auth help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__auth__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__help__subcmd__login_commands] )) ||
+_venmo__subcmd__auth__subcmd__help__subcmd__login_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth help login commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__help__subcmd__logout_commands] )) ||
+_venmo__subcmd__auth__subcmd__help__subcmd__logout_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth help logout commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate_commands] )) ||
+_venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth help reauthenticate commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__help__subcmd__status_commands] )) ||
+_venmo__subcmd__auth__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth help status commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__login_commands] )) ||
+_venmo__subcmd__auth__subcmd__login_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth login commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__logout_commands] )) ||
+_venmo__subcmd__auth__subcmd__logout_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth logout commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__reauthenticate_commands] )) ||
+_venmo__subcmd__auth__subcmd__reauthenticate_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth reauthenticate commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__auth__subcmd__status_commands] )) ||
+_venmo__subcmd__auth__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo auth status commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__balance_commands] )) ||
+_venmo__subcmd__balance_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo balance commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__completions_commands] )) ||
+_venmo__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo completions commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__decline_commands] )) ||
+_venmo__subcmd__decline_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo decline commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__doctor_commands] )) ||
+_venmo__subcmd__doctor_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo doctor commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__friends_commands] )) ||
+_venmo__subcmd__friends_commands() {
+    local commands; commands=(
+'list:List friends of the active account' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo friends commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__friends__subcmd__help_commands] )) ||
+_venmo__subcmd__friends__subcmd__help_commands() {
+    local commands; commands=(
+'list:List friends of the active account' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo friends help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__friends__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__friends__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo friends help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__friends__subcmd__help__subcmd__list_commands] )) ||
+_venmo__subcmd__friends__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo friends help list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__friends__subcmd__list_commands] )) ||
+_venmo__subcmd__friends__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo friends list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help_commands] )) ||
+_venmo__subcmd__help_commands() {
+    local commands; commands=(
+'auth:Validate and manage the stored Venmo bearer token' \
+'pay:Pay one person' \
+'request:Create a request immediately' \
+'accept:Candidate incoming-request acceptance; unavailable pending live validation' \
+'decline:Candidate incoming-request decline; unavailable pending live validation' \
+'friends:Inspect friends of the active account' \
+'users:Find Venmo users' \
+'payment-methods:Inspect available payment methods' \
+'balance:Show the Venmo wallet balance' \
+'activity:Inspect account activity' \
+'requests:Inspect pending requests' \
+'doctor:Run read-only diagnostics' \
+'completions:Generate shell completion source' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__accept_commands] )) ||
+_venmo__subcmd__help__subcmd__accept_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help accept commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__activity_commands] )) ||
+_venmo__subcmd__help__subcmd__activity_commands() {
+    local commands; commands=(
+'list:List recent activity' \
+'show:Show one activity record' \
+    )
+    _describe -t commands 'venmo help activity commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__activity__subcmd__list_commands] )) ||
+_venmo__subcmd__help__subcmd__activity__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help activity list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__activity__subcmd__show_commands] )) ||
+_venmo__subcmd__help__subcmd__activity__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help activity show commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__auth_commands] )) ||
+_venmo__subcmd__help__subcmd__auth_commands() {
+    local commands; commands=(
+'login:Authenticate with a trusted device and password/SMS OTP, or import a bearer token' \
+'reauthenticate:Replace an expired token using the stored trusted device and password/SMS OTP' \
+'logout:Remove the locally stored credential' \
+'status:Validate the credential and show the active account' \
+    )
+    _describe -t commands 'venmo help auth commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__auth__subcmd__login_commands] )) ||
+_venmo__subcmd__help__subcmd__auth__subcmd__login_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help auth login commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__auth__subcmd__logout_commands] )) ||
+_venmo__subcmd__help__subcmd__auth__subcmd__logout_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help auth logout commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate_commands] )) ||
+_venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help auth reauthenticate commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__auth__subcmd__status_commands] )) ||
+_venmo__subcmd__help__subcmd__auth__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help auth status commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__balance_commands] )) ||
+_venmo__subcmd__help__subcmd__balance_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help balance commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__completions_commands] )) ||
+_venmo__subcmd__help__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help completions commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__decline_commands] )) ||
+_venmo__subcmd__help__subcmd__decline_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help decline commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__doctor_commands] )) ||
+_venmo__subcmd__help__subcmd__doctor_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help doctor commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__friends_commands] )) ||
+_venmo__subcmd__help__subcmd__friends_commands() {
+    local commands; commands=(
+'list:List friends of the active account' \
+    )
+    _describe -t commands 'venmo help friends commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__friends__subcmd__list_commands] )) ||
+_venmo__subcmd__help__subcmd__friends__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help friends list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__pay_commands] )) ||
+_venmo__subcmd__help__subcmd__pay_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help pay commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__payment-methods_commands] )) ||
+_venmo__subcmd__help__subcmd__payment-methods_commands() {
+    local commands; commands=(
+'list:List payment methods and copyable IDs' \
+    )
+    _describe -t commands 'venmo help payment-methods commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__payment-methods__subcmd__list_commands] )) ||
+_venmo__subcmd__help__subcmd__payment-methods__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help payment-methods list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__request_commands] )) ||
+_venmo__subcmd__help__subcmd__request_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help request commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__requests_commands] )) ||
+_venmo__subcmd__help__subcmd__requests_commands() {
+    local commands; commands=(
+'list:List pending requests involving the active account' \
+    )
+    _describe -t commands 'venmo help requests commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__requests__subcmd__list_commands] )) ||
+_venmo__subcmd__help__subcmd__requests__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help requests list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__users_commands] )) ||
+_venmo__subcmd__help__subcmd__users_commands() {
+    local commands; commands=(
+'search:Search for Venmo users' \
+    )
+    _describe -t commands 'venmo help users commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__users__subcmd__search_commands] )) ||
+_venmo__subcmd__help__subcmd__users__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help users search commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__pay_commands] )) ||
+_venmo__subcmd__pay_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo pay commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__payment-methods_commands] )) ||
+_venmo__subcmd__payment-methods_commands() {
+    local commands; commands=(
+'list:List payment methods and copyable IDs' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo payment-methods commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__payment-methods__subcmd__help_commands] )) ||
+_venmo__subcmd__payment-methods__subcmd__help_commands() {
+    local commands; commands=(
+'list:List payment methods and copyable IDs' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo payment-methods help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__payment-methods__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__payment-methods__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo payment-methods help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__payment-methods__subcmd__help__subcmd__list_commands] )) ||
+_venmo__subcmd__payment-methods__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo payment-methods help list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__payment-methods__subcmd__list_commands] )) ||
+_venmo__subcmd__payment-methods__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo payment-methods list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__request_commands] )) ||
+_venmo__subcmd__request_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo request commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__requests_commands] )) ||
+_venmo__subcmd__requests_commands() {
+    local commands; commands=(
+'list:List pending requests involving the active account' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo requests commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__requests__subcmd__help_commands] )) ||
+_venmo__subcmd__requests__subcmd__help_commands() {
+    local commands; commands=(
+'list:List pending requests involving the active account' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo requests help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__requests__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__requests__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo requests help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__requests__subcmd__help__subcmd__list_commands] )) ||
+_venmo__subcmd__requests__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo requests help list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__requests__subcmd__list_commands] )) ||
+_venmo__subcmd__requests__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo requests list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__users_commands] )) ||
+_venmo__subcmd__users_commands() {
+    local commands; commands=(
+'search:Search for Venmo users' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo users commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__users__subcmd__help_commands] )) ||
+_venmo__subcmd__users__subcmd__help_commands() {
+    local commands; commands=(
+'search:Search for Venmo users' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo users help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__users__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__users__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo users help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__users__subcmd__help__subcmd__search_commands] )) ||
+_venmo__subcmd__users__subcmd__help__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo users help search commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__users__subcmd__search_commands] )) ||
+_venmo__subcmd__users__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo users search commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_venmo" ]; then
+    _venmo "$@"
+else
+    compdef _venmo venmo
+fi

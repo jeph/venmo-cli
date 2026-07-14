@@ -1,8 +1,10 @@
 use std::str::FromStr;
 
 use proptest::prelude::*;
-use venmo_cli::domain::{
-    ActivityBeforeId, Limit, Money, Note, Offset, RecipientInput, UserSearchQuery,
+use venmo_cli::model::{
+    ActivityBeforeId, Limit, Money, Note, Offset, PeerFundingFee, RecipientInput, RequestAction,
+    RequestDirection, RequestId, RequestRecord, RequestStatus, User, UserId, UserSearchQuery,
+    Username,
 };
 
 #[test]
@@ -44,6 +46,7 @@ fn notes_and_limits_enforce_local_invariants() {
     assert!(Note::from_str("Dinner").is_ok());
     assert!(Note::from_str("  \t").is_err());
     assert_eq!(Limit::from_str("50").map(Limit::get), Ok(50));
+    assert_eq!(Limit::MIN.get(), 1);
     assert!(Limit::from_str("0").is_err());
     assert!(Limit::from_str("51").is_err());
     assert_eq!(Offset::from_str("0").map(Offset::get), Ok(0));
@@ -52,6 +55,35 @@ fn notes_and_limits_enforce_local_invariants() {
     assert!(ActivityBeforeId::from_str("before token").is_err());
     assert!(UserSearchQuery::from_str("Alice Smith").is_ok());
     assert!(UserSearchQuery::from_str("@").is_err());
+}
+
+#[test]
+fn request_records_and_peer_fees_preserve_whole_value_invariants()
+-> Result<(), Box<dyn std::error::Error>> {
+    let record = RequestRecord::new(
+        RequestId::from_str("request-1")?,
+        RequestAction::Pay,
+        RequestDirection::Outgoing,
+        User::new(
+            UserId::from_str("456")?,
+            Some(Username::from_bare("bob")?),
+            Some("Bob".to_owned()),
+        ),
+        Money::from_cents(125)?,
+        Some("Dinner".to_owned()),
+        Some(time::OffsetDateTime::UNIX_EPOCH),
+        RequestStatus::from_str("settled")?,
+    );
+
+    assert_eq!(record.action(), RequestAction::Pay);
+    assert_eq!(record.status().as_str(), "settled");
+    assert_eq!(record.amount().cents(), 125);
+    assert_eq!(PeerFundingFee::from_cents(0), PeerFundingFee::ProvenZero);
+    assert!(matches!(
+        PeerFundingFee::from_cents(3),
+        PeerFundingFee::NonZero { cents } if cents.get() == 3
+    ));
+    Ok(())
 }
 
 proptest! {

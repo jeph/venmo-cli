@@ -1,0 +1,9 @@
+---
+source: src/adapters/cli/output/tests/doctor.rs
+expression: output
+---
+ CHECK      | STATUS  | DETAIL     | REMEDIATION
+------------+---------+------------+-------------
+ Build      | Pass    | ok         |
+ Credential | Fail    | bad\nstate | log in
+ Shapes     | Skipped | dependency |

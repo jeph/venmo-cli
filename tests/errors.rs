@@ -1,4 +1,4 @@
-use venmo_cli::error::ErrorCategory;
+use venmo_cli::cli::ErrorCategory;
 
 #[test]
 fn error_categories_have_stable_exit_codes() {
