@@ -4,7 +4,8 @@ Start with the [architecture](docs/architecture.md), [testing strategy](docs/tes
 [public facade inventory](docs/public-api.md). Also review the
 [retained test contracts](docs/retained-test-contracts.md) and
 [evidence-gated follow-ups](docs/evidence-gated-follow-ups.md) before changing a boundary or an
-evidence-sensitive invariant.
+evidence-sensitive invariant. macOS contributors should also review the local
+[code-signing workflow](docs/macos-code-signing.md).
 
 ## Safety boundaries
 

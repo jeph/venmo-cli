@@ -21,6 +21,12 @@ cargo install --path .
 venmo --help
 ```
 
+On macOS, `cargo run` development-signs the `venmo` executable immediately before running it so
+Keychain approval can persist across rebuilds. Another Cargo command that relinks the executable
+can leave it ad-hoc signed until the next `cargo run`. See
+[macOS code signing](docs/macos-code-signing.md) for one-time setup, identity overrides,
+limitations, and signature inspection.
+
 All `cargo run -- ...` examples below run from the repository root. After installation, use the same arguments after `venmo` instead.
 
 ## Migration from the removed TypeScript CLI
