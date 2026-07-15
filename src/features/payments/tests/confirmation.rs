@@ -30,12 +30,7 @@ async fn confirmation_required_declined_cancelled_failed_and_confirmed_are_disti
         let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
         let api = FakeApi::new(PayScript::successful()?, Rc::clone(&transcript));
         let generator = FixedGenerator::new(Rc::clone(&transcript));
-        let prompt = FakePrompt::new(
-            interactive,
-            confirmation,
-            SelectionScript::Index(0),
-            Rc::clone(&transcript),
-        );
+        let prompt = FakePrompt::new(interactive, confirmation, Rc::clone(&transcript));
 
         // Complete expected final outcome and state.
         let mut expected_calls = successful_calls(amount, note.clone())?
@@ -53,10 +48,7 @@ async fn confirmation_required_declined_cancelled_failed_and_confirmed_are_disti
         let expected = Observation::new(expected_outcome, expected_calls);
 
         // Execute once.
-        let result = run_pay(
-            &reader, &api, &generator, &prompt, amount, note, None, false,
-        )
-        .await;
+        let result = run_pay(&reader, &api, &generator, &prompt, amount, note, false).await;
         let observed = Observation::new(pay_outcome(result), transcript.borrow().clone());
 
         assert_eq!(observed, expected);

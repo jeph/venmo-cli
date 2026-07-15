@@ -3,19 +3,10 @@ use std::future::Future;
 use super::{CreatedPayment, EligibilityToken, PayPlan, PeerFundingMethod};
 use crate::features::auth::{PromptAvailability, PromptError};
 use crate::features::people::User;
-use crate::features::wallet::PaymentMethod;
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Money, Note};
 
 pub trait DefaultNoConfirmation: PromptAvailability {
     fn confirm_default_no(&self, prompt: &str) -> Result<bool, PromptError>;
-}
-
-pub trait FundingChoiceSelection: PromptAvailability {
-    fn select_funding_choice(
-        &self,
-        prompt: &str,
-        choices: &[&PaymentMethod],
-    ) -> Result<usize, PromptError>;
 }
 
 #[derive(Debug)]

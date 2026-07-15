@@ -17,7 +17,7 @@ use crate::features::people::recipients::RecipientResolutionFailureKind;
 use crate::features::people::{
     User, UserProfileKind, UserSearchPage, UserSearchPageRequest, UserSearchQuery,
 };
-use crate::features::wallet::{Balance, PaymentMethod, SignedUsdAmount};
+use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
 use crate::shared::{
     AccessToken, Account, ApiFailureKind, ClientRequestId, CredentialAccessError,
     CredentialCapability, CredentialFailureKind, CredentialFormat, CredentialStoreFailure,
@@ -38,5 +38,3 @@ mod confirmation;
 mod execute;
 #[path = "tests/failures.rs"]
 mod failures;
-#[path = "tests/funding_prompt.rs"]
-mod funding_prompt;

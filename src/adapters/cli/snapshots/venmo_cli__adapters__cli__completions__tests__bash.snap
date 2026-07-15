@@ -1055,7 +1055,7 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__pay)
-            opts="-v -h --note --visibility --from --yes --verbose --help"
+            opts="-v -h --note --visibility --yes --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1067,10 +1067,6 @@ _venmo() {
                     ;;
                 --visibility)
                     COMPREPLY=($(compgen -W "private friends public" -- "${cur}"))
-                    return 0
-                    ;;
-                --from)
-                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 *)

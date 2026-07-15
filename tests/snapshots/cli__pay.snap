@@ -23,9 +23,6 @@ Options:
           [default: private]
           [possible values: private, friends, public]
 
-      --from <METHOD_ID>
-          Preferred external/backup method ID; fees do not block selection and balance may be used first
-
       --yes
           Skip only the final default-No confirmation
 

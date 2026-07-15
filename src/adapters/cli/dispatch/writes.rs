@@ -4,8 +4,7 @@ use std::io::Write;
 use crate::features::auth::CurrentAccountApi;
 use crate::features::payments::pay;
 use crate::features::payments::{
-    BlankSourceEligibilityApi, DefaultNoConfirmation, FundingChoiceSelection, PaymentCreationApi,
-    PeerFundingApi,
+    BlankSourceEligibilityApi, DefaultNoConfirmation, PaymentCreationApi, PeerFundingApi,
 };
 use crate::features::people::{UserLookupApi, UserSearchApi};
 use crate::features::requests::{
@@ -41,7 +40,7 @@ where
         + PaymentCreationApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
     G: ClientRequestIdGenerator,
-    P: FundingChoiceSelection + DefaultNoConfirmation,
+    P: DefaultNoConfirmation,
     W: Write,
     E: Write,
     M: FnOnce() -> Result<S, AppError>,
@@ -51,12 +50,10 @@ where
         store,
         api,
         generator,
-        prompt,
         &args.recipient,
         args.amount,
         args.note,
         args.visibility.into(),
-        args.from.as_ref(),
     )
     .await?;
     write_and_flush(stderr, &prepared, output::write_pay_preflight)?;

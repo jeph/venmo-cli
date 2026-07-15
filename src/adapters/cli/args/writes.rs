@@ -2,7 +2,6 @@ use clap::{Args, ValueEnum};
 
 use crate::features::people::RecipientInput;
 use crate::features::requests::RequestId;
-use crate::features::wallet::PaymentMethodId;
 use crate::shared::{Money, Note, Visibility};
 
 use super::parsers::RedactedRequestIdParser;
@@ -45,10 +44,6 @@ pub struct PayArgs {
     /// Visibility of the created payment.
     #[arg(long, value_enum, default_value_t = VisibilityArg::Private)]
     pub visibility: VisibilityArg,
-
-    /// Preferred external/backup method ID; fees do not block selection and balance may be used first.
-    #[arg(long, value_name = "METHOD_ID")]
-    pub from: Option<PaymentMethodId>,
 
     /// Skip only the final default-No confirmation.
     #[arg(long)]

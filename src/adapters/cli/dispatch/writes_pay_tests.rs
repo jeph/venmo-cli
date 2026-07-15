@@ -16,8 +16,8 @@ use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::{
     BlankSourceEligibility, BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation,
-    EligibilityToken, FinancialStatus, FundingChoiceSelection, PayPlan, PaymentCreationApi,
-    PaymentId, PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+    EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi, PaymentId, PeerFundingApi,
+    PeerFundingFee, PeerFundingMethod, PeerFundingRole,
 };
 use crate::features::people::{
     User, UserLookupApi, UserProfileKind, UserSearchApi, UserSearchPage, UserSearchPageRequest,
@@ -93,7 +93,6 @@ enum PayCall {
     SearchUsers,
     Balance,
     FundingMethods,
-    SelectFundingChoice,
     Eligibility {
         recipient_user_id: String,
         amount_cents: u64,
@@ -524,19 +523,6 @@ impl DefaultNoConfirmation for FakePrompt {
                 source: io::Error::other("synthetic confirmation failure"),
             }),
         }
-    }
-}
-
-impl FundingChoiceSelection for FakePrompt {
-    fn select_funding_choice(
-        &self,
-        _prompt: &str,
-        _choices: &[&PaymentMethod],
-    ) -> Result<usize, PromptError> {
-        self.transcript
-            .borrow_mut()
-            .push(PayCall::SelectFundingChoice);
-        Ok(0)
     }
 }
 

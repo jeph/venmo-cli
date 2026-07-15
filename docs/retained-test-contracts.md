@@ -7,20 +7,20 @@
 ## Service-free process coverage
 
 `tests/process.rs` intentionally retains child-process coverage for help, version, invalid input,
-noninteractive prompt rejection, completions, and manpage generation. Each
+noninteractive confirmation rejection, completions, and manpage generation. Each
 path is deterministic and must complete without keychain or network access. Financial behavior is
 covered below the process boundary with fakes and synthetic HTTP contracts, not a real command.
 
 ## Interactive PTY behavior
 
 Phase 7 does not add pseudo-terminal process tests. The supported hidden token, device-ID,
-password, OTP, funding-selection, and default-No confirmation flows remain an explicit contract
+password, OTP, and default-No confirmation flows remain an explicit contract
 category for later validation with a portable PTY harness. A harness must provide deterministic
 terminal sizing, input, signal delivery, output normalization, cancellation, and cleanup on both
 macOS and Linux CI before these tests can become required.
 
 Current automated coverage deliberately stops at deterministic boundaries: terminal-capability
-gating, prompt error classification, structured choice presentation, injected financial
+gating, prompt error classification, automatic fail-closed funding policy, injected financial
 interruption behavior, non-interactive child-process rejection, and exact sanitized renderer
 output. This retention is not permission to add a test-only environment switch or to exercise a
 live credential, keychain prompt, Venmo service, or financial operation.

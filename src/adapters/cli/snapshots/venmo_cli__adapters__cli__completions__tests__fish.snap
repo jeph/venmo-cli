@@ -71,7 +71,6 @@ complete -c venmo -n "__fish_venmo_using_subcommand pay" -l note -d 'Non-empty p
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -l visibility -d 'Visibility of the created payment' -r -f -a "private\t''
 friends\t''
 public\t''"
-complete -c venmo -n "__fish_venmo_using_subcommand pay" -l from -d 'Preferred external/backup method ID; fees do not block selection and balance may be used first' -r
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -l yes -d 'Skip only the final default-No confirmation'
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -s v -l verbose -d 'Write redacted diagnostics to stderr'
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -s h -l help -d 'Print help (see more with \'--help\')'

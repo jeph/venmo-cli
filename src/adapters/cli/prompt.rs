@@ -2,14 +2,13 @@ use std::io::{self, IsTerminal};
 
 use dialoguer::console::Term;
 use dialoguer::theme::SimpleTheme;
-use dialoguer::{Confirm, Input, Password, Select};
+use dialoguer::{Confirm, Input, Password};
 
 use super::output::sanitize_terminal_text;
 use crate::features::auth::{
     AccountPassword, AuthenticationInput, LoginIdentifier, OtpCode, PromptAvailability, PromptError,
 };
-use crate::features::payments::{DefaultNoConfirmation, FundingChoiceSelection};
-use crate::features::wallet::PaymentMethod;
+use crate::features::payments::DefaultNoConfirmation;
 use crate::shared::{AccessToken, DeviceId};
 
 /// Immutable snapshot of the process streams relevant to safe prompting.
@@ -116,58 +115,6 @@ impl DefaultNoConfirmation for DialoguerPrompt {
     }
 }
 
-impl FundingChoiceSelection for DialoguerPrompt {
-    fn select_funding_choice(
-        &self,
-        prompt: &str,
-        choices: &[&PaymentMethod],
-    ) -> Result<usize, PromptError> {
-        if choices.is_empty() {
-            return Err(PromptError::NoChoices);
-        }
-        let prompt = sanitize_terminal_text(prompt);
-        let sanitized_items = choices
-            .iter()
-            .map(|method| sanitize_terminal_text(&payment_method_label(method)))
-            .collect::<Vec<_>>();
-
-        let index = Select::with_theme(&SimpleTheme)
-            .with_prompt(prompt)
-            .items(&sanitized_items)
-            .default(0)
-            .interact_on_opt(&self.term)
-            .map_err(classify_dialoguer_error)?
-            .ok_or(PromptError::Cancelled)?;
-
-        if index >= choices.len() {
-            return Err(PromptError::InvalidSelection {
-                index,
-                choice_count: choices.len(),
-            });
-        }
-        Ok(index)
-    }
-}
-
-fn payment_method_label(method: &PaymentMethod) -> String {
-    let details = method
-        .method_type()
-        .map(ToOwned::to_owned)
-        .into_iter()
-        .chain(
-            method
-                .last_four()
-                .map(|last_four| format!("ending {last_four}")),
-        )
-        .collect::<Vec<_>>();
-    let name = method.name().unwrap_or("Payment method");
-    if details.is_empty() {
-        format!("{name} [ID {}]", method.id())
-    } else {
-        format!("{name} ({}) [ID {}]", details.join(", "), method.id())
-    }
-}
-
 fn read_hidden(term: &Term, prompt: &str) -> Result<String, PromptError> {
     let prompt = sanitize_terminal_text(prompt);
     Password::with_theme(&SimpleTheme)
@@ -193,10 +140,7 @@ fn classify_io_error(source: io::Error) -> PromptError {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
-    use crate::features::wallet::PaymentMethodId;
 
     #[test]
     fn prompt_io_errors_have_explicit_classifications() {
@@ -219,48 +163,10 @@ mod tests {
     }
 
     #[test]
-    fn empty_selection_fails_before_touching_the_terminal() {
-        let prompt = DialoguerPrompt::new(TerminalCapabilities::new(false, false));
-        assert!(matches!(
-            prompt.select_funding_choice("Choose", &[]),
-            Err(PromptError::NoChoices)
-        ));
-    }
-
-    #[test]
     fn prompting_requires_both_input_and_diagnostic_terminals() {
         assert!(TerminalCapabilities::new(true, true).can_prompt());
         assert!(!TerminalCapabilities::new(true, false).can_prompt());
         assert!(!TerminalCapabilities::new(false, true).can_prompt());
         assert!(!TerminalCapabilities::new(false, false).can_prompt());
-    }
-
-    #[test]
-    fn presentation_adapter_formats_structured_payment_method_choices()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let detailed = PaymentMethod::new(
-            PaymentMethodId::from_str("bank-1")?,
-            Some("Checking".to_owned()),
-            Some("bank".to_owned()),
-            Some("1234".to_owned()),
-            true,
-        );
-        let unnamed = PaymentMethod::new(
-            PaymentMethodId::from_str("method-2")?,
-            None,
-            None,
-            None,
-            false,
-        );
-
-        assert_eq!(
-            payment_method_label(&detailed),
-            "Checking (bank, ending 1234) [ID bank-1]"
-        );
-        assert_eq!(
-            payment_method_label(&unnamed),
-            "Payment method [ID method-2]"
-        );
-        Ok(())
     }
 }

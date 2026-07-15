@@ -11,8 +11,6 @@ pub(super) enum PromptFailure {
     Cancelled,
     NotInteractive,
     InvalidInput,
-    NoChoices,
-    InvalidSelection { index: usize, choice_count: usize },
     Interaction,
 }
 
@@ -26,14 +24,6 @@ impl From<&PromptError> for PromptFailure {
             | PromptError::InvalidLoginIdentifier { .. }
             | PromptError::InvalidAccountPassword { .. }
             | PromptError::InvalidOtpCode { .. } => Self::InvalidInput,
-            PromptError::NoChoices => Self::NoChoices,
-            PromptError::InvalidSelection {
-                index,
-                choice_count,
-            } => Self::InvalidSelection {
-                index: *index,
-                choice_count: *choice_count,
-            },
             PromptError::Interaction { .. } => Self::Interaction,
         }
     }
@@ -42,22 +32,18 @@ impl From<&PromptError> for PromptFailure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum FundingFailure {
     NoEligibleMethods,
-    ExplicitMethodUnavailable,
     DuplicateMethodIds,
     MultipleDefaults,
-    ExplicitMethodRequired,
-    Prompt(PromptFailure),
+    AmbiguousAutomaticSelection,
 }
 
 impl From<&FundingSelectionError> for FundingFailure {
     fn from(error: &FundingSelectionError) -> Self {
         match error {
             FundingSelectionError::NoEligibleMethods => Self::NoEligibleMethods,
-            FundingSelectionError::ExplicitMethodUnavailable => Self::ExplicitMethodUnavailable,
             FundingSelectionError::DuplicateMethodIds => Self::DuplicateMethodIds,
             FundingSelectionError::MultipleDefaults => Self::MultipleDefaults,
-            FundingSelectionError::ExplicitMethodRequired => Self::ExplicitMethodRequired,
-            FundingSelectionError::Prompt { source } => Self::Prompt(PromptFailure::from(source)),
+            FundingSelectionError::AmbiguousAutomaticSelection => Self::AmbiguousAutomaticSelection,
         }
     }
 }

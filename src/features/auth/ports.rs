@@ -113,12 +113,6 @@ pub enum PromptError {
         source: OtpCodeParseError,
     },
 
-    #[error("cannot prompt with an empty choice list")]
-    NoChoices,
-
-    #[error("the prompt returned choice {index}, but only {choice_count} choices exist")]
-    InvalidSelection { index: usize, choice_count: usize },
-
     #[error("terminal interaction failed")]
     Interaction {
         #[source]
@@ -135,8 +129,6 @@ pub(crate) const fn prompt_failure_kind(error: &PromptError) -> ApplicationFailu
         | PromptError::InvalidLoginIdentifier { .. }
         | PromptError::InvalidAccountPassword { .. }
         | PromptError::InvalidOtpCode { .. } => ApplicationFailureKind::Usage,
-        PromptError::NoChoices
-        | PromptError::InvalidSelection { .. }
-        | PromptError::Interaction { .. } => ApplicationFailureKind::Internal,
+        PromptError::Interaction { .. } => ApplicationFailureKind::Internal,
     }
 }

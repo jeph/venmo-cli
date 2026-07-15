@@ -166,8 +166,6 @@ pub(super) enum PromptFailureSnapshot {
     InvalidLoginIdentifier,
     InvalidAccountPassword,
     InvalidOtpCode,
-    NoChoices,
-    InvalidSelection { index: usize, choice_count: usize },
     Interaction,
 }
 
@@ -181,14 +179,6 @@ impl PromptFailureSnapshot {
             PromptError::InvalidLoginIdentifier { .. } => Self::InvalidLoginIdentifier,
             PromptError::InvalidAccountPassword { .. } => Self::InvalidAccountPassword,
             PromptError::InvalidOtpCode { .. } => Self::InvalidOtpCode,
-            PromptError::NoChoices => Self::NoChoices,
-            PromptError::InvalidSelection {
-                index,
-                choice_count,
-            } => Self::InvalidSelection {
-                index: *index,
-                choice_count: *choice_count,
-            },
             PromptError::Interaction { .. } => Self::Interaction,
         }
     }

@@ -65,10 +65,6 @@ pub(super) enum Call {
     FundingMethods {
         session: RedactedSecret,
     },
-    SelectFundingChoice {
-        prompt: String,
-        choices: Vec<PaymentMethod>,
-    },
     Eligibility {
         session: RedactedSecret,
         recipient: User,
@@ -389,17 +385,9 @@ pub(super) enum ConfirmationScript {
     Interaction,
 }
 
-#[derive(Clone, Copy)]
-pub(super) enum SelectionScript {
-    Index(usize),
-    Cancelled,
-    Interaction,
-}
-
 pub(super) struct FakePrompt {
     interactive: bool,
     confirmation: ConfirmationScript,
-    selection: SelectionScript,
     transcript: Transcript,
 }
 
@@ -407,13 +395,11 @@ impl FakePrompt {
     pub(super) fn new(
         interactive: bool,
         confirmation: ConfirmationScript,
-        selection: SelectionScript,
         transcript: Transcript,
     ) -> Self {
         Self {
             interactive,
             confirmation,
-            selection,
             transcript,
         }
     }
@@ -441,29 +427,6 @@ impl DefaultNoConfirmation for FakePrompt {
     }
 }
 
-impl FundingChoiceSelection for FakePrompt {
-    fn select_funding_choice(
-        &self,
-        prompt: &str,
-        choices: &[&PaymentMethod],
-    ) -> Result<usize, PromptError> {
-        self.transcript
-            .borrow_mut()
-            .push(Call::SelectFundingChoice {
-                prompt: prompt.to_owned(),
-                choices: choices.iter().map(|choice| (*choice).clone()).collect(),
-            });
-        match self.selection {
-            SelectionScript::Index(index) => Ok(index),
-            SelectionScript::Cancelled => Err(PromptError::Cancelled),
-            SelectionScript::Interaction => Err(PromptError::Interaction {
-                source: io::Error::other("synthetic selection failure"),
-            }),
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_pay(
     reader: &FakeReader,
     api: &FakeApi,
@@ -471,7 +434,6 @@ pub(super) async fn run_pay(
     prompt: &FakePrompt,
     amount: Money,
     note: Note,
-    requested_method: Option<&PaymentMethodId>,
     assume_yes: bool,
 ) -> Result<PayResult, PayError> {
     run_pay_with_visibility(
@@ -482,7 +444,6 @@ pub(super) async fn run_pay(
         amount,
         note,
         Visibility::Private,
-        requested_method,
         assume_yes,
     )
     .await
@@ -497,7 +458,6 @@ pub(super) async fn run_pay_with_visibility(
     amount: Money,
     note: Note,
     visibility: Visibility,
-    requested_method: Option<&PaymentMethodId>,
     assume_yes: bool,
 ) -> Result<PayResult, PayError> {
     let recipient = RecipientInput::from_str("456").map_err(|_| {
@@ -507,18 +467,7 @@ pub(super) async fn run_pay_with_visibility(
             },
         ))
     })?;
-    let prepared = prepare(
-        reader,
-        api,
-        generator,
-        prompt,
-        &recipient,
-        amount,
-        note,
-        visibility,
-        requested_method,
-    )
-    .await?;
+    let prepared = prepare(reader, api, generator, &recipient, amount, note, visibility).await?;
     let authorized = authorize(prompt, prepared, assume_yes)?;
     execute(api, authorized).await
 }

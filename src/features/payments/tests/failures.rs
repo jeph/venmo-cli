@@ -39,7 +39,6 @@ async fn credential_and_api_failures_preserve_categories_and_stop_at_the_failing
         let prompt = FakePrompt::new(
             false,
             ConfirmationScript::Answer(false),
-            SelectionScript::Index(0),
             Rc::clone(&transcript),
         );
 
@@ -50,7 +49,7 @@ async fn credential_and_api_failures_preserve_categories_and_stop_at_the_failing
         );
 
         // Execute once.
-        let result = run_pay(&reader, &api, &generator, &prompt, amount, note, None, true).await;
+        let result = run_pay(&reader, &api, &generator, &prompt, amount, note, true).await;
         let observed = Observation::new(pay_outcome(result), transcript.borrow().clone());
 
         assert_eq!(observed, expected);
@@ -85,6 +84,21 @@ async fn recipient_and_funding_contract_failures_never_reach_eligibility_or_writ
             ])),
             PayFailure::FundingSelection(FundingFailure::DuplicateMethodIds),
         ),
+        (
+            PayScript::successful()?.with_methods(Ok(vec![
+                peer_method(
+                    "bank-1",
+                    PeerFundingRole::Backup,
+                    PeerFundingFee::ProvenZero,
+                )?,
+                peer_method(
+                    "bank-2",
+                    PeerFundingRole::Backup,
+                    PeerFundingFee::from_cents(1),
+                )?,
+            ])),
+            PayFailure::FundingSelection(FundingFailure::AmbiguousAutomaticSelection),
+        ),
     ] {
         // Setup.
         let amount = Money::from_cents(1)?;
@@ -103,7 +117,6 @@ async fn recipient_and_funding_contract_failures_never_reach_eligibility_or_writ
         let prompt = FakePrompt::new(
             false,
             ConfirmationScript::Answer(false),
-            SelectionScript::Index(0),
             Rc::clone(&transcript),
         );
 
@@ -117,7 +130,7 @@ async fn recipient_and_funding_contract_failures_never_reach_eligibility_or_writ
         );
 
         // Execute once.
-        let result = run_pay(&reader, &api, &generator, &prompt, amount, note, None, true).await;
+        let result = run_pay(&reader, &api, &generator, &prompt, amount, note, true).await;
         let observed = Observation::new(pay_outcome(result), transcript.borrow().clone());
 
         assert_eq!(observed, expected);
@@ -140,7 +153,6 @@ async fn nonzero_transaction_fee_is_retained_and_payment_proceeds() -> TestResul
     let prompt = FakePrompt::new(
         false,
         ConfirmationScript::Answer(false),
-        SelectionScript::Index(0),
         Rc::clone(&transcript),
     );
 
@@ -164,7 +176,7 @@ async fn nonzero_transaction_fee_is_retained_and_payment_proceeds() -> TestResul
     );
 
     // Execute once.
-    let result = run_pay(&reader, &api, &generator, &prompt, amount, note, None, true).await;
+    let result = run_pay(&reader, &api, &generator, &prompt, amount, note, true).await;
     let observed = Observation::new(pay_outcome(result), transcript.borrow().clone());
 
     assert_eq!(observed, expected);

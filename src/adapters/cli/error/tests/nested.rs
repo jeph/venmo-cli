@@ -1,6 +1,5 @@
 use super::{api_operation_failure, operation_failure};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
-use crate::features::auth::PromptError;
 use crate::features::payments::FinancialValidationError;
 use crate::features::payments::funding::FundingSelectionError;
 use crate::features::people::info::UserInfoError;
@@ -115,10 +114,6 @@ fn nested_financial_failure_variants_have_deliberate_classes() {
             ApplicationFailureKind::Usage,
         ),
         (
-            FundingSelectionError::ExplicitMethodUnavailable,
-            ApplicationFailureKind::Usage,
-        ),
-        (
             FundingSelectionError::DuplicateMethodIds,
             ApplicationFailureKind::ApiContract,
         ),
@@ -127,20 +122,8 @@ fn nested_financial_failure_variants_have_deliberate_classes() {
             ApplicationFailureKind::ApiContract,
         ),
         (
-            FundingSelectionError::ExplicitMethodRequired,
+            FundingSelectionError::AmbiguousAutomaticSelection,
             ApplicationFailureKind::Usage,
-        ),
-        (
-            FundingSelectionError::Prompt {
-                source: PromptError::Cancelled,
-            },
-            ApplicationFailureKind::Cancelled,
-        ),
-        (
-            FundingSelectionError::Prompt {
-                source: PromptError::NoChoices,
-            },
-            ApplicationFailureKind::Internal,
         ),
     ];
     for (error, expected) in funding {

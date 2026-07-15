@@ -102,8 +102,7 @@ current injected boundaries are:
 - `CredentialReader`, `CredentialWriter`, and `CredentialDeleter`;
 - feature-owned API traits, including the independently scoped authentication and financial-write
   traits;
-- `AuthenticationInput`, `PromptAvailability`, `DefaultNoConfirmation`, and
-  `FundingChoiceSelection`;
+- `AuthenticationInput`, `PromptAvailability`, and `DefaultNoConfirmation`;
 - `Clock` for persisted UTC save time and `ClientRequestIdGenerator` for externally significant
   request IDs;
 - CLI output through caller-provided `Write` values and financial interruption through an injected

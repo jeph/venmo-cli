@@ -24,7 +24,6 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
     let prompt = FakePrompt::new(
         false,
         ConfirmationScript::Answer(false),
-        SelectionScript::Index(0),
         Rc::clone(&transcript),
     );
 
@@ -82,7 +81,6 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
         amount,
         Note::from_str("Synthetic payment note")?,
         Visibility::Public,
-        None,
         true,
     )
     .await;

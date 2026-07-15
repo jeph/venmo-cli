@@ -255,6 +255,13 @@ fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
 }
 
 #[test]
+fn pay_rejects_removed_from_option() {
+    assert_rejected(&[
+        "venmo", "pay", "@alice", "12.50", "--note", "Dinner", "--from", "method-1",
+    ]);
+}
+
+#[test]
 fn accept_username_is_not_the_accept_subcommand() {
     let parsed = Cli::try_parse_from(["venmo", "request", "@accept", "0.01", "--note", "Test"]);
     let dispatches_to_create = parsed.is_ok_and(|cli| matches!(cli.command, Command::Request(_)));

@@ -4,12 +4,12 @@ use super::confirmation::{self, DefaultNoConfirmationError};
 use super::funding::{self, FundingSelectionError};
 use super::preflight::{self, PeerPreflightError};
 use super::{
-    BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation, FundingChoiceSelection,
-    PayPlan, PaymentCreationApi, PeerFundingApi,
+    BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation, PayPlan, PaymentCreationApi,
+    PeerFundingApi,
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
 use crate::features::people::{RecipientInput, UserLookupApi, UserSearchApi};
-use crate::features::wallet::{BalanceApi, PaymentMethodId};
+use crate::features::wallet::BalanceApi;
 use crate::shared::{
     ApiFailure, ApiOperationFailure, ApplicationFailureKind, ClientRequestIdGenerator,
     CredentialEnvelope, CredentialReader, Money, Note, Visibility,
@@ -115,17 +115,14 @@ impl PayError {
 #[derive(Debug)]
 pub(crate) struct AuthorizedPay(PreparedPay);
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn prepare<R, A, G, P>(
+pub(crate) async fn prepare<R, A, G>(
     credentials: &R,
     api: &A,
     generator: &G,
-    prompt: &P,
     recipient: &RecipientInput,
     amount: Money,
     note: Note,
     visibility: Visibility,
-    requested_method: Option<&PaymentMethodId>,
 ) -> Result<PreparedPay, PayError>
 where
     R: CredentialReader,
@@ -137,7 +134,6 @@ where
         + BlankSourceEligibilityApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
     G: ClientRequestIdGenerator,
-    P: FundingChoiceSelection,
 {
     let (credential, account, recipient) = preflight::prepare(credentials, api, recipient)
         .await?
@@ -154,7 +150,7 @@ where
         .map_err(|source| PayError::FundingMethods {
             source: ApiOperationFailure::new(source),
         })?;
-    let funding = funding::select(prompt, &methods, requested_method)?;
+    let funding = funding::select(&methods)?;
     let eligibility = api
         .blank_source_eligibility(
             credential.access_token(),

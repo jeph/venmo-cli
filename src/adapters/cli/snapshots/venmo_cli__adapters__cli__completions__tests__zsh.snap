@@ -128,7 +128,6 @@ esac
 _arguments "${_arguments_options[@]}" : \
 '--note=[Non-empty payment note]:NOTE:_default' \
 '--visibility=[Visibility of the created payment]:VISIBILITY:(private friends public)' \
-'--from=[Preferred external/backup method ID; fees do not block selection and balance may be used first]:METHOD_ID:_default' \
 '--yes[Skip only the final default-No confirmation]' \
 '-v[Write redacted diagnostics to stderr]' \
 '--verbose[Write redacted diagnostics to stderr]' \
