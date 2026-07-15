@@ -147,7 +147,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         let body = JsonBody::encode(&CreateRequestRequest {
             uuid: &request_id,
             user_id: plan.recipient().user_id().as_str(),
-            audience: "private",
+            audience: plan.visibility().as_str(),
             amount: &amount,
             note: plan.note().as_str(),
         })
@@ -169,6 +169,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             plan.recipient(),
             plan.amount(),
             plan.note(),
+            plan.visibility(),
         )
     }
 

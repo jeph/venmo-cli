@@ -12,7 +12,7 @@ use crate::features::people::{RecipientInput, UserLookupApi, UserSearchApi};
 use crate::features::wallet::{BalanceApi, PaymentMethodId};
 use crate::shared::{
     ApiFailure, ApiOperationFailure, ApplicationFailureKind, ClientRequestIdGenerator,
-    CredentialEnvelope, CredentialReader, Money, Note,
+    CredentialEnvelope, CredentialReader, Money, Note, Visibility,
 };
 
 #[derive(Debug)]
@@ -124,6 +124,7 @@ pub(crate) async fn prepare<R, A, G, P>(
     recipient: &RecipientInput,
     amount: Money,
     note: Note,
+    visibility: Visibility,
     requested_method: Option<&PaymentMethodId>,
 ) -> Result<PreparedPay, PayError>
 where
@@ -177,6 +178,7 @@ where
         funding,
         eligibility_fee_cents,
         eligibility.into_token(),
+        visibility,
     );
     Ok(PreparedPay::new(credential, plan))
 }

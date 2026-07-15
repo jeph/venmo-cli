@@ -3,7 +3,7 @@ use std::io;
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
     AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg, RequestsOperation,
-    UsersOperation, handle_runtime_initialization_failure, run,
+    UsersOperation, VisibilityArg, handle_runtime_initialization_failure, run,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -172,6 +172,83 @@ fn user_and_request_info_parse_exact_typed_ids() {
             "--direction",
             "incoming",
         ][..],
+    ] {
+        assert_rejected(arguments);
+    }
+}
+
+#[test]
+fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
+    for command in ["pay", "request"] {
+        let defaults = Cli::try_parse_from([
+            "venmo",
+            command,
+            "@alice",
+            "0.01",
+            "--note",
+            "Synthetic note",
+        ]);
+        let default_visibility = defaults.ok().and_then(|cli| match cli.command {
+            Command::Pay(args) => Some(args.visibility),
+            Command::Request(args) => Some(args.visibility),
+            _ => None,
+        });
+        assert_eq!(default_visibility, Some(VisibilityArg::Private));
+
+        for (value, expected) in [
+            ("private", VisibilityArg::Private),
+            ("friends", VisibilityArg::Friends),
+            ("public", VisibilityArg::Public),
+        ] {
+            let parsed = Cli::try_parse_from([
+                "venmo",
+                command,
+                "@alice",
+                "0.01",
+                "--note",
+                "Synthetic note",
+                "--visibility",
+                value,
+            ]);
+            let visibility = parsed.ok().and_then(|cli| match cli.command {
+                Command::Pay(args) => Some(args.visibility),
+                Command::Request(args) => Some(args.visibility),
+                _ => None,
+            });
+            assert_eq!(visibility, Some(expected));
+        }
+    }
+}
+
+#[test]
+fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
+    for command in ["pay", "request"] {
+        let parsed = Cli::try_parse_from([
+            "venmo",
+            command,
+            "@alice",
+            "0.01",
+            "--note",
+            "Synthetic note",
+            "--visibility",
+            "contacts",
+        ]);
+        assert_eq!(
+            parsed.as_ref().err().map(clap::Error::kind),
+            Some(ErrorKind::InvalidValue)
+        );
+        if let Err(error) = parsed {
+            let rendered = error.to_string();
+            for value in ["private", "friends", "public"] {
+                assert!(rendered.contains(value));
+            }
+        }
+    }
+
+    for arguments in [
+        &["venmo", "accept", "request-1", "--visibility", "public"][..],
+        &["venmo", "decline", "request-1", "--visibility", "public"][..],
+        &["venmo", "activity", "list", "--visibility", "public"][..],
     ] {
         assert_rejected(arguments);
     }

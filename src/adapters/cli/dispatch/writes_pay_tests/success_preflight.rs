@@ -27,6 +27,28 @@ async fn pay_handler_orders_full_preflight_confirmation_write_output_and_flush()
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn pay_handler_propagates_explicit_visibility_to_plan_and_output() -> TestResult {
+    let script = PayScript::successful();
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        PayState {
+            calls: successful_calls_with_visibility(Visibility::Public),
+            remaining: Some(RemainingPayScript::after_success()),
+            stdout: writer_state(&PAY_RESULT.replace("private", "public"), 1),
+            stderr: writer_state(&PAY_PREFLIGHT.replace("private", "public"), 1),
+        },
+    );
+    let mut harness = PayHarness::new(script, PayState::default())?;
+    harness.args.visibility = crate::adapters::cli::args::VisibilityArg::Public;
+
+    let result = harness.execute().await;
+    let observed = harness.observed(result);
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn pay_preflight_failure_precedes_output_confirmation_and_interruption() -> TestResult {
     // Setup.
     let script = PayScript::successful().with_first_credential(CredentialStep::Missing);

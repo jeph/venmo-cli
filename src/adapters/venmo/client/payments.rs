@@ -10,7 +10,7 @@ use crate::features::payments::{
 };
 use crate::features::people::User;
 use crate::features::requests::{CreatedRequest, RequestId, RequestStatus};
-use crate::shared::{AccessToken, Account, DeviceId, Money, Note};
+use crate::shared::{AccessToken, Account, DeviceId, Money, Note, Visibility};
 
 use super::super::dto::{
     BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentRequest,
@@ -189,7 +189,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         let body = JsonBody::encode(&CreatePaymentRequest {
             uuid: &request_id,
             user_id: plan.recipient().user_id().as_str(),
-            audience: "private",
+            audience: plan.visibility().as_str(),
             amount: &amount,
             note: plan.note().as_str(),
             eligibility_token: plan.eligibility_token().expose(),
@@ -213,6 +213,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             plan.recipient(),
             plan.amount(),
             plan.note(),
+            plan.visibility(),
         )
     }
 }
@@ -298,6 +299,7 @@ fn validate_created_contract(
     recipient: &User,
     expected_amount: Money,
     expected_note: &Note,
+    expected_visibility: Visibility,
 ) -> Result<(String, PeerCreationStatus), VenmoApiError> {
     let operation = creation.operation();
     let record = payment.payment();
@@ -322,10 +324,16 @@ fn validate_created_contract(
     if record.note.as_deref() != Some(expected_note.as_str()) {
         return financial_contract_unknown(operation, "the response returned a different note");
     }
-    if record.audience.as_deref() != Some("private") {
+    let response_visibility = record
+        .audience
+        .as_deref()
+        .and_then(|audience| audience.parse::<Visibility>().ok());
+    if !response_visibility
+        .is_some_and(|visibility| visibility.is_at_least_as_restrictive_as(expected_visibility))
+    {
         return financial_contract_unknown(
             operation,
-            "the response did not prove a private audience",
+            "the response did not provide a supported audience no more public than requested",
         );
     }
     Ok((
@@ -341,6 +349,7 @@ pub(super) fn validate_created_payment(
     recipient: &User,
     expected_amount: Money,
     expected_note: &Note,
+    expected_visibility: Visibility,
 ) -> Result<CreatedPayment, VenmoApiError> {
     let creation = PeerCreation::Payment;
     let operation = creation.operation();
@@ -351,6 +360,7 @@ pub(super) fn validate_created_payment(
         recipient,
         expected_amount,
         expected_note,
+        expected_visibility,
     )?;
     let status = match status {
         PeerCreationStatus::Payment(status) => status,
@@ -375,6 +385,7 @@ pub(super) fn validate_created_request(
     recipient: &User,
     expected_amount: Money,
     expected_note: &Note,
+    expected_visibility: Visibility,
 ) -> Result<CreatedRequest, VenmoApiError> {
     let creation = PeerCreation::Request;
     let operation = creation.operation();
@@ -385,6 +396,7 @@ pub(super) fn validate_created_request(
         recipient,
         expected_amount,
         expected_note,
+        expected_visibility,
     )?;
     let status = match status {
         PeerCreationStatus::Request(status) => status,

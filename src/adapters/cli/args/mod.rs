@@ -14,7 +14,7 @@ pub use reads::{
     RequestDirectionArg, RequestInfoArgs, RequestsArgs, RequestsListArgs, RequestsOperation,
     UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
 };
-pub use writes::{AcceptArgs, DeclineArgs, PayArgs, RequestArgs};
+pub use writes::{AcceptArgs, DeclineArgs, PayArgs, RequestArgs, VisibilityArg};
 
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]
 #[command(

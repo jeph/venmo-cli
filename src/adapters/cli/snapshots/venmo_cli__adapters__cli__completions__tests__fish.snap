@@ -68,11 +68,17 @@ complete -c venmo -n "__fish_venmo_using_subcommand auth; and __fish_seen_subcom
 complete -c venmo -n "__fish_venmo_using_subcommand auth; and __fish_seen_subcommand_from help" -f -a "status" -d 'Validate the credential and show the active account'
 complete -c venmo -n "__fish_venmo_using_subcommand auth; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -l note -d 'Non-empty payment note' -r
+complete -c venmo -n "__fish_venmo_using_subcommand pay" -l visibility -d 'Visibility of the created payment' -r -f -a "private\t''
+friends\t''
+public\t''"
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -l from -d 'Preferred external/backup method ID; fees do not block selection and balance may be used first' -r
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -l yes -d 'Skip only the final default-No confirmation'
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -s v -l verbose -d 'Write redacted diagnostics to stderr'
 complete -c venmo -n "__fish_venmo_using_subcommand pay" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c venmo -n "__fish_venmo_using_subcommand request" -l note -d 'Non-empty request note' -r
+complete -c venmo -n "__fish_venmo_using_subcommand request" -l visibility -d 'Visibility of the created request' -r -f -a "private\t''
+friends\t''
+public\t''"
 complete -c venmo -n "__fish_venmo_using_subcommand request" -s v -l verbose -d 'Write redacted diagnostics to stderr'
 complete -c venmo -n "__fish_venmo_using_subcommand request" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c venmo -n "__fish_venmo_using_subcommand accept" -l yes -d 'Skip only the final default-No confirmation'

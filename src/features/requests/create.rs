@@ -6,7 +6,7 @@ use crate::features::payments::PeerPreflightError;
 use crate::features::people::{RecipientInput, UserLookupApi, UserSearchApi};
 use crate::shared::{
     ApiFailure, ApiOperationFailure, ApplicationFailureKind, ClientRequestIdGenerator,
-    CredentialEnvelope, CredentialReader, Money, Note,
+    CredentialEnvelope, CredentialReader, Money, Note, Visibility,
 };
 
 #[derive(Debug)]
@@ -73,6 +73,7 @@ pub(crate) async fn prepare<R, A, G>(
     recipient: &RecipientInput,
     amount: Money,
     note: Note,
+    visibility: Visibility,
 ) -> Result<PreparedRequest, RequestCreateError>
 where
     R: CredentialReader,
@@ -84,7 +85,14 @@ where
         crate::features::payments::prepare_peer_preflight(credentials, api, recipient)
             .await?
             .into_parts();
-    let plan = CreateRequestPlan::new(generator.generate(), account, recipient, amount, note);
+    let plan = CreateRequestPlan::new(
+        generator.generate(),
+        account,
+        recipient,
+        amount,
+        note,
+        visibility,
+    );
     Ok(PreparedRequest::new(credential, plan))
 }
 

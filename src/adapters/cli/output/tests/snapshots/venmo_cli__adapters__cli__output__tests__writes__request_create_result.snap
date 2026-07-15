@@ -6,4 +6,4 @@ Request ID: request-1
 Status: pending
 Requested from: @bob (Synthetic User)
 Amount: $0.01
-Audience: private
+Requested audience: private

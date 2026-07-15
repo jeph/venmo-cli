@@ -89,7 +89,7 @@ pub(super) const PAY_PREFLIGHT: &str = concat!(
     "  Recipient: @bob (Synthetic recipient) (ID 456)\n",
     "  Amount: $0.01\n",
     "  Note: Synthetic payment\n",
-    "  Audience: private\n",
+    "  Requested audience: private\n",
     "  Available Venmo balance: $3.00\n",
     "  Submitted backup method: Synthetic bank (bank ending 1234, ID bank-1)\n",
     "  Submitted method fee: unknown\n",
@@ -97,6 +97,7 @@ pub(super) const PAY_PREFLIGHT: &str = concat!(
     "  Eligibility-reported total: $0.01\n",
     "  Warning: Venmo may use available balance before the submitted backup method.\n",
     "  Warning: eligibility is not bound to the submitted backup method; the final fee may differ.\n",
+    "  Warning: Venmo may apply a more restrictive audience based on participant privacy settings.\n",
 );
 
 pub(super) const PAY_RESULT: &str = concat!(
@@ -104,7 +105,7 @@ pub(super) const PAY_RESULT: &str = concat!(
     "Status: settled\n",
     "Recipient: @bob (Synthetic recipient)\n",
     "Amount: $0.01\n",
-    "Audience: private\n",
+    "Requested audience: private\n",
     "Eligibility-reported fee: $0.00\n",
     "Submitted backup method ID: bank-1\n",
     "The response does not prove the final funding source or fee; Venmo may have used available balance before the submitted backup method.\n",

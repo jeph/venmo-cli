@@ -55,6 +55,7 @@ where
         &args.recipient,
         args.amount,
         args.note,
+        args.visibility.into(),
         args.from.as_ref(),
     )
     .await?;
@@ -91,6 +92,7 @@ where
         &args.recipient,
         args.amount,
         args.note,
+        args.visibility.into(),
     )
     .await?;
     let interruption = make_interruption()?;

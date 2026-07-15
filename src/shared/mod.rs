@@ -12,6 +12,7 @@ pub(crate) mod opaque_id;
 mod pagination;
 mod user_id;
 mod username;
+mod visibility;
 
 pub use account::Account;
 pub use client::ClientRequestId;
@@ -39,6 +40,7 @@ pub use pagination::{
 };
 pub use user_id::{UserId, UserIdParseError};
 pub use username::{Username, UsernameParseError};
+pub use visibility::{Visibility, VisibilityParseError};
 
 #[cfg(test)]
 pub(crate) mod test_support;

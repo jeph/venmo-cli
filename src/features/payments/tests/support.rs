@@ -24,6 +24,7 @@ pub(super) struct PayPlanCall {
     pub(super) backup_method: PeerFundingMethod,
     pub(super) eligibility_fee_cents: u64,
     pub(super) eligibility_token: RedactedSecret,
+    pub(super) visibility: Visibility,
 }
 
 impl From<&PayPlan> for PayPlanCall {
@@ -38,6 +39,7 @@ impl From<&PayPlan> for PayPlanCall {
             backup_method: plan.backup_method().clone(),
             eligibility_fee_cents: plan.eligibility_fee_cents(),
             eligibility_token: RedactedSecret::Redacted,
+            visibility: plan.visibility(),
         }
     }
 }
@@ -472,6 +474,32 @@ pub(super) async fn run_pay(
     requested_method: Option<&PaymentMethodId>,
     assume_yes: bool,
 ) -> Result<PayResult, PayError> {
+    run_pay_with_visibility(
+        reader,
+        api,
+        generator,
+        prompt,
+        amount,
+        note,
+        Visibility::Private,
+        requested_method,
+        assume_yes,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_pay_with_visibility(
+    reader: &FakeReader,
+    api: &FakeApi,
+    generator: &FixedGenerator,
+    prompt: &FakePrompt,
+    amount: Money,
+    note: Note,
+    visibility: Visibility,
+    requested_method: Option<&PaymentMethodId>,
+    assume_yes: bool,
+) -> Result<PayResult, PayError> {
     let recipient = RecipientInput::from_str("456").map_err(|_| {
         PayError::Preflight(PeerPreflightError::Recipient(
             crate::features::people::recipients::RecipientResolutionError::Internal {
@@ -487,6 +515,7 @@ pub(super) async fn run_pay(
         &recipient,
         amount,
         note,
+        visibility,
         requested_method,
     )
     .await?;
@@ -538,6 +567,7 @@ pub(super) fn successful_calls_with_fee(
                 backup_method: method,
                 eligibility_fee_cents,
                 eligibility_token: RedactedSecret::Redacted,
+                visibility: Visibility::Private,
             }),
         },
     ])
@@ -646,7 +676,16 @@ pub(super) fn pay_plan(
     balance: Balance,
     method: PeerFundingMethod,
 ) -> Result<PayPlan, Box<dyn Error>> {
-    pay_plan_with_fee(account, recipient, amount, note, balance, method, 0)
+    pay_plan_with_fee_and_visibility(
+        account,
+        recipient,
+        amount,
+        note,
+        balance,
+        method,
+        0,
+        Visibility::Private,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -659,6 +698,44 @@ pub(super) fn pay_plan_with_fee(
     method: PeerFundingMethod,
     eligibility_fee_cents: u64,
 ) -> Result<PayPlan, Box<dyn Error>> {
+    pay_plan_with_fee_and_visibility(
+        account,
+        recipient,
+        amount,
+        note,
+        balance,
+        method,
+        eligibility_fee_cents,
+        Visibility::Private,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn pay_plan_with_visibility(
+    account: Account,
+    recipient: User,
+    amount: Money,
+    note: Note,
+    balance: Balance,
+    method: PeerFundingMethod,
+    visibility: Visibility,
+) -> Result<PayPlan, Box<dyn Error>> {
+    pay_plan_with_fee_and_visibility(
+        account, recipient, amount, note, balance, method, 0, visibility,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn pay_plan_with_fee_and_visibility(
+    account: Account,
+    recipient: User,
+    amount: Money,
+    note: Note,
+    balance: Balance,
+    method: PeerFundingMethod,
+    eligibility_fee_cents: u64,
+    visibility: Visibility,
+) -> Result<PayPlan, Box<dyn Error>> {
     Ok(PayPlan::new(
         fixed_request_id(),
         account,
@@ -669,6 +746,7 @@ pub(super) fn pay_plan_with_fee(
         method,
         eligibility_fee_cents,
         EligibilityToken::parse_owned(ELIGIBILITY_TOKEN.to_owned())?,
+        visibility,
     ))
 }
 

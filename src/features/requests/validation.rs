@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use super::{RequestAction, RequestDirection, RequestId, RequestRecord};
-use crate::shared::{ApplicationFailureKind, Note};
+use crate::shared::{ApplicationFailureKind, Note, Visibility};
 
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 pub enum RequestMutationValidationError {
@@ -65,7 +65,11 @@ pub fn validate_complete_request(
     {
         return Err(RequestMutationValidationError::InvalidNote);
     }
-    if !matches!(request.audience(), Some("private" | "friends" | "public")) {
+    if request
+        .audience()
+        .and_then(|audience| audience.parse::<Visibility>().ok())
+        .is_none()
+    {
         return Err(RequestMutationValidationError::UnsupportedAudience);
     }
     if request.counterparty().username().is_none() {

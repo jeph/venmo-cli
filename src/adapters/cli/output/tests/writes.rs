@@ -21,10 +21,13 @@ use crate::features::requests::{
 use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
 use crate::shared::{
     AccessToken, Account, ClientRequestId, CredentialEnvelope, DeviceId, Money, Note, UserId,
-    Username,
+    Username, Visibility,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+const AUDIENCE_WARNING: &str =
+    "Venmo may apply a more restrictive audience based on participant privacy settings.";
 
 #[test]
 fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used() -> TestResult {
@@ -35,6 +38,7 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
 
     let preflight = String::from_utf8(preflight)?;
     insta::assert_snapshot!("pay_preflight", preflight);
+    assert!(preflight.contains(AUDIENCE_WARNING));
     assert!(!preflight.contains("Synthetic\nrecipient"));
     for hidden in [
         "synthetic-token",
@@ -54,6 +58,7 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
     let pay_output = String::from_utf8(pay_output)?;
     insta::assert_snapshot!("pay_result", pay_output);
     assert!(!pay_output.contains("Actual funding"));
+    assert!(!pay_output.contains(AUDIENCE_WARNING));
 
     let request = RequestCreateResult::new(
         synthetic_request_plan()?,
@@ -66,6 +71,7 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
     write_request_create_result(&mut request_output, &request)?;
     let request_output = String::from_utf8(request_output)?;
     insta::assert_snapshot!("request_create_result", request_output);
+    assert!(!request_output.contains(AUDIENCE_WARNING));
     Ok(())
 }
 
@@ -111,6 +117,29 @@ fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult 
     Ok(())
 }
 
+#[test]
+fn creation_output_renders_requested_visibility() -> TestResult {
+    let prepared = PreparedPay::new(
+        synthetic_credential()?,
+        synthetic_pay_plan_with_visibility(Visibility::Friends)?,
+    );
+    let mut pay_output = Vec::new();
+    write_pay_preflight(&mut pay_output, &prepared)?;
+    assert!(String::from_utf8(pay_output)?.contains("Requested audience: friends"));
+
+    let request = RequestCreateResult::new(
+        synthetic_request_plan_with_visibility(Visibility::Public)?,
+        CreatedRequest::new(
+            RequestId::from_str("request-1")?,
+            RequestStatus::from_str("pending")?,
+        ),
+    );
+    let mut request_output = Vec::new();
+    write_request_create_result(&mut request_output, &request)?;
+    assert!(String::from_utf8(request_output)?.contains("Requested audience: public"));
+    Ok(())
+}
+
 fn synthetic_user(id: &str, username: &str) -> Result<User, Box<dyn Error>> {
     Ok(User::new(
         UserId::from_str(id)?,
@@ -131,6 +160,10 @@ fn synthetic_credential() -> Result<CredentialEnvelope, Box<dyn Error>> {
 }
 
 fn synthetic_pay_plan() -> Result<PayPlan, Box<dyn Error>> {
+    synthetic_pay_plan_with_visibility(Visibility::Private)
+}
+
+fn synthetic_pay_plan_with_visibility(visibility: Visibility) -> Result<PayPlan, Box<dyn Error>> {
     Ok(PayPlan::new(
         ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
         Account::new(
@@ -162,10 +195,17 @@ fn synthetic_pay_plan() -> Result<PayPlan, Box<dyn Error>> {
         ),
         3,
         EligibilityToken::parse_owned("synthetic-eligibility".to_owned())?,
+        visibility,
     ))
 }
 
 fn synthetic_request_plan() -> Result<CreateRequestPlan, Box<dyn Error>> {
+    synthetic_request_plan_with_visibility(Visibility::Private)
+}
+
+fn synthetic_request_plan_with_visibility(
+    visibility: Visibility,
+) -> Result<CreateRequestPlan, Box<dyn Error>> {
     Ok(CreateRequestPlan::new(
         ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
         Account::new(
@@ -176,6 +216,7 @@ fn synthetic_request_plan() -> Result<CreateRequestPlan, Box<dyn Error>> {
         synthetic_user("456", "bob")?,
         Money::from_cents(1)?,
         Note::from_str("Synthetic note")?,
+        visibility,
     ))
 }
 

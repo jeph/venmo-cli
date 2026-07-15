@@ -42,7 +42,17 @@ pub(super) fn successful_calls_without_stdout_flush() -> Vec<PayCall> {
 }
 
 pub(super) fn successful_calls() -> Vec<PayCall> {
+    successful_calls_with_visibility(Visibility::Private)
+}
+
+pub(super) fn successful_calls_with_visibility(visibility: Visibility) -> Vec<PayCall> {
     let mut calls = successful_calls_without_stdout_flush();
+    if let Some(PayCall::CreatePayment { plan }) = calls
+        .iter_mut()
+        .find(|call| matches!(call, PayCall::CreatePayment { .. }))
+    {
+        plan.visibility = visibility;
+    }
     calls.push(PayCall::StdoutFlush);
     calls
 }
@@ -57,6 +67,7 @@ pub(super) fn create_payment_call() -> PayCall {
             note: "Synthetic payment".to_owned(),
             backup_method_id: "bank-1".to_owned(),
             eligibility_fee_cents: 0,
+            visibility: Visibility::Private,
         },
     }
 }

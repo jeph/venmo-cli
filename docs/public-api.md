@@ -22,7 +22,7 @@ and black-box tests.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
   `RequestDirectionArg`.
-- Financial command inputs: `PayArgs`, `RequestArgs`, `AcceptArgs`, `DeclineArgs`.
+- Financial command inputs: `PayArgs`, `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `VisibilityArg`.
 - Completion generation: `CompletionsArgs`, `CompletionShell`.
 
 ### Process/runtime surface
@@ -54,6 +54,7 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 - `Account`, `ClientRequestId`.
 - `Money`, `MoneyParseError`, `Note`, `NoteParseError`.
 - `UserId`, `UserIdParseError`, `Username`, `UsernameParseError`.
+- `Visibility`, `VisibilityParseError`.
 - `Limit`, `LimitParseError`, `Offset`, `OffsetParseError`, `DEFAULT_LIST_LIMIT`,
   `MAX_LIST_LIMIT`.
 - `ContinuationTokenParseError`, `MAX_CONTINUATION_TOKEN_BYTES`, `OpaqueIdParseError`.
@@ -120,6 +121,12 @@ Clap schema:
   `RequestsOperation::Info(RequestInfoArgs)` variants in exhaustive matches.
 - `UserInfoResult` and `RequestInfoResult` are now available from `venmo_cli::model`.
 
+`PayArgs` and `RequestArgs` also gained a public `visibility: VisibilityArg` field. Callers
+constructing either argument struct directly must select a value, normally
+`VisibilityArg::Private` to preserve 0.1 behavior. `PayPlan` and `CreateRequestPlan` now expose the
+corresponding requested, frontend-neutral `Visibility` through `visibility()`; it does not claim
+the eventual audience Venmo applies after participant privacy settings.
+
 ## Semver expectations
 
 The crate is pre-1.0, but version numbers still communicate intent:
@@ -127,7 +134,7 @@ The crate is pre-1.0, but version numbers still communicate intent:
 - Patch releases should preserve source compatibility for the `cli` and `model` facade
   paths and signatures. Public field/type changes, removed trait implementations, and enum variant
   changes require the same compatibility review as other public API changes.
-- An intentional incompatible facade change requires at least `0.2.0` and a documented migration.
+- An intentional incompatible facade change requires at least the next minor version and a documented migration.
   Pre-1.0 minor releases may make such changes; callers must not assume 1.0-level stability.
 - Crate-private modules may change in any release and carry no compatibility promise. Their names
   in architecture documentation describe ownership, not a supported import path.

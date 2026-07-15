@@ -4,7 +4,7 @@ expression: help
 ---
 Create a request immediately
 
-Usage: request --note <NOTE> <RECIPIENT> <AMOUNT>
+Usage: request [OPTIONS] --note <NOTE> <RECIPIENT> <AMOUNT>
 
 Arguments:
   <RECIPIENT>
@@ -16,6 +16,12 @@ Arguments:
 Options:
       --note <NOTE>
           Non-empty request note
+
+      --visibility <VISIBILITY>
+          Visibility of the created request
+
+          [default: private]
+          [possible values: private, friends, public]
 
   -h, --help
           Print help (see a summary with '-h')

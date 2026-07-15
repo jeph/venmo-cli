@@ -15,7 +15,7 @@ use crate::features::requests::{RequestId, RequestStatus};
 use crate::shared::{
     AccessToken, Account, ApiFailureKind, ClientRequestId, CredentialAccessError,
     CredentialCapability, CredentialFailureKind, CredentialFormat, CredentialStoreFailure,
-    DeviceId, LoadedCredential, UserId, Username,
+    DeviceId, LoadedCredential, UserId, Username, Visibility,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -37,6 +37,7 @@ struct CreatePlanCall {
     recipient: User,
     amount: Money,
     note: Note,
+    visibility: Visibility,
 }
 
 impl From<&CreateRequestPlan> for CreatePlanCall {
@@ -47,6 +48,7 @@ impl From<&CreateRequestPlan> for CreatePlanCall {
             recipient: plan.recipient().clone(),
             amount: plan.amount(),
             note: plan.note().clone(),
+            visibility: plan.visibility(),
         }
     }
 }
@@ -302,6 +304,7 @@ async fn run_create(
     generator: &FixedGenerator,
     amount: Money,
     note: Note,
+    visibility: Visibility,
 ) -> Result<RequestCreateResult, RequestCreateError> {
     let recipient = RecipientInput::from_str("456").map_err(|_| {
         RequestCreateError::Preflight(PeerPreflightError::Recipient(
@@ -310,7 +313,7 @@ async fn run_create(
             },
         ))
     })?;
-    let prepared = prepare(reader, api, generator, &recipient, amount, note).await?;
+    let prepared = prepare(reader, api, generator, &recipient, amount, note, visibility).await?;
     execute(api, prepared).await
 }
 
@@ -341,6 +344,7 @@ async fn create_uses_complete_arguments_and_exactly_one_ordered_write() -> TestR
         recipient.clone(),
         amount,
         note.clone(),
+        Visibility::Public,
     );
     let expected = Observation {
         outcome: CreateOutcome::Success(Box::new(RequestCreateResult::new(plan, created))),
@@ -359,13 +363,14 @@ async fn create_uses_complete_arguments_and_exactly_one_ordered_write() -> TestR
                     recipient,
                     amount,
                     note: note.clone(),
+                    visibility: Visibility::Public,
                 }),
             },
         ],
     };
 
     // Execute once.
-    let result = run_create(&reader, &api, &generator, amount, note).await;
+    let result = run_create(&reader, &api, &generator, amount, note, Visibility::Public).await;
     let observed = Observation {
         outcome: project(result),
         transcript: transcript.borrow().clone(),
@@ -424,7 +429,7 @@ async fn credential_api_contract_and_ambiguous_failures_stop_exactly_without_ret
         };
 
         // Execute once.
-        let result = run_create(&reader, &api, &generator, amount, note).await;
+        let result = run_create(&reader, &api, &generator, amount, note, Visibility::Private).await;
         let observed = Observation {
             outcome: project(result),
             transcript: transcript.borrow().clone(),
@@ -476,7 +481,7 @@ async fn returned_recipient_id_mismatch_and_financial_rejection_never_generate_o
         };
 
         // Execute once.
-        let result = run_create(&reader, &api, &generator, amount, note).await;
+        let result = run_create(&reader, &api, &generator, amount, note, Visibility::Private).await;
         let observed = Observation {
             outcome: project(result),
             transcript: transcript.borrow().clone(),
@@ -551,6 +556,7 @@ fn successful_calls(amount: Money, note: Note) -> Result<Vec<Call>, Box<dyn Erro
                 recipient: financial_user("456", UserProfileKind::Personal)?,
                 amount,
                 note,
+                visibility: Visibility::Private,
             }),
         },
     ])

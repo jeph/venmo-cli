@@ -17,6 +17,12 @@ Options:
       --note <NOTE>
           Non-empty payment note
 
+      --visibility <VISIBILITY>
+          Visibility of the created payment
+
+          [default: private]
+          [possible values: private, friends, public]
+
       --from <METHOD_ID>
           Preferred external/backup method ID; fees do not block selection and balance may be used first
 

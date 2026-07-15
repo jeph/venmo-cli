@@ -50,7 +50,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Normally limit controlled live mutations to $0.01 and reconcile each mutation before authorizing another. On 2026-07-14 the owner made a narrow exception for one existing legitimate $25 incoming request that the owner already owes: one `approve` attempt, no retries or field variation, full authoritative preflight and default-No confirmation, followed by immediate CLI and official-app reconciliation. This exception does not prove the final funding source or fee and does not authorize any other elevated-value test.
 - Keep direct request creation as `venmo request ...`. Make the frequent request-state actions top-level `venmo accept ...` and `venmo decline ...`; reject nested `venmo request accept ...` and add no compatibility alias.
 - Call transaction history `activity`.
-- Keep payment audience private in the first release.
+- Let `pay` and direct request creation select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective, and disclose the restriction rule in payment preflight before confirmation. Do not add the option to action-only request acceptance or decline.
 - Limit ordinary payment release to personal-profile peer-to-peer operations with a valid eligibility token. Allow any peer-eligible external method regardless of method-level or eligibility-reported fee, disclose available fee evidence before confirmation, and do not claim the final fee is proven. Acceptance requires full available-balance coverage and submits no external funding method, but the update and response do not prove the actual source or fee.
 - Treat `--from` as the submitted preferred external or backup funding method, not a guarantee that the method will be debited. Venmo wallet balance may take priority; preflight must state that behavior and success output may name an actual source only when authoritative evidence proves it.
 - Require default-No confirmation only when the user sends money: `pay` and `accept`.
@@ -111,8 +111,8 @@ venmo auth reauthenticate
 venmo auth logout [--revoke]
 venmo auth status
 
-venmo pay <RECIPIENT> <AMOUNT> --note <NOTE> [--from <METHOD_ID>] [--yes]
-venmo request <RECIPIENT> <AMOUNT> --note <NOTE>
+venmo pay <RECIPIENT> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--from <METHOD_ID>] [--yes]
+venmo request <RECIPIENT> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>]
 venmo accept <REQUEST_ID> [--yes]
 venmo decline <REQUEST_ID>
 
@@ -209,7 +209,7 @@ Proposed stable exit codes:
 
 ```text
 venmo pay @alice 12.50 --note "Dinner"
-venmo pay @alice 12.50 --note "Dinner" --from 123456789 --yes
+venmo pay @alice 12.50 --note "Dinner" --visibility friends --from 123456789 --yes
 ```
 
 Contract:
@@ -218,6 +218,7 @@ Contract:
 - Recipient is an exact `@username` or positive numeric Venmo user ID.
 - Amount is a positive decimal with at most two fractional digits.
 - `--note` is required and must contain non-whitespace text.
+- `--visibility` accepts exactly `private`, `friends`, or `public` and defaults to `private`.
 - `--from` accepts a payment-method ID shown by `payment-methods list` as the preferred external or backup method submitted to Venmo. It does not promise that Venmo will debit that method instead of available Venmo balance.
 - `--yes` skips only confirmation; it does not skip validation or preflight.
 
@@ -236,7 +237,7 @@ Before confirmation, show:
 - Resolved recipient username, display name, and user ID.
 - Exact amount.
 - Note.
-- Private audience.
+- Requested audience, plus a warning that Venmo may apply a more restrictive audience based on participant privacy settings.
 - Selected method fee evidence (`$0.00`, a known nonzero amount, or `unknown`).
 - Eligibility-reported fee and corresponding total, with a warning that eligibility is not method-bound and the final fee may differ.
 - Current Venmo wallet balance when supplied by the verified preflight contract.
@@ -251,11 +252,13 @@ Confirmation defaults to **No**. Non-interactive execution without `--yes` is re
 
 ```text
 venmo request @alice 12.50 --note "Dinner"
+venmo request @alice 12.50 --note "Dinner" --visibility public
 ```
 
 The command shares recipient, amount, note, and preflight validation with `pay`, but:
 
 - Creates a request rather than a payment.
+- Accepts the same typed `--visibility private|friends|public` selection as `pay` and defaults to `private`.
 - Never accepts or sends a funding-source ID.
 - Has no confirmation prompt and no `--yes`; after successful preflight it creates the request immediately.
 - Works non-interactively without an acknowledgement flag.
@@ -532,7 +535,6 @@ Annotations are hints for trusted harness UI, filtering, and approval policy. Th
 - Adding, removing, accepting, or blocking friends.
 - Transfers or cash-out to a bank.
 - Adding or removing payment methods.
-- Public/friends audience selection.
 - Public or friends activity feeds.
 - Comments, likes, profile editing, disputes, refunds, or chargebacks.
 - Phone-number or email recipient resolution.
@@ -809,6 +811,12 @@ Public-source research completed on 2026-07-12 produced the contract leads below
 - A read-only live CLI preflight resolved the exact approved test counterparty through an authoritative user-detail fetch, proved a personal/payable non-self target, excluded wallet balance from external backup selection, and received a transaction-specific eligibility result totaling exactly zero fee. The fuzzy search reached its bounded traversal limit, so the verified rule now accepts one exact username match only after detail-by-ID returns the same ID and case-insensitive exact username; no match still fails when traversal is incomplete.
 - After separate immediate approval, the Rust `pay` command sent exactly one private $0.01 payment with a unique generated note and zero retries. Its response matched `data.payment` and the submitted action, parties, amount, note, private audience, supported status, creation timestamp, and canonical ID. A separate CLI activity read found the matching latest one-cent pay, and the owner independently confirmed exactly one matching payment in the official Venmo mobile app.
 - After the payment was reconciled and a second immediate approval was obtained, the Rust request command sent exactly one private $0.01 request with a distinct generated note and zero retries. Its response passed the same operation-specific strict checks, a separate CLI request read found the matching pending outgoing request, and the owner independently confirmed exactly one matching request in the official mobile app. No token, device ID, user/payment/request ID, note, raw body, account identity, funding details, or mobile traffic was retained.
+
+**Visibility scope and validation decision (2026-07-14):** The owner approved implementing `friends` and `public` creation audiences for both `pay` and direct `request`, alongside the existing default-private behavior. The typed selection is carried through immutable feature plans and exact request serialization, and synthetic tests pin every value for both positive payment and negative request bodies. Current official Venmo privacy guidance states that an individual payment may select Public, Friends, or Private, while Venmo always applies the more restrictive setting selected between payment partners; it also says past payments can only be made more private ([Manage your Venmo privacy settings](https://help.venmo.com/cs/articles/manage-your-venmo-privacy-settings-vhel351), [Changing Payment Privacy & Hiding Past Payments](https://help.venmo.com/cs/articles/changing-payment-privacy-hiding-past-payments-vhel191)). Creation validation therefore requires a supported response audience no more public than requested. Missing, unknown, or more-public values remain ambiguous, but an equal or more-restrictive value is accepted. Output calls the plan value `Requested audience` rather than claiming it is effective; payment preflight carries the participant-privacy disclaimer, and post-write output does not repeat it.
+
+Four separately approved, non-retried, one-cent payment validations then used unique notes and immediate CLI plus official-app reconciliation. Two friends-selected payments to counterparties with more restrictive settings each settled exactly once as Private. With a compatible counterparty, a friends-selected payment settled exactly once as Friends and a public-selected payment settled exactly once as Public. Every payment reduced available balance by exactly one cent and appeared exactly once in authoritative activity and the official app. The immediate creation responses did not consistently prove the eventual selected audience, including for the reconciled Friends and Public results, so exact selected-audience response equality would falsely report successful writes as ambiguous. The equal-or-more-restrictive response rule remains fail-closed against any response more public than requested while tolerating Venmo's documented partner restriction and observed response timing.
+
+The owner explicitly waived separate live friends/public request mutations after reviewing that payment and request creation share `POST /v1/payments` and the exact typed `audience` field; request creation differs by a negative amount and omission of payment funding fields, all of which remain pinned by synthetic contract tests. This is an owner-approved evidence decision, not a claim that a non-private request was independently live-validated. The earlier private request validation remains the direct production evidence for request semantics.
 
 The controlled decline validation on 2026-07-14 used one separately authorized pending one-cent incoming request. The CLI sent exactly one `deny` update with no retry or field variation, received the exact original request ID and terminal `cancelled` status, and reported that no money was sent. Immediate reconciliation proved the request disappeared from pending results, no new payment activity appeared, and available balance remained unchanged.
 
@@ -1219,8 +1227,8 @@ Before writing, and before the confirmation prompt for `pay`:
 6. Resolve the strictly peer-eligible backup funding method for `pay`.
 7. Preserve the selected method's fee evidence and the eligibility-reported fee without rejecting zero, nonzero, or unknown fee states.
 8. Read the wallet balance required for the balance-priority disclosure.
-9. Build an immutable private-audience plan.
-10. For `pay`, render a sanitized complete summary including method fee evidence, eligibility-reported fee and total, wallet balance, backup method, method-binding caveat, and balance-priority warning before confirmation.
+9. Build an immutable plan carrying the selected requested audience, which defaults to private.
+10. For `pay`, render a sanitized complete summary including the requested audience, the participant-privacy restriction warning, method fee evidence, eligibility-reported fee and total, wallet balance, backup method, method-binding caveat, and balance-priority warning before confirmation.
 
 If any preflight step fails, send no write request.
 

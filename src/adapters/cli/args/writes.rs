@@ -1,11 +1,29 @@
-use clap::Args;
+use clap::{Args, ValueEnum};
 
 use crate::features::people::RecipientInput;
 use crate::features::requests::RequestId;
 use crate::features::wallet::PaymentMethodId;
-use crate::shared::{Money, Note};
+use crate::shared::{Money, Note, Visibility};
 
 use super::parsers::RedactedRequestIdParser;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum VisibilityArg {
+    #[default]
+    Private,
+    Friends,
+    Public,
+}
+
+impl From<VisibilityArg> for Visibility {
+    fn from(value: VisibilityArg) -> Self {
+        match value {
+            VisibilityArg::Private => Self::Private,
+            VisibilityArg::Friends => Self::Friends,
+            VisibilityArg::Public => Self::Public,
+        }
+    }
+}
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
@@ -23,6 +41,10 @@ pub struct PayArgs {
     /// Non-empty payment note.
     #[arg(long, value_name = "NOTE")]
     pub note: Note,
+
+    /// Visibility of the created payment.
+    #[arg(long, value_enum, default_value_t = VisibilityArg::Private)]
+    pub visibility: VisibilityArg,
 
     /// Preferred external/backup method ID; fees do not block selection and balance may be used first.
     #[arg(long, value_name = "METHOD_ID")]
@@ -49,6 +71,10 @@ pub struct RequestArgs {
     /// Non-empty request note.
     #[arg(long, value_name = "NOTE")]
     pub note: Note,
+
+    /// Visibility of the created request.
+    #[arg(long, value_enum, default_value_t = VisibilityArg::Private)]
+    pub visibility: VisibilityArg,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]

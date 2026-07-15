@@ -69,61 +69,143 @@ async fn ineligible_payment_is_a_confirmed_prewrite_rejection() -> TestResult {
 
 #[tokio::test(flavor = "current_thread")]
 async fn payment_creation_sends_exact_candidate_body_and_validates_success() -> TestResult {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/payments"))
-        .and(header("authorization", "Bearer synthetic-token"))
-        .and(header("device-id", "synthetic-device"))
-        .and(body_string(PAYMENT_CREATION_REQUEST_BODY))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(created_payment_body(
-                "payment-1",
-                "pay",
-                "settled",
-                "123",
-                "456",
-            )),
-        )
-        .mount(&server)
-        .await;
-    let client = test_client(&server)?;
-    let (token, device_id) = test_session()?;
-    let created = client
-        .create_payment(&token, &device_id, &pay_plan()?)
-        .await?;
-    assert_eq!(created.id().as_str(), "payment-1");
-    assert_eq!(created.status(), FinancialStatus::Settled);
-    assert_request_count(&server, 1).await;
+    for (visibility, expected_body) in [
+        (Visibility::Private, PAYMENT_CREATION_REQUEST_BODY),
+        (Visibility::Friends, PAYMENT_CREATION_FRIENDS_REQUEST_BODY),
+        (Visibility::Public, PAYMENT_CREATION_PUBLIC_REQUEST_BODY),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/payments"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_string(expected_body))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                created_payment_body_with_visibility(
+                    "payment-1",
+                    "pay",
+                    "settled",
+                    "123",
+                    "456",
+                    visibility,
+                ),
+            ))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let created = client
+            .create_payment(&token, &device_id, &pay_plan_with_visibility(visibility)?)
+            .await?;
+        assert_eq!(created.id().as_str(), "payment-1");
+        assert_eq!(created.status(), FinancialStatus::Settled);
+        assert_request_count(&server, 1).await;
+    }
     Ok(())
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn request_creation_sends_negative_amount_without_payment_only_fields() -> TestResult {
-    let server = MockServer::start().await;
+    for (visibility, expected_body) in [
+        (Visibility::Private, REQUEST_CREATION_REQUEST_BODY),
+        (Visibility::Friends, REQUEST_CREATION_FRIENDS_REQUEST_BODY),
+        (Visibility::Public, REQUEST_CREATION_PUBLIC_REQUEST_BODY),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/payments"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_string(expected_body))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                created_payment_body_with_visibility(
+                    "request-1",
+                    "charge",
+                    "pending",
+                    "123",
+                    "456",
+                    visibility,
+                ),
+            ))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let created = client
+            .create_request(
+                &token,
+                &device_id,
+                &request_plan_with_visibility(visibility)?,
+            )
+            .await?;
+        assert_eq!(created.id().as_str(), "request-1");
+        assert_eq!(created.status().as_str(), "pending");
+        assert_request_count(&server, 1).await;
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn creation_accepts_a_supported_response_audience_no_more_public_than_requested() -> TestResult
+{
+    let payment_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/payments"))
-        .and(header("authorization", "Bearer synthetic-token"))
-        .and(header("device-id", "synthetic-device"))
-        .and(body_string(REQUEST_CREATION_REQUEST_BODY))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(created_payment_body(
+        .and(body_string(PAYMENT_CREATION_PUBLIC_REQUEST_BODY))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            created_payment_body_with_visibility(
+                "payment-1",
+                "pay",
+                "settled",
+                "123",
+                "456",
+                Visibility::Private,
+            ),
+        ))
+        .mount(&payment_server)
+        .await;
+    let client = test_client(&payment_server)?;
+    let (token, device_id) = test_session()?;
+
+    let payment = client
+        .create_payment(
+            &token,
+            &device_id,
+            &pay_plan_with_visibility(Visibility::Public)?,
+        )
+        .await?;
+
+    assert_eq!(payment.id().as_str(), "payment-1");
+    assert_request_count(&payment_server, 1).await;
+
+    let request_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/payments"))
+        .and(body_string(REQUEST_CREATION_FRIENDS_REQUEST_BODY))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            created_payment_body_with_visibility(
                 "request-1",
                 "charge",
                 "pending",
                 "123",
                 "456",
-            )),
-        )
-        .mount(&server)
+                Visibility::Private,
+            ),
+        ))
+        .mount(&request_server)
         .await;
-    let client = test_client(&server)?;
-    let (token, device_id) = test_session()?;
-    let created = client
-        .create_request(&token, &device_id, &request_plan()?)
+    let client = test_client(&request_server)?;
+
+    let request = client
+        .create_request(
+            &token,
+            &device_id,
+            &request_plan_with_visibility(Visibility::Friends)?,
+        )
         .await?;
-    assert_eq!(created.id().as_str(), "request-1");
-    assert_eq!(created.status().as_str(), "pending");
-    assert_request_count(&server, 1).await;
+
+    assert_eq!(request.id().as_str(), "request-1");
+    assert_request_count(&request_server, 1).await;
     Ok(())
 }
 
@@ -169,11 +251,20 @@ async fn malformed_mismatched_and_unverified_write_responses_are_ambiguous() -> 
     missing_timestamp["data"]["payment"]["date_created"] = Value::Null;
     let mut invalid_timestamp = missing_timestamp.clone();
     invalid_timestamp["data"]["payment"]["date_created"] = Value::String("invalid".to_owned());
+    let mut missing_audience = created_payment_body("payment-1", "pay", "settled", "123", "456");
+    missing_audience["data"]["payment"]["audience"] = Value::Null;
+    let mut mismatched_audience = created_payment_body("payment-1", "pay", "settled", "123", "456");
+    mismatched_audience["data"]["payment"]["audience"] = Value::String("public".to_owned());
+    let mut unknown_audience = created_payment_body("payment-1", "pay", "settled", "123", "456");
+    unknown_audience["data"]["payment"]["audience"] = Value::String("synthetic".to_owned());
     let bodies = [
         (200_u16, "not-json".to_owned()),
         (200, serde_json::json!({"data": direct_payment}).to_string()),
         (200, missing_timestamp.to_string()),
         (200, invalid_timestamp.to_string()),
+        (200, missing_audience.to_string()),
+        (200, mismatched_audience.to_string()),
+        (200, unknown_audience.to_string()),
         (
             200,
             created_payment_body("payment-1", "pay", "settled", "123", "999").to_string(),
@@ -217,6 +308,53 @@ async fn malformed_mismatched_and_unverified_write_responses_are_ambiguous() -> 
 
         assert_eq!(observed, expected);
         assert!(!format!("{observed:?}").contains("synthetic-eligibility-token"));
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_creation_missing_or_more_public_audience_is_ambiguous() -> TestResult {
+    let mut missing = created_payment_body_with_visibility(
+        "request-1",
+        "charge",
+        "pending",
+        "123",
+        "456",
+        Visibility::Friends,
+    );
+    missing["data"]["payment"]["audience"] = Value::Null;
+    let more_public = created_payment_body_with_visibility(
+        "request-1",
+        "charge",
+        "pending",
+        "123",
+        "456",
+        Visibility::Public,
+    );
+
+    for body in [missing, more_public] {
+        let response = scripted_json_response(200, body)?;
+        let (token, device_id) = test_session()?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::financial_unknown(
+                REQUEST_CREATION_OPERATION,
+            )),
+            vec![payment_creation_request(
+                REQUEST_CREATION_FRIENDS_REQUEST_BODY,
+            )],
+        );
+
+        let result = client
+            .create_request(
+                &token,
+                &device_id,
+                &request_plan_with_visibility(Visibility::Friends)?,
+            )
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+
+        assert_eq!(observed, expected);
     }
     Ok(())
 }

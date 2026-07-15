@@ -47,7 +47,7 @@ use crate::features::wallet::{
 };
 use crate::shared::{
     AccessToken, Account, ApiFailure, ApiFailureKind, DeviceId, Limit, Money, Note, Offset, UserId,
-    Username,
+    Username, Visibility,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -66,9 +66,27 @@ const PAYMENT_CREATION_REQUEST_BODY: &str = concat!(
     r#""audience":"private","amount":0.01,"note":"Synthetic note","#,
     r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1"}"#,
 );
+const PAYMENT_CREATION_FRIENDS_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"friends","amount":0.01,"note":"Synthetic note","#,
+    r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1"}"#,
+);
+const PAYMENT_CREATION_PUBLIC_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"public","amount":0.01,"note":"Synthetic note","#,
+    r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1"}"#,
+);
 const REQUEST_CREATION_REQUEST_BODY: &str = concat!(
     r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
     r#""audience":"private","amount":-0.01,"note":"Synthetic note"}"#,
+);
+const REQUEST_CREATION_FRIENDS_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"friends","amount":-0.01,"note":"Synthetic note"}"#,
+);
+const REQUEST_CREATION_PUBLIC_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"public","amount":-0.01,"note":"Synthetic note"}"#,
 );
 const SYNTHETIC_ACCESS_TOKEN: &str = "synthetic-token";
 const SYNTHETIC_DEVICE_ID: &str = "synthetic-device";
@@ -484,6 +502,24 @@ fn created_payment_body(
     actor_id: &str,
     target_id: &str,
 ) -> Value {
+    created_payment_body_with_visibility(
+        id,
+        action,
+        status,
+        actor_id,
+        target_id,
+        Visibility::Private,
+    )
+}
+
+fn created_payment_body_with_visibility(
+    id: &str,
+    action: &str,
+    status: &str,
+    actor_id: &str,
+    target_id: &str,
+    visibility: Visibility,
+) -> Value {
     serde_json::json!({
         "data": {
             "payment": {
@@ -494,7 +530,7 @@ fn created_payment_body(
                 "actor": {"id": actor_id, "username": "owner"},
                 "target": {"user": {"id": target_id, "username": "bob"}},
                 "note": "Synthetic note",
-                "audience": "private",
+                "audience": visibility.as_str(),
                 "date_created": "2026-07-12T12:00:00"
             }
         }
@@ -534,6 +570,10 @@ fn zero_fee_peer_method() -> Result<PeerFundingMethod, Box<dyn Error>> {
 }
 
 fn pay_plan() -> Result<PayPlan, Box<dyn Error>> {
+    pay_plan_with_visibility(Visibility::Private)
+}
+
+fn pay_plan_with_visibility(visibility: Visibility) -> Result<PayPlan, Box<dyn Error>> {
     Ok(PayPlan::new(
         crate::shared::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
         test_account()?,
@@ -547,16 +587,24 @@ fn pay_plan() -> Result<PayPlan, Box<dyn Error>> {
         zero_fee_peer_method()?,
         0,
         EligibilityToken::parse_owned("synthetic-eligibility-token".to_owned())?,
+        visibility,
     ))
 }
 
 fn request_plan() -> Result<CreateRequestPlan, Box<dyn Error>> {
+    request_plan_with_visibility(Visibility::Private)
+}
+
+fn request_plan_with_visibility(
+    visibility: Visibility,
+) -> Result<CreateRequestPlan, Box<dyn Error>> {
     Ok(CreateRequestPlan::new(
         crate::shared::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
         test_account()?,
         financial_user("456", "bob")?,
         Money::from_cents(1)?,
         Note::from_str("Synthetic note")?,
+        visibility,
     ))
 }
 

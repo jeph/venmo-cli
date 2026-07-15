@@ -20,6 +20,7 @@ pub use crate::adapters::cli::args::{
     FriendsListArgs, FriendsOperation, LoginArgs, LogoutArgs, PayArgs, PaymentMethodsArgs,
     PaymentMethodsOperation, RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs,
     RequestsListArgs, RequestsOperation, UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
+    VisibilityArg,
 };
 pub use crate::adapters::cli::{
     AppError, ErrorCategory, handle_runtime_initialization_failure, run, write_error,

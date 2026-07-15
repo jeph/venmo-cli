@@ -19,7 +19,7 @@ use crate::shared::test_support::Observed;
 use crate::shared::{
     AccessToken, Account, ApiFailureKind, CredentialCapability, CredentialEnvelope,
     CredentialFailureKind, CredentialFormat, CredentialStoreFailure, DeviceId, LoadedCredential,
-    UserId, Username,
+    UserId, Username, Visibility,
 };
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
@@ -40,6 +40,7 @@ enum RequestCall {
         account_user_id: String,
         recipient_user_id: String,
         amount_cents: u64,
+        visibility: Visibility,
     },
 }
 
@@ -166,6 +167,7 @@ impl RequestCreationApi for FakeRequestApi {
                 account_user_id: plan.account().user_id().to_string(),
                 recipient_user_id: plan.recipient().user_id().to_string(),
                 amount_cents: plan.amount().cents(),
+                visibility: plan.visibility(),
             });
         let behavior = self.write_behavior.clone();
         async move {
@@ -359,7 +361,7 @@ async fn request_handler_success_has_one_typed_write_and_complete_output_state()
         RequestState {
             calls: successful_calls(true),
             stdout: writer_state(
-                "Request ID: request-1\nStatus: pending\nRequested from: @recipient (Synthetic recipient)\nAmount: $0.01\nAudience: private\n",
+                "Request ID: request-1\nStatus: pending\nRequested from: @recipient (Synthetic recipient)\nAmount: $0.01\nRequested audience: private\n",
                 1,
             ),
         },
@@ -373,6 +375,29 @@ async fn request_handler_success_has_one_typed_write_and_complete_output_state()
     assert_eq!(observed, expected);
     assert!(!output.contains("synthetic-token"));
     assert!(!output.contains("synthetic-device"));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_handler_propagates_explicit_visibility_to_plan_and_output() -> TestResult {
+    let mut setup = RequestSetup::successful()?;
+    setup.args.visibility = crate::adapters::cli::args::VisibilityArg::Friends;
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        RequestState {
+            calls: successful_calls_with_visibility(true, Visibility::Friends),
+            stdout: writer_state(
+                "Request ID: request-1\nStatus: pending\nRequested from: @recipient (Synthetic recipient)\nAmount: $0.01\nRequested audience: friends\n",
+                1,
+            ),
+        },
+    );
+    let mut harness = RequestHarness::new(setup, RequestState::default())?;
+
+    let result = harness.execute().await;
+    let observed = harness.observed(result);
+
+    assert_eq!(observed, expected);
     Ok(())
 }
 
@@ -487,7 +512,7 @@ async fn post_success_write_and_flush_failures_keep_the_specialized_ambiguous_er
             initial_stdout
         } else {
             WriterState {
-                bytes: b"Request ID: request-1\nStatus: pending\nRequested from: @recipient (Synthetic recipient)\nAmount: $0.01\nAudience: private\n".to_vec(),
+                bytes: b"Request ID: request-1\nStatus: pending\nRequested from: @recipient (Synthetic recipient)\nAmount: $0.01\nRequested audience: private\n".to_vec(),
                 flush_count: 1,
                 fail_flush: true,
                 ..WriterState::default()
@@ -602,6 +627,13 @@ pub(super) fn failure_snapshot(
 }
 
 fn successful_calls(write_started: bool) -> Vec<RequestCall> {
+    successful_calls_with_visibility(write_started, Visibility::Private)
+}
+
+fn successful_calls_with_visibility(
+    write_started: bool,
+    visibility: Visibility,
+) -> Vec<RequestCall> {
     let mut calls = vec![
         RequestCall::ReadCredential,
         RequestCall::CurrentAccount,
@@ -616,6 +648,7 @@ fn successful_calls(write_started: bool) -> Vec<RequestCall> {
             account_user_id: "123".to_owned(),
             recipient_user_id: "456".to_owned(),
             amount_cents: 1,
+            visibility,
         });
     }
     calls

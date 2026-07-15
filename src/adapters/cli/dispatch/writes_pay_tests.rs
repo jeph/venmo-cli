@@ -31,7 +31,7 @@ use crate::shared::{
     AccessToken, Account, ApiFailure, ApiFailureKind, ClientRequestId, ClientRequestIdGenerator,
     CredentialCapability, CredentialEnvelope, CredentialFailureKind, CredentialFormat,
     CredentialReader, CredentialStoreFailure, DeviceId, LoadedCredential, Money, Note, UserId,
-    Username,
+    Username, Visibility,
 };
 
 use super::run_pay_with;
@@ -65,6 +65,7 @@ struct PayPlanCall {
     note: String,
     backup_method_id: String,
     eligibility_fee_cents: u64,
+    visibility: Visibility,
 }
 
 impl From<&PayPlan> for PayPlanCall {
@@ -77,6 +78,7 @@ impl From<&PayPlan> for PayPlanCall {
             note: plan.note().as_str().to_owned(),
             backup_method_id: plan.backup_method().method().id().to_string(),
             eligibility_fee_cents: plan.eligibility_fee_cents(),
+            visibility: plan.visibility(),
         }
     }
 }

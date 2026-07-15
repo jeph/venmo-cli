@@ -3,7 +3,7 @@ use std::fmt;
 use crate::features::payments::{FinancialStatus, PaymentId};
 use crate::features::people::User;
 use crate::features::wallet::Balance;
-use crate::shared::{Account, ClientRequestId, Money, Note};
+use crate::shared::{Account, ClientRequestId, Money, Note, Visibility};
 
 use super::{RequestId, RequestRecord, RequestStatus};
 
@@ -16,6 +16,7 @@ pub struct CreateRequestPlan {
     recipient: User,
     amount: Money,
     note: Note,
+    visibility: Visibility,
 }
 
 impl CreateRequestPlan {
@@ -26,6 +27,7 @@ impl CreateRequestPlan {
         recipient: User,
         amount: Money,
         note: Note,
+        visibility: Visibility,
     ) -> Self {
         Self {
             request_id,
@@ -33,6 +35,7 @@ impl CreateRequestPlan {
             recipient,
             amount,
             note,
+            visibility,
         }
     }
 
@@ -59,6 +62,11 @@ impl CreateRequestPlan {
     #[must_use]
     pub const fn note(&self) -> &Note {
         &self.note
+    }
+
+    #[must_use]
+    pub const fn visibility(&self) -> Visibility {
+        self.visibility
     }
 }
 

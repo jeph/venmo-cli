@@ -29,13 +29,14 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
     );
 
     // Complete expected final outcome and state.
-    let plan = pay_plan(
+    let plan = pay_plan_with_visibility(
         account.clone(),
         recipient.clone(),
         amount,
         note.clone(),
         balance.clone(),
         method.clone(),
+        Visibility::Public,
     )?;
     let expected = Observation::new(
         PayOutcome::Success(Box::new(PayResult::new(plan, created))),
@@ -66,19 +67,21 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
                     backup_method: method,
                     eligibility_fee_cents: 0,
                     eligibility_token: RedactedSecret::Redacted,
+                    visibility: Visibility::Public,
                 }),
             },
         ],
     );
 
     // Execute once.
-    let result = run_pay(
+    let result = run_pay_with_visibility(
         &reader,
         &api,
         &generator,
         &prompt,
         amount,
         Note::from_str("Synthetic payment note")?,
+        Visibility::Public,
         None,
         true,
     )

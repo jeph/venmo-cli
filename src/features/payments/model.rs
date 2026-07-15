@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 use crate::features::people::User;
 use crate::features::wallet::{Balance, PaymentMethod};
 use crate::shared::opaque_id::opaque_id;
-use crate::shared::{Account, ClientRequestId, Money, Note};
+use crate::shared::{Account, ClientRequestId, Money, Note, Visibility};
 
 const MAX_ELIGIBILITY_TOKEN_BYTES: usize = 4096;
 const REDACTED: &str = "[REDACTED]";
@@ -183,6 +183,7 @@ pub struct PayPlan {
     backup_method: PeerFundingMethod,
     eligibility_fee_cents: u64,
     eligibility_token: EligibilityToken,
+    visibility: Visibility,
 }
 
 impl PayPlan {
@@ -198,6 +199,7 @@ impl PayPlan {
         backup_method: PeerFundingMethod,
         eligibility_fee_cents: u64,
         eligibility_token: EligibilityToken,
+        visibility: Visibility,
     ) -> Self {
         Self {
             request_id,
@@ -209,6 +211,7 @@ impl PayPlan {
             backup_method,
             eligibility_fee_cents,
             eligibility_token,
+            visibility,
         }
     }
 
@@ -255,6 +258,11 @@ impl PayPlan {
     #[must_use]
     pub(crate) const fn eligibility_token(&self) -> &EligibilityToken {
         &self.eligibility_token
+    }
+
+    #[must_use]
+    pub const fn visibility(&self) -> Visibility {
+        self.visibility
     }
 }
 

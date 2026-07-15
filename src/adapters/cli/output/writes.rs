@@ -34,7 +34,7 @@ pub(crate) fn write_pay_preflight<W: Write>(
         "  Note: {}",
         sanitize_terminal_text(plan.note().as_str())
     )?;
-    writeln!(writer, "  Audience: private")?;
+    writeln!(writer, "  Requested audience: {}", plan.visibility())?;
     writeln!(
         writer,
         "  Available Venmo balance: {}",
@@ -61,6 +61,10 @@ pub(crate) fn write_pay_preflight<W: Write>(
     writeln!(
         writer,
         "  Warning: eligibility is not bound to the submitted backup method; the final fee may differ."
+    )?;
+    writeln!(
+        writer,
+        "  Warning: Venmo may apply a more restrictive audience based on participant privacy settings."
     )
 }
 
@@ -81,7 +85,7 @@ pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> 
         sanitize_terminal_text(&financial_user_label(result.plan().recipient()))
     )?;
     writeln!(writer, "Amount: ${}", result.plan().amount())?;
-    writeln!(writer, "Audience: private")?;
+    writeln!(writer, "Requested audience: {}", result.plan().visibility())?;
     writeln!(
         writer,
         "Eligibility-reported fee: ${}",
@@ -118,7 +122,7 @@ pub(crate) fn write_request_create_result<W: Write>(
         sanitize_terminal_text(&financial_user_label(result.plan().recipient()))
     )?;
     writeln!(writer, "Amount: ${}", result.plan().amount())?;
-    writeln!(writer, "Audience: private")
+    writeln!(writer, "Requested audience: {}", result.plan().visibility())
 }
 
 pub(crate) fn write_accept_preflight<W: Write>(

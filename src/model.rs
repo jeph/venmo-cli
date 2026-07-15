@@ -46,5 +46,5 @@ pub use crate::shared::{
     Account, ClientRequestId, ContinuationTokenParseError, DEFAULT_LIST_LIMIT, Limit,
     LimitParseError, MAX_CONTINUATION_TOKEN_BYTES, MAX_LIST_LIMIT, Money, MoneyParseError, Note,
     NoteParseError, Offset, OffsetParseError, OpaqueIdParseError, UserId, UserIdParseError,
-    Username, UsernameParseError,
+    Username, UsernameParseError, Visibility, VisibilityParseError,
 };
