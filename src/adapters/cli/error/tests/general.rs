@@ -7,11 +7,13 @@ use crate::features::auth::{AuthStatusError, LoginError, PromptError};
 use crate::features::payments::PeerPreflightError;
 use crate::features::payments::pay::PayError;
 use crate::features::people::friends::FriendsError;
+use crate::features::people::info::UserInfoError;
 use crate::features::people::users::UserSearchError;
 use crate::features::requests::RequestMutationPreflightError;
 use crate::features::requests::accept::AcceptError;
 use crate::features::requests::create::RequestCreateError;
 use crate::features::requests::decline::DeclineError;
+use crate::features::requests::info::RequestInfoError;
 use crate::features::requests::list::RequestsError;
 use crate::features::wallet::balance::BalanceError;
 use crate::features::wallet::payment_methods::PaymentMethodsError;
@@ -36,10 +38,12 @@ enum AppErrorVariant {
     Accept,
     Decline,
     UserSearch,
+    UserInfo,
     Friends,
     Balance,
     Activity,
     Requests,
+    RequestInfo,
     DoctorIncomplete,
     CommandOutput,
     FinancialResultOutput,
@@ -96,6 +100,9 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         AppError::from(UserSearchError::Internal {
             problem: "synthetic internal failure",
         }),
+        AppError::from(UserInfoError::ResponseContract {
+            problem: "synthetic response failure",
+        }),
         AppError::from(FriendsError::ResponseContract {
             problem: "synthetic response failure",
         }),
@@ -106,6 +113,7 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         AppError::from(RequestsError::ResponseContract {
             problem: "synthetic response failure",
         }),
+        AppError::from(RequestInfoError::NotRequest),
         AppError::DoctorIncomplete,
         AppError::CommandOutput {
             source: io::Error::other("synthetic command output failure"),
@@ -147,10 +155,12 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         classification(AppErrorVariant::Accept, ErrorCategory::Usage),
         classification(AppErrorVariant::Decline, ErrorCategory::Credential),
         classification(AppErrorVariant::UserSearch, ErrorCategory::Internal),
+        classification(AppErrorVariant::UserInfo, ErrorCategory::ApiContract),
         classification(AppErrorVariant::Friends, ErrorCategory::ApiContract),
         classification(AppErrorVariant::Balance, ErrorCategory::Credential),
         classification(AppErrorVariant::Activity, ErrorCategory::ApiContract),
         classification(AppErrorVariant::Requests, ErrorCategory::ApiContract),
+        classification(AppErrorVariant::RequestInfo, ErrorCategory::Usage),
         classification(AppErrorVariant::DoctorIncomplete, ErrorCategory::Api),
         classification(AppErrorVariant::CommandOutput, ErrorCategory::Internal),
         classification(
@@ -197,10 +207,12 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::Accept { .. } => AppErrorVariant::Accept,
         AppError::Decline { .. } => AppErrorVariant::Decline,
         AppError::UserSearch { .. } => AppErrorVariant::UserSearch,
+        AppError::UserInfo { .. } => AppErrorVariant::UserInfo,
         AppError::Friends { .. } => AppErrorVariant::Friends,
         AppError::Balance { .. } => AppErrorVariant::Balance,
         AppError::Activity { .. } => AppErrorVariant::Activity,
         AppError::Requests { .. } => AppErrorVariant::Requests,
+        AppError::RequestInfo { .. } => AppErrorVariant::RequestInfo,
         AppError::DoctorIncomplete => AppErrorVariant::DoctorIncomplete,
         AppError::CommandOutput { .. } => AppErrorVariant::CommandOutput,
         AppError::FinancialResultOutput { .. } => AppErrorVariant::FinancialResultOutput,

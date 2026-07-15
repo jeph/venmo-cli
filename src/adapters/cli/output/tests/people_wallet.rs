@@ -2,16 +2,45 @@ use std::error::Error;
 use std::io::{self, Write};
 use std::str::FromStr;
 
-use super::super::{write_balance, write_friends, write_payment_methods, write_user_search};
-use crate::features::people::User;
+use super::super::{
+    write_balance, write_friends, write_payment_methods, write_user_info, write_user_search,
+};
 use crate::features::people::friends::FriendsResult;
+use crate::features::people::info::UserInfoResult;
 use crate::features::people::users::UserSearchResult;
+use crate::features::people::{User, UserProfileKind};
 use crate::features::wallet::balance::BalanceResult;
 use crate::features::wallet::payment_methods::PaymentMethodsResult;
 use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
 use crate::shared::{Offset, UserId, Username};
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+#[test]
+fn user_info_output_preserves_known_fields_sanitizes_text_and_marks_absence() -> TestResult {
+    let complete = UserInfoResult::new(
+        User::new(
+            UserId::from_str("123")?,
+            Some(Username::from_bare("alice")?),
+            Some("Alice\n\u{1b}[31mExample".to_owned()),
+        )
+        .with_financial_attributes(UserProfileKind::Personal, true),
+    );
+    let minimal = UserInfoResult::new(User::new(UserId::from_str("456")?, None, None));
+    let mut complete_output = Vec::new();
+    let mut minimal_output = Vec::new();
+
+    write_user_info(&mut complete_output, &complete)?;
+    write_user_info(&mut minimal_output, &minimal)?;
+    let complete_output = String::from_utf8(complete_output)?;
+    let minimal_output = String::from_utf8(minimal_output)?;
+
+    insta::assert_snapshot!("user_info_complete", complete_output);
+    insta::assert_snapshot!("user_info_minimal", minimal_output);
+    assert!(!complete_output.contains("Alice\n"));
+    assert!(!complete_output.contains('\u{1b}'));
+    Ok(())
+}
 
 #[test]
 fn payment_method_output_is_copyable_and_sanitized() -> TestResult {

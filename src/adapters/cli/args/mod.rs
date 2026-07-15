@@ -9,10 +9,10 @@ mod writes;
 pub use auth::{AuthArgs, AuthOperation, LoginArgs, LogoutArgs};
 pub use completions::{CompletionShell, CompletionsArgs};
 pub use reads::{
-    ActivityArgs, ActivityListArgs, ActivityOperation, ActivityShowArgs, FriendsArgs,
+    ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, FriendsArgs,
     FriendsListArgs, FriendsOperation, PaymentMethodsArgs, PaymentMethodsOperation,
-    RequestDirectionArg, RequestsArgs, RequestsListArgs, RequestsOperation, UserSearchArgs,
-    UsersArgs, UsersOperation,
+    RequestDirectionArg, RequestInfoArgs, RequestsArgs, RequestsListArgs, RequestsOperation,
+    UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
 };
 pub use writes::{AcceptArgs, DeclineArgs, PayArgs, RequestArgs};
 

@@ -180,6 +180,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('search', 'search', [CompletionResultType]::ParameterValue, 'Search for Venmo users')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one Venmo user')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -192,12 +193,23 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'venmo;users;info' {
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'venmo;users;help' {
             [CompletionResult]::new('search', 'search', [CompletionResultType]::ParameterValue, 'Search for Venmo users')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one Venmo user')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'venmo;users;help;search' {
+            break
+        }
+        'venmo;users;help;info' {
             break
         }
         'venmo;users;help;help' {
@@ -243,7 +255,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List recent activity')
-            [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show one activity record')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one activity record')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -256,7 +268,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'venmo;activity;show' {
+        'venmo;activity;info' {
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
@@ -265,14 +277,14 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
         }
         'venmo;activity;help' {
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List recent activity')
-            [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show one activity record')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one activity record')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'venmo;activity;help;list' {
             break
         }
-        'venmo;activity;help;show' {
+        'venmo;activity;help;info' {
             break
         }
         'venmo;activity;help;help' {
@@ -284,6 +296,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List pending requests involving the active account')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one open request')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -297,12 +310,23 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'venmo;requests;info' {
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'venmo;requests;help' {
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List pending requests involving the active account')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one open request')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'venmo;requests;help;list' {
+            break
+        }
+        'venmo;requests;help;info' {
             break
         }
         'venmo;requests;help;help' {
@@ -379,9 +403,13 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
         }
         'venmo;help;users' {
             [CompletionResult]::new('search', 'search', [CompletionResultType]::ParameterValue, 'Search for Venmo users')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one Venmo user')
             break
         }
         'venmo;help;users;search' {
+            break
+        }
+        'venmo;help;users;info' {
             break
         }
         'venmo;help;payment-methods' {
@@ -396,20 +424,24 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
         }
         'venmo;help;activity' {
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List recent activity')
-            [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show one activity record')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one activity record')
             break
         }
         'venmo;help;activity;list' {
             break
         }
-        'venmo;help;activity;show' {
+        'venmo;help;activity;info' {
             break
         }
         'venmo;help;requests' {
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List pending requests involving the active account')
+            [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'Show information about one open request')
             break
         }
         'venmo;help;requests;list' {
+            break
+        }
+        'venmo;help;requests;info' {
             break
         }
         'venmo;help;doctor' {

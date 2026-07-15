@@ -1,10 +1,10 @@
-# Public facade inventory and 0.1 compatibility
+# Public facade inventory and compatibility
 
 The library target exists to support the shipped frontend and future in-repository frontends. It is
 not a general Venmo SDK. [`src/lib.rs`](../src/lib.rs) exposes exactly two curated modules:
 `venmo_cli::cli` and `venmo_cli::model`.
 
-This inventory is a review aid for 0.1 releases. The Rust source and generated rustdoc remain the
+This inventory is a review aid for pre-1.0 releases. The Rust source and generated rustdoc remain the
 signature-level source of truth.
 
 ## `venmo_cli::cli`
@@ -17,10 +17,11 @@ and black-box tests.
 - Root: `Cli`, `Command`.
 - Authentication: `AuthArgs`, `AuthOperation`, `LoginArgs`, `LogoutArgs`.
 - Friends: `FriendsArgs`, `FriendsOperation`, `FriendsListArgs`.
-- Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`.
+- Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`, `UserInfoArgs`.
 - Wallet reads: `PaymentMethodsArgs`, `PaymentMethodsOperation`.
-- Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityShowArgs`.
-- Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestDirectionArg`.
+- Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
+- Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
+  `RequestDirectionArg`.
 - Financial command inputs: `PayArgs`, `RequestArgs`, `AcceptArgs`, `DeclineArgs`.
 - Completion generation: `CompletionsArgs`, `CompletionShell`.
 
@@ -61,7 +62,7 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 
 - `User`, `UserProfileKind`, `UserSearchQuery`, `UserSearchQueryParseError`.
 - `RecipientInput`, `RecipientParseError`.
-- `FriendsResult`, `UserSearchResult`.
+- `FriendsResult`, `UserSearchResult`, `UserInfoResult`.
 
 ### Wallet
 
@@ -72,7 +73,7 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 
 - `Activity`, `ActivityId`, `ActivityAction`, `ActivityCounterparty`, `ActivityDirection`,
   `ActivityStatus`, `ActivityLabelParseError`.
-- `ActivityBeforeId`, `ActivityListResult`, `ActivityShowResult`.
+- `ActivityBeforeId`, `ActivityListResult`, `ActivityInfoResult`.
 
 ### Payments
 
@@ -86,7 +87,7 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
   `RequestStatusParseError`, `RequestRecord`, `RequestsBefore`.
 - `CreatedRequest`, `AcceptedRequest`, `DeclinedRequest`.
 - `CreateRequestPlan`, `AcceptRequestPlan`, `DeclineRequestPlan`.
-- `RequestCreateResult`, `AcceptResult`, `DeclineResult`, `RequestsResult`.
+- `RequestCreateResult`, `AcceptResult`, `DeclineResult`, `RequestsResult`, `RequestInfoResult`.
 
 ## Intentionally private
 
@@ -106,11 +107,24 @@ Do not widen visibility to help an external caller build another frontend. An in
 frontend composes crate-private features and publishes its own minimal facade as described in the
 [architecture](architecture.md#adding-a-future-mcp-frontend).
 
-## Semver expectations for 0.1
+## 0.1 to 0.2 migration
+
+Version 0.2 intentionally standardizes resource detail commands on `info` and expands the public
+Clap schema:
+
+- Replace `venmo activity show <ACTIVITY_ID>` with `venmo activity info <ACTIVITY_ID>`; there is no
+  compatibility alias.
+- Replace `ActivityOperation::Show`, `ActivityShowArgs`, and `ActivityShowResult` with
+  `ActivityOperation::Info`, `ActivityInfoArgs`, and `ActivityInfoResult`.
+- Handle the new `UsersOperation::Info(UserInfoArgs)` and
+  `RequestsOperation::Info(RequestInfoArgs)` variants in exhaustive matches.
+- `UserInfoResult` and `RequestInfoResult` are now available from `venmo_cli::model`.
+
+## Semver expectations
 
 The crate is pre-1.0, but version numbers still communicate intent:
 
-- `0.1.x` patch releases should preserve source compatibility for the `cli` and `model` facade
+- Patch releases should preserve source compatibility for the `cli` and `model` facade
   paths and signatures. Public field/type changes, removed trait implementations, and enum variant
   changes require the same compatibility review as other public API changes.
 - An intentional incompatible facade change requires at least `0.2.0` and a documented migration.

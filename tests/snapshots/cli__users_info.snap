@@ -1,0 +1,15 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Show information about one Venmo user
+
+Usage: info <USER_ID>
+
+Arguments:
+  <USER_ID>
+          Canonical user ID
+
+Options:
+  -h, --help
+          Print help

@@ -129,13 +129,13 @@ impl From<Result<ActivityListResult, ActivityError>> for ListOutcome {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum ShowOutcome {
-    Success(Box<ActivityShowResult>),
+enum InfoOutcome {
+    Success(Box<ActivityInfoResult>),
     Error(ErrorSnapshot),
 }
 
-impl From<Result<ActivityShowResult, ActivityError>> for ShowOutcome {
-    fn from(result: Result<ActivityShowResult, ActivityError>) -> Self {
+impl From<Result<ActivityInfoResult, ActivityError>> for InfoOutcome {
+    fn from(result: Result<ActivityInfoResult, ActivityError>) -> Self {
         match result {
             Ok(result) => Self::Success(Box::new(result)),
             Err(error) => Self::Error(ErrorSnapshot::from(error)),
@@ -345,14 +345,14 @@ fn list_snapshot(
     }
 }
 
-fn show_snapshot(
-    result: Result<ActivityShowResult, ActivityError>,
+fn info_snapshot(
+    result: Result<ActivityInfoResult, ActivityError>,
     reader: &FakeReader,
     api: &FakeApi,
     transcript: &Transcript,
-) -> Snapshot<ShowOutcome> {
+) -> Snapshot<InfoOutcome> {
     Snapshot {
-        outcome: ShowOutcome::from(result),
+        outcome: InfoOutcome::from(result),
         state: fake_state(reader, api, transcript),
     }
 }
@@ -615,7 +615,7 @@ async fn list_api_failure_kind_matrix_is_preserved() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn show_returns_only_the_exact_requested_activity() -> TestResult {
+async fn info_returns_only_the_exact_requested_activity() -> TestResult {
     // Setup.
     let requested = ActivityId::from_str("story-1")?;
     let returned = activity(1, "complete detail")?;
@@ -641,7 +641,7 @@ async fn show_returns_only_the_exact_requested_activity() -> TestResult {
 
     // Complete expected outcome and final fake state.
     let expected = Snapshot {
-        outcome: ShowOutcome::Success(Box::new(ActivityShowResult::new(expected_activity))),
+        outcome: InfoOutcome::Success(Box::new(ActivityInfoResult::new(expected_activity))),
         state: FakeState {
             reader: ReaderOutcome::Present,
             remaining_list_responses: vec![ResponseId::UnexpectedOtherOperation],
@@ -651,15 +651,15 @@ async fn show_returns_only_the_exact_requested_activity() -> TestResult {
     };
 
     // Execute once.
-    let result = show(&reader, &api, &requested).await;
-    let observed = show_snapshot(result, &reader, &api, &transcript);
+    let result = info(&reader, &api, &requested).await;
+    let observed = info_snapshot(result, &reader, &api, &transcript);
 
     assert_eq!(observed, expected);
     Ok(())
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn show_rejects_a_different_response_activity_id() -> TestResult {
+async fn info_rejects_a_different_response_activity_id() -> TestResult {
     // Setup.
     let requested = ActivityId::from_str("story-1")?;
 
@@ -677,7 +677,7 @@ async fn show_rejects_a_different_response_activity_id() -> TestResult {
 
     // Complete expected outcome and final fake state.
     let expected = Snapshot {
-        outcome: ShowOutcome::Error(ErrorSnapshot::ResponseContract(
+        outcome: InfoOutcome::Error(ErrorSnapshot::ResponseContract(
             "the API returned a different activity ID",
         )),
         state: FakeState {
@@ -689,15 +689,15 @@ async fn show_rejects_a_different_response_activity_id() -> TestResult {
     };
 
     // Execute once.
-    let result = show(&reader, &api, &requested).await;
-    let observed = show_snapshot(result, &reader, &api, &transcript);
+    let result = info(&reader, &api, &requested).await;
+    let observed = info_snapshot(result, &reader, &api, &transcript);
 
     assert_eq!(observed, expected);
     Ok(())
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn show_credential_load_matrix_stops_before_detail_api() -> TestResult {
+async fn info_credential_load_matrix_stops_before_detail_api() -> TestResult {
     // Setup.
     let cases = std::iter::once((ReaderOutcome::Missing, ErrorSnapshot::MissingCredential)).chain(
         CREDENTIAL_FAILURE_KINDS.into_iter().map(|kind| {
@@ -724,7 +724,7 @@ async fn show_credential_load_matrix_stops_before_detail_api() -> TestResult {
 
         // Complete expected outcome and final fake state.
         let expected = Snapshot {
-            outcome: ShowOutcome::Error(expected_error),
+            outcome: InfoOutcome::Error(expected_error),
             state: FakeState {
                 reader: reader_outcome,
                 remaining_list_responses: Vec::new(),
@@ -734,8 +734,8 @@ async fn show_credential_load_matrix_stops_before_detail_api() -> TestResult {
         };
 
         // Execute once.
-        let result = show(&reader, &api, &requested).await;
-        let observed = show_snapshot(result, &reader, &api, &transcript);
+        let result = info(&reader, &api, &requested).await;
+        let observed = info_snapshot(result, &reader, &api, &transcript);
 
         assert_eq!(observed, expected);
     }
@@ -743,7 +743,7 @@ async fn show_credential_load_matrix_stops_before_detail_api() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn show_api_failure_kind_and_exact_id_matrix_is_preserved() -> TestResult {
+async fn info_api_failure_kind_and_exact_id_matrix_is_preserved() -> TestResult {
     // Setup.
     let requested = ActivityId::from_str("story-detail-42")?;
 
@@ -762,7 +762,7 @@ async fn show_api_failure_kind_and_exact_id_matrix_is_preserved() -> TestResult 
 
         // Complete expected outcome and final fake state.
         let expected = Snapshot {
-            outcome: ShowOutcome::Error(ErrorSnapshot::ApiFailure(kind)),
+            outcome: InfoOutcome::Error(ErrorSnapshot::ApiFailure(kind)),
             state: FakeState {
                 reader: ReaderOutcome::Present,
                 remaining_list_responses: Vec::new(),
@@ -772,8 +772,8 @@ async fn show_api_failure_kind_and_exact_id_matrix_is_preserved() -> TestResult 
         };
 
         // Execute once.
-        let result = show(&reader, &api, &requested).await;
-        let observed = show_snapshot(result, &reader, &api, &transcript);
+        let result = info(&reader, &api, &requested).await;
+        let observed = info_snapshot(result, &reader, &api, &transcript);
 
         assert_eq!(observed, expected);
     }

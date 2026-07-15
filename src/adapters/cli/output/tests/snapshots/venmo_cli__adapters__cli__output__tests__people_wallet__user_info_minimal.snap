@@ -1,0 +1,9 @@
+---
+source: src/adapters/cli/output/tests/people_wallet.rs
+expression: minimal_output
+---
+User ID: 456
+Username: (not provided)
+Display name: (not provided)
+Profile kind: (not provided)
+Payable: (not provided)

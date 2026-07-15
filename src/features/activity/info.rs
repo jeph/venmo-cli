@@ -2,11 +2,11 @@ use super::{Activity, ActivityDetailApi, ActivityError, ActivityId};
 use crate::shared::{ApiOperationFailure, CredentialReader, require_credential};
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct ActivityShowResult {
+pub struct ActivityInfoResult {
     activity: Activity,
 }
 
-impl ActivityShowResult {
+impl ActivityInfoResult {
     #[must_use]
     pub(crate) const fn new(activity: Activity) -> Self {
         Self { activity }
@@ -18,11 +18,11 @@ impl ActivityShowResult {
     }
 }
 
-pub async fn show<R, A>(
+pub async fn info<R, A>(
     credentials: &R,
     api: &A,
     activity_id: &ActivityId,
-) -> Result<ActivityShowResult, ActivityError>
+) -> Result<ActivityInfoResult, ActivityError>
 where
     R: CredentialReader,
     A: ActivityDetailApi,
@@ -44,5 +44,5 @@ where
             problem: "the API returned a different activity ID",
         });
     }
-    Ok(ActivityShowResult::new(activity))
+    Ok(ActivityInfoResult::new(activity))
 }

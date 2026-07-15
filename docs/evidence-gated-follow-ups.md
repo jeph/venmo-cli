@@ -62,3 +62,22 @@ identifier. The mutation does not bind that
 snapshot, however, and its response proves neither the final funding source nor the fee. Output
 must disclose that limitation and must not claim wallet funding or a `$0.00` fee. Changing those
 claims requires transaction-bound source and fee evidence from the acceptance operation itself.
+
+## Peer-payment list and detail reads
+
+`payments list` and `payments info <PAYMENT_ID>` remain unavailable. The only current list contract
+proves the request-specific query `GET /payments?action=charge&status=pending,held&limit=N`; it does
+not prove a general peer-payment collection, its continuation behavior, or a filter that includes
+direct payments and accepted-request payments while excluding open and declined requests.
+
+Detail support is independently blocked. A pending RequestId has succeeded through
+`GET /payments/{id}`, but dated evidence records HTTP 500 for a settled PaymentId nested in an
+otherwise readable activity story. ActivityId and PaymentId are distinct, so the story-detail route
+cannot implement payment detail.
+
+Reopening payment reads requires a separately governed, bounded, read-only contract dossier that
+proves both incoming and outgoing direct payments, both observed accepted-request representations,
+declined/open-request exclusion, payer/payee money direction, source-page bounds and continuation,
+and exact-ID detail behavior for direct and accepted PaymentIds. Routine development must not use
+the production credential or extend ignored probes to gather this evidence. List and detail are
+approved independently; failure to prove detail must not block an otherwise proven list command.

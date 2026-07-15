@@ -1,23 +1,53 @@
 use std::error::Error;
 use std::str::FromStr;
 
-use super::super::{write_activity_list, write_activity_show, write_requests};
+use super::super::{write_activity_info, write_activity_list, write_request_info, write_requests};
 use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDirection,
-    ActivityId, ActivityListResult, ActivityShowResult, ActivityStatus,
+    ActivityId, ActivityInfoResult, ActivityListResult, ActivityStatus,
 };
 use crate::features::people::User;
 use crate::features::requests::list::RequestsResult;
 use crate::features::requests::{
-    RequestAction, RequestDirection, RequestDirectionFilter, RequestId, RequestRecord,
-    RequestStatus, RequestsBefore,
+    RequestAction, RequestDirection, RequestDirectionFilter, RequestId, RequestInfoResult,
+    RequestRecord, RequestStatus, RequestsBefore,
 };
 use crate::shared::{Money, UserId, Username};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
 #[test]
-fn activity_list_and_show_render_authoritative_status_as_data() -> TestResult {
+fn request_info_output_preserves_open_request_fields_and_sanitizes_text() -> TestResult {
+    let request = RequestRecord::new(
+        RequestId::from_str("request-1")?,
+        RequestAction::Charge,
+        RequestDirection::Outgoing,
+        User::new(
+            UserId::from_str("456")?,
+            Some(Username::from_bare("bob")?),
+            Some("Bob\n\u{1b}[31mExample".to_owned()),
+        ),
+        Money::from_str("12.34")?,
+        Some("note\u{202e}text\nline".to_owned()),
+        Some(time::OffsetDateTime::UNIX_EPOCH),
+        RequestStatus::from_str("held")?,
+    )
+    .with_audience(Some("private\u{7}".to_owned()));
+    let result = RequestInfoResult::new(request);
+    let mut output = Vec::new();
+
+    write_request_info(&mut output, &result)?;
+    let output = String::from_utf8(output)?;
+
+    insta::assert_snapshot!("request_info", output);
+    assert!(!output.contains('\u{1b}'));
+    assert!(!output.contains('\u{202e}'));
+    assert!(!output.contains('\u{7}'));
+    Ok(())
+}
+
+#[test]
+fn activity_list_and_info_render_authoritative_status_as_data() -> TestResult {
     let activity = synthetic_activity("failed", "note\n\u{1b}[31mline")?;
     let transfer = Activity::new(
         ActivityId::from_str("story-transfer")?,
@@ -38,15 +68,15 @@ fn activity_list_and_show_render_authoritative_status_as_data() -> TestResult {
         vec![activity.clone(), transfer],
         Some(ActivityBeforeId::from_str("story-next")?),
     );
-    let show = ActivityShowResult::new(activity);
+    let info = ActivityInfoResult::new(activity);
     let mut list_stdout = Vec::new();
     let mut list_stderr = Vec::new();
-    let mut show_stdout = Vec::new();
+    let mut info_stdout = Vec::new();
 
     write_activity_list(&mut list_stdout, &mut list_stderr, &list)?;
-    write_activity_show(&mut show_stdout, &show)?;
+    write_activity_info(&mut info_stdout, &info)?;
     let list_stdout = String::from_utf8(list_stdout)?;
-    let show_stdout = String::from_utf8(show_stdout)?;
+    let info_stdout = String::from_utf8(info_stdout)?;
 
     assert_eq!(
         String::from_utf8(list_stderr)?,
@@ -54,8 +84,8 @@ fn activity_list_and_show_render_authoritative_status_as_data() -> TestResult {
     );
     insta::assert_snapshot!("activity_list", list_stdout);
     assert!(!list_stdout.contains('\u{1b}'));
-    insta::assert_snapshot!("activity_show", show_stdout);
-    assert!(!show_stdout.contains('\u{1b}'));
+    insta::assert_snapshot!("activity_info", info_stdout);
+    assert!(!info_stdout.contains('\u{1b}'));
     Ok(())
 }
 

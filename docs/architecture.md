@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the implemented 0.1 architecture. It is a hybrid of feature-first
+This document describes the implemented 0.2 architecture. It is a hybrid of feature-first
 organization and hexagonal boundaries: product concepts live in vertical feature slices, while
 side effects are reached through feature-owned ports and private adapters.
 

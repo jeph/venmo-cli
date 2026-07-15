@@ -370,7 +370,7 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
             TerminalCapabilities::new(false, false),
         ),
         (
-            &["venmo", "activity", "show", "story-1"][..],
+            &["venmo", "activity", "info", "story-1"][..],
             TerminalCapabilities::new(false, false),
         ),
         (

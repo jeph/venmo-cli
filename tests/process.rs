@@ -21,7 +21,7 @@ fn help_and_version_succeed_without_services() -> TestResult {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::eq("venmo 0.1.0\n"))
+        .stdout(predicate::eq("venmo 0.2.0\n"))
         .stderr(predicate::str::is_empty());
 
     Ok(())

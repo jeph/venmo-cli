@@ -17,7 +17,7 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = ActivityFake {
         list_responses: ResponseQueue::successful(response),
-        show_responses: ResponseQueue::successful(primary),
+        info_responses: ResponseQueue::successful(primary),
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
@@ -38,7 +38,7 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
             remaining_credentials: vec![ResponseId::UnexpectedSecond],
             api: ActivityApiState {
                 list: vec![ResponseId::UnexpectedSecond],
-                show: vec![ResponseId::Primary, ResponseId::UnexpectedSecond],
+                info: vec![ResponseId::Primary, ResponseId::UnexpectedSecond],
             },
             stdout: writer_state(ACTIVITY_LIST_OUTPUT),
             stderr: writer_state("Next before-id: story-next\n"),
@@ -54,7 +54,7 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
             remaining_credentials: reader.remaining(),
             api: ActivityApiState {
                 list: api.list_responses.remaining(),
-                show: api.show_responses.remaining(),
+                info: api.info_responses.remaining(),
             },
             stdout: stdout.state,
             stderr: stderr.state,
@@ -66,9 +66,9 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn activity_show_handler_uses_only_detail_and_writes_exact_stdout() -> TestResult {
+async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> TestResult {
     // Setup.
-    let args = activity_show_args()?;
+    let args = activity_info_args()?;
     let primary = synthetic_activity()?;
 
     // Immutable initial script/state.
@@ -76,7 +76,7 @@ async fn activity_show_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = ActivityFake {
         list_responses: ResponseQueue::successful(ActivityPage::new(Vec::new(), None)),
-        show_responses: ResponseQueue::successful(primary),
+        info_responses: ResponseQueue::successful(primary),
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
@@ -86,7 +86,7 @@ async fn activity_show_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
         ReadState {
             calls: vec![
                 ReadCall::ReadCredential,
-                ReadCall::ActivityShow {
+                ReadCall::ActivityInfo {
                     session: fixture_session(),
                     current_user_id: UserId::from_str("1000")?,
                     activity_id: ActivityId::from_str("story-1")?,
@@ -96,9 +96,9 @@ async fn activity_show_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
             remaining_credentials: vec![ResponseId::UnexpectedSecond],
             api: ActivityApiState {
                 list: vec![ResponseId::Primary, ResponseId::UnexpectedSecond],
-                show: vec![ResponseId::UnexpectedSecond],
+                info: vec![ResponseId::UnexpectedSecond],
             },
-            stdout: writer_state(ACTIVITY_SHOW_OUTPUT),
+            stdout: writer_state(ACTIVITY_INFO_OUTPUT),
             stderr: WriterState::default(),
         },
     );
@@ -112,7 +112,7 @@ async fn activity_show_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
             remaining_credentials: reader.remaining(),
             api: ActivityApiState {
                 list: api.list_responses.remaining(),
-                show: api.show_responses.remaining(),
+                info: api.info_responses.remaining(),
             },
             stdout: stdout.state,
             stderr: stderr.state,
@@ -137,7 +137,7 @@ async fn requests_handler_has_exact_filter_page_output_and_continuation_streams(
     // Immutable initial script/state.
     let transcript = Rc::new(RefCell::new(Vec::new()));
     let reader = FakeReader::standard(Rc::clone(&transcript));
-    let api = RequestsFake {
+    let api = RequestsListFake {
         responses: ResponseQueue::successful(response),
         transcript: Rc::clone(&transcript),
     };
@@ -164,7 +164,58 @@ async fn requests_handler_has_exact_filter_page_output_and_continuation_streams(
     );
 
     // Execute once.
-    let result = run_requests(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let result = run_requests_list(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let observed = observation(
+        result,
+        &transcript,
+        &reader,
+        api.responses.remaining(),
+        stdout.state,
+        stderr.state,
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_info_handler_uses_only_lookup_and_writes_sanitized_stdout() -> TestResult {
+    // Setup.
+    let args = request_info_args()?;
+    let response = synthetic_request()?;
+
+    // Immutable initial script/state.
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::standard(Rc::clone(&transcript));
+    let api = RequestInfoFake {
+        responses: ResponseQueue::successful(response),
+        transcript: Rc::clone(&transcript),
+    };
+    let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
+    let stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+
+    // Complete expected outcome and final fake state.
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        ReadState {
+            calls: vec![
+                ReadCall::ReadCredential,
+                ReadCall::RequestInfo {
+                    session: fixture_session(),
+                    current_user_id: UserId::from_str("1000")?,
+                    request_id: RequestId::from_str("request-1")?,
+                },
+                ReadCall::StdoutWrite,
+            ],
+            remaining_credentials: vec![ResponseId::UnexpectedSecond],
+            api: vec![ResponseId::UnexpectedSecond],
+            stdout: writer_state(REQUEST_INFO_OUTPUT),
+            stderr: WriterState::default(),
+        },
+    );
+
+    // Execute once.
+    let result = run_request_info(args, &reader, &api, &mut stdout).await;
     let observed = observation(
         result,
         &transcript,

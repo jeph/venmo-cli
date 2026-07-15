@@ -31,7 +31,7 @@ The initial MCP release provides structured, read-only access to the already imp
 ## 2. Confirmed product decisions
 
 - Use Rust with a pinned stable toolchain and a committed `Cargo.lock`.
-- Use Rust 1.95.0 for the pinned toolchain and MSRV, package version `0.1.0`, and the MIT license.
+- Use Rust 1.95.0 for the pinned toolchain and MSRV, package version `0.2.0`, and the MIT license.
 - Use [`clap`](https://docs.rs/clap/) with its derive API.
 - Use [`dialoguer`](https://docs.rs/dialoguer/) behind a narrow prompt adapter for hidden token input, default-No confirmation, and funding-method selection.
 - Prefer mature, popular, actively community-maintained off-the-shelf crates for common functionality instead of rolling project-owned replacements; keep custom code focused on Venmo-specific model behavior, feature orchestration, and safety policy.
@@ -118,12 +118,14 @@ venmo decline <REQUEST_ID>
 
 venmo friends list [--limit <N>] [--offset <N>]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
+venmo users info <USER_ID>
 venmo payment-methods list
 venmo balance
 
 venmo activity list [--limit <N>] [--before-id <TOKEN>]
-venmo activity show <ACTIVITY_ID>
+venmo activity info <ACTIVITY_ID>
 venmo requests list [--direction <DIRECTION>] [--limit <N>] [--before <TOKEN>]
+venmo requests info <REQUEST_ID>
 
 venmo doctor
 venmo completions <SHELL>
@@ -329,6 +331,15 @@ The `deny` action is strongly documented by archived official Venmo material for
 - Fetches exactly one API page and treats `--limit` as its server page size, with default 10 and maximum 50. `--offset` is a typed nonnegative `u32` with default 0.
 - When a full page is returned, provisionally reports the checked synthesized `Next offset: <N>` value; an empty page at that offset can be required to prove exhaustion.
 
+#### `venmo users info <USER_ID>`
+
+- Fetches one user through the canonical user-detail endpoint and displays every understood safe
+  identity and profile field.
+- Requires the returned immutable user ID to equal the exact requested ID; a mismatch is an API
+  contract failure and is never displayed as the requested user.
+- Accepts only a canonical typed user ID and performs exactly one lookup with no search fallback or
+  retry.
+
 Financial recipient resolution is fail-closed around the live-verified mobile behavior:
 
 - Numeric recipients use the inherited `GET /users/{user-id}` hypothesis and require the response's immutable user ID to equal the requested ID.
@@ -361,7 +372,7 @@ Financial recipient resolution is fail-closed around the live-verified mobile be
 - Accepts the endpoint-native bounded opaque `before_id` value through `--before-id` and reports a validated `Next before-id: <TOKEN>` value after successful record output.
 - Does not expose a public or friends feed.
 
-#### `venmo activity show <ACTIVITY_ID>`
+#### `venmo activity info <ACTIVITY_ID>`
 
 - Shows all understood fields for one activity record.
 - Is the primary recovery tool after an ambiguous payment, request creation, or request-acceptance outcome; request reads and the official app are also required for ambiguous decline state.
@@ -384,6 +395,33 @@ venmo requests list --direction incoming --before <TOKEN>
 - Fetches exactly one source page using `--limit` as the server page size, with default 10 and maximum 50. `--direction` is applied locally after that complete page is validated, so fewer than `--limit` rows may be rendered.
 - Accepts the endpoint-native bounded opaque `before` value through `--before` and reports the source page's validated `Next before: <TOKEN>` even when local filtering leaves an empty result.
 - Must be backed by a verified endpoint or a verified complete activity filter. A count without request records is insufficient.
+
+#### `venmo requests info <REQUEST_ID>`
+
+- Calls the broad authoritative payment/request detail capability used by mutation preflight, then
+  applies a narrower public read policy.
+- Requires the exact returned record ID, `action=charge`, and status exactly `pending` or `held`.
+  Both incoming and outgoing open requests are accepted and rendered.
+- Rejects `action=pay` records and every terminal or otherwise unsupported request status as usage
+  errors. It never presents a payment or closed request as an open request.
+- Performs exactly one lookup with no retry and displays all understood request fields with terminal
+  sanitization.
+
+#### Deferred `payments list` and `payments info <PAYMENT_ID>` evidence gate
+
+- The intended `payments` resource covers incoming and outgoing peer money movement, including
+  direct payments and the distinct resulting payment created by accepting a request. It excludes
+  open requests, declined/cancelled requests, transfers, and card activity.
+- Neither command is shipped without its own verified read contract. Existing evidence proves only
+  the pending-request list query and pending RequestId detail. It does not prove a general payment
+  list, its continuation, accepted-payment classification, or settled PaymentId detail.
+- Dated evidence includes an HTTP 500 from `GET /payments/{payment-id}` for a settled nested
+  PaymentId whose activity story was readable. `ActivityId` and `PaymentId` remain distinct, so
+  `GET /stories/{activity-id}` cannot substitute for `payments info`.
+- A separately governed bounded read-only dossier must prove direct and accepted-payment inclusion,
+  open/declined request exclusion, payer/payee money direction, page bounds and continuation, and
+  exact-ID detail behavior before the corresponding command is implemented. Routine tests and
+  contributor verification remain service-free.
 
 ### 3.9 Diagnostics
 
@@ -442,7 +480,7 @@ Initial tool catalog:
 | `venmo_users_search` | Validated `query`, `limit` 1–50 (default 10), `offset` `u32` (default 0) | User records and always-present nullable provisional `next_offset` | Same one-page public search, not internal recipient resolution |
 | `venmo_payment_methods_list` | Empty object | Safe method IDs, labels/types, optional last four, default marker | Same payment-method list |
 | `venmo_activity_list` | `limit` 1–50 (default 10), nullable `before_id` (default null) | Tagged activity records and always-present nullable `next_before_id` | Same one-page activity list |
-| `venmo_activity_show` | Validated `activity_id` | One tagged activity record | Same activity detail lookup |
+| `venmo_activity_info` | Validated `activity_id` | One tagged activity record | Same activity detail lookup |
 | `venmo_requests_list` | `direction` (default `all`), `limit` 1–50 (default 10), nullable `before` (default null) | Pending-request records, applied direction, always-present nullable `next_before` | Same one source page and local direction filtering |
 | `venmo_doctor` | Empty object | Overall health and six structured check results | Same read-only diagnostic orchestration |
 
@@ -702,7 +740,7 @@ Immediately afterward, separate processes successfully used the mobile-issued to
 
 The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `payment-methods list` all succeeded. User search confirmed the inherited endpoint is fuzzy even when the query begins with `@` and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. The implementation preserves that exact query distinction in every public page request and in the separate internal exhaustive traversal. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
 
-The root Rust package implements `friends list`, `balance`, `activity list/show`, `requests list`, and `doctor` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
+The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, `requests list`, and `doctor` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
 
 ### 7.2 New read capabilities required by the redesign
 
@@ -726,7 +764,7 @@ On 2026-07-11, a purpose-built ignored test used the authorized keychain credent
 - `GET /stories/target-or-actor/{self-user-id}?limit=<N>&social_only=false` returned HTTP 200 with story records and pagination. A story had a canonical top-level story ID, creation timestamp, private audience, note, and nested payment containing its own ID, `status`, `action`, positive amount, actor, target user, audience, and timestamps. Its next link used the same route and the fields `before_id`, `limit`, `only_public_stories`, and `social_only`.
 - The observed activity timestamps use `YYYY-MM-DDTHH:MM:SS` without an offset. The project owner chose to interpret this legacy Venmo shape as UTC and render normalized RFC 3339 `Z` output; explicit-offset RFC 3339 values are also accepted. This assumption is documented and remains a release-time semantic check rather than silently assigning the local timezone.
 - A bounded 200-record follow-up established three current story classes: peer `payment`, wallet `transfer`, and card `authorization`. Transfer records identify exactly one external `source` for incoming `add_funds` activity or one external `destination` for outgoing transfers, plus amount, status, type, request timestamp, account name/type, and optional last four. Authorization records identify the authenticated user, merchant display name, amount, status, and creation time. The typed activity model preserves those distinctions, renders transfer type in the action, uses an external sanitized counterparty label, and rejects ambiguous source/destination or wrong-account authorization records.
-- `GET /stories/{story-id}` returned HTTP 200 with the corresponding story shape. A competing `GET /payments/{nested-payment-id}` returned HTTP 500 for the observed settled activity, so `activity show` uses canonical story IDs and the story-detail route. A successfully retrieved pending, failed, expired, or cancelled record remains command data and exits 0; its authoritative status is not converted into a CLI failure.
+- `GET /stories/{story-id}` returned HTTP 200 with the corresponding story shape. A competing `GET /payments/{nested-payment-id}` returned HTTP 500 for the observed settled activity, so `activity info` uses canonical story IDs and the story-detail route. A successfully retrieved pending, failed, expired, or cancelled record remains command data and exits 0; its authoritative status is not converted into a CLI failure.
 - `GET /payments?action=charge&status=pending,held&limit=<N>` returned HTTP 200 with actual payment/request records and pagination, not counts. Records had a canonical request/payment ID, `action=charge`, pending-state status, actor, target user, positive amount, note, audience, and dates. Direction is derived relative to the authenticated user: actor=self is outgoing and target.user=self is incoming. The next link used the fixed payments route and only `action`, `before`, `limit`, and `status`.
 - `GET /payments/{request-id}` returned HTTP 200 with the corresponding pending charge record and additional fee/medium/refund fields. Unlike the pending-request list, which accepts only `action=charge` and `status=pending|held`, detail mapping preserves `charge` or `pay` plus any understood status so mutation preflight can reject stale, terminal, or action-changed records safely. Detail still requires exactly one authenticated-account party, a positive exact amount, and an exact returned request ID. The later write validation below separately establishes acceptance and decline mutation semantics.
 
@@ -734,7 +772,7 @@ The Rust adapters encode these findings with endpoint-specific opaque tokens, ex
 
 This evidence proves immediate read compatibility only. The imported web token rotates quickly, current mobile-client header/User-Agent behavior remains unverified, final-page exhaustion should receive an additional live boundary check, and no financial write may rely on these findings without completing its separate Phase 0 contract.
 
-After implementation, read-only live smoke tests succeeded for `auth status`, `friends list`, `balance`, `activity list`, `activity show` using canonical payment/transfer/authorization story IDs selected only in process memory, `requests list` with all/incoming/outgoing filters, and `doctor`. Sensitive command output was discarded and no identifiers or account data were retained. The first activity runs safely exposed offsetless timestamps, capitalized `False` continuation booleans, and deeper transfer/authorization records. The owner selected UTC semantics for the legacy timestamp form; the parser now supports it, continuation booleans are validated case-insensitively without relaxing their value, all three observed activity classes have synthetic contract regressions, and repeat live runs succeeded. A historical bounded friends traversal reached verified exhaustion, while the larger activity dataset was not claimed complete.
+After implementation, read-only live smoke tests succeeded for `auth status`, `friends list`, `balance`, `activity list`, `activity info` using canonical payment/transfer/authorization story IDs selected only in process memory, `requests list` with all/incoming/outgoing filters, and `doctor`. Sensitive command output was discarded and no identifiers or account data were retained. The first activity runs safely exposed offsetless timestamps, capitalized `False` continuation booleans, and deeper transfer/authorization records. The owner selected UTC semantics for the legacy timestamp form; the parser now supports it, continuation booleans are validated case-insensitively without relaxing their value, all three observed activity classes have synthetic contract regressions, and repeat live runs succeeded. A historical bounded friends traversal reached verified exhaustion, while the larger activity dataset was not claimed complete.
 
 On 2026-07-11, the owner explicitly authorized read-only live pagination validation using the active mobile-issued credential. After the public CLI was aligned with endpoint-native pagination, a one-record first page exposed a validated continuation and a second process successfully supplied the exact native `--offset`, `--before-id`, or `--before` value for each of `friends list`, `users search`, `activity list`, and `requests list --direction all`. A separate bounded friends traversal used 50-record source pages and reached a real final page with no continuation. All record output and continuation values were suppressed and discarded; no account data, query result, identifier, note, amount, or continuation value was retained, and no mutation endpoint was called. This confirms current first-to-second endpoint continuation behavior for all four adapters and final-page signaling for friends. Natural final-page exhaustion for user search, activity, and pending requests remains a release observation rather than a reason to poll aggressively.
 
@@ -1609,7 +1647,7 @@ Exit criteria:
 
 Deliverables:
 
-- `activity list` and `activity show`.
+- `activity list` and `activity info`.
 - `requests list` with direction filtering.
 - Pending-request detail lookup used by acceptance and decline preflight.
 - `doctor`.

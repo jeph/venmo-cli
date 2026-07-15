@@ -2,8 +2,8 @@ use std::io;
 
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
-    AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg,
-    handle_runtime_initialization_failure, run,
+    AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg, RequestsOperation,
+    UsersOperation, handle_runtime_initialization_failure, run,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -131,6 +131,53 @@ fn direct_request_creation_dispatches_to_create() {
 }
 
 #[test]
+fn user_and_request_info_parse_exact_typed_ids() {
+    let user = Cli::try_parse_from(["venmo", "users", "info", "123456"]);
+    let user_id = match user {
+        Ok(cli) => match cli.command {
+            Command::Users(args) => match args.operation {
+                UsersOperation::Info(args) => Some(args.user_id.to_string()),
+                UsersOperation::Search(_) => None,
+            },
+            _ => None,
+        },
+        Err(_) => None,
+    };
+    assert_eq!(user_id.as_deref(), Some("123456"));
+
+    let request = Cli::try_parse_from(["venmo", "requests", "info", "request-123"]);
+    let request_id = match request {
+        Ok(cli) => match cli.command {
+            Command::Requests(args) => match args.operation {
+                RequestsOperation::Info(args) => Some(args.request_id.to_string()),
+                RequestsOperation::List(_) => None,
+            },
+            _ => None,
+        },
+        Err(_) => None,
+    };
+    assert_eq!(request_id.as_deref(), Some("request-123"));
+
+    for arguments in [
+        &["venmo", "users", "info"][..],
+        &["venmo", "users", "info", "user id"][..],
+        &["venmo", "users", "info", "123", "extra"][..],
+        &["venmo", "requests", "info"][..],
+        &["venmo", "requests", "info", "request id"][..],
+        &[
+            "venmo",
+            "requests",
+            "info",
+            "request-1",
+            "--direction",
+            "incoming",
+        ][..],
+    ] {
+        assert_rejected(arguments);
+    }
+}
+
+#[test]
 fn accept_username_is_not_the_accept_subcommand() {
     let parsed = Cli::try_parse_from(["venmo", "request", "@accept", "0.01", "--note", "Test"]);
     let dispatches_to_create = parsed.is_ok_and(|cli| matches!(cli.command, Command::Request(_)));
@@ -216,6 +263,7 @@ fn removed_and_deferred_forms_are_rejected() {
             "note",
             "--dry-run",
         ][..],
+        &["venmo", "activity", "show", "activity-1"][..],
     ] {
         assert_rejected(arguments);
     }
@@ -235,9 +283,8 @@ fn direction_and_completion_shell_are_typed_enums() {
     let request_values = match requests {
         Ok(cli) => match cli.command {
             Command::Requests(args) => match args.operation {
-                venmo_cli::cli::RequestsOperation::List(list) => {
-                    Some((list.direction, list.limit.get()))
-                }
+                RequestsOperation::List(list) => Some((list.direction, list.limit.get())),
+                RequestsOperation::Info(_) => None,
             },
             _ => None,
         },
@@ -299,7 +346,7 @@ fn each_paginated_command_accepts_only_its_endpoint_native_inputs() {
         &[
             "venmo",
             "activity",
-            "show",
+            "info",
             "activity-1",
             "--before-id",
             "story-12",
@@ -441,14 +488,16 @@ fn every_command_has_a_help_snapshot() {
         ("friends_list", &["friends", "list"]),
         ("users", &["users"]),
         ("users_search", &["users", "search"]),
+        ("users_info", &["users", "info"]),
         ("payment_methods", &["payment-methods"]),
         ("payment_methods_list", &["payment-methods", "list"]),
         ("balance", &["balance"]),
         ("activity", &["activity"]),
         ("activity_list", &["activity", "list"]),
-        ("activity_show", &["activity", "show"]),
+        ("activity_info", &["activity", "info"]),
         ("requests", &["requests"]),
         ("requests_list", &["requests", "list"]),
+        ("requests_info", &["requests", "info"]),
         ("doctor", &["doctor"]),
         ("completions", &["completions"]),
     ];

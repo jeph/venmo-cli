@@ -2,8 +2,8 @@ use clap::{Args, Subcommand, ValueEnum};
 
 use crate::features::activity::{ActivityBeforeId, ActivityId};
 use crate::features::people::UserSearchQuery;
-use crate::features::requests::{RequestDirectionFilter, RequestsBefore};
-use crate::shared::{Limit, Offset};
+use crate::features::requests::{RequestDirectionFilter, RequestId, RequestsBefore};
+use crate::shared::{Limit, Offset, UserId};
 
 use super::parsers::{RedactedActivityBeforeIdParser, RedactedRequestsBeforeParser};
 
@@ -40,6 +40,16 @@ pub struct UsersArgs {
 pub enum UsersOperation {
     /// Search for Venmo users.
     Search(UserSearchArgs),
+
+    /// Show information about one Venmo user.
+    Info(UserInfoArgs),
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+pub struct UserInfoArgs {
+    /// Canonical user ID.
+    #[arg(value_name = "USER_ID")]
+    pub user_id: UserId,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -80,8 +90,8 @@ pub enum ActivityOperation {
     /// List recent activity.
     List(ActivityListArgs),
 
-    /// Show one activity record.
-    Show(ActivityShowArgs),
+    /// Show information about one activity record.
+    Info(ActivityInfoArgs),
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -96,7 +106,7 @@ pub struct ActivityListArgs {
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct ActivityShowArgs {
+pub struct ActivityInfoArgs {
     /// Canonical activity ID.
     #[arg(value_name = "ACTIVITY_ID")]
     pub activity_id: ActivityId,
@@ -112,6 +122,16 @@ pub struct RequestsArgs {
 pub enum RequestsOperation {
     /// List pending requests involving the active account.
     List(RequestsListArgs),
+
+    /// Show information about one open request.
+    Info(RequestInfoArgs),
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+pub struct RequestInfoArgs {
+    /// Canonical request ID.
+    #[arg(value_name = "REQUEST_ID")]
+    pub request_id: RequestId,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]

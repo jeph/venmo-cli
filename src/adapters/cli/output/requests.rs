@@ -3,10 +3,71 @@ use std::io::{self, Write};
 use tabled::builder::Builder;
 use time::format_description::well_known::Rfc3339;
 
-use crate::features::requests::RequestsBefore;
 use crate::features::requests::list::RequestsResult;
+use crate::features::requests::{RequestAction, RequestInfoResult, RequestsBefore};
 
 use super::shared::{sanitize_terminal_text, user_label, write_table};
+
+pub(crate) fn write_request_info(
+    writer: &mut impl Write,
+    result: &RequestInfoResult,
+) -> io::Result<()> {
+    let request = result.request();
+    let counterparty = request.counterparty();
+    let action = match request.action() {
+        RequestAction::Charge => "charge",
+        RequestAction::Pay => "pay",
+    };
+    let created = request
+        .created_at()
+        .map(|value| value.format(&Rfc3339))
+        .transpose()
+        .map_err(io::Error::other)?
+        .unwrap_or_else(|| "(not provided)".to_owned());
+    let username = counterparty
+        .username()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "(not provided)".to_owned());
+    writeln!(
+        writer,
+        "Request ID: {}",
+        sanitize_terminal_text(request.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Status: {}",
+        sanitize_terminal_text(request.status().as_str())
+    )?;
+    writeln!(writer, "Direction: {}", request.direction())?;
+    writeln!(writer, "Action: {action}")?;
+    writeln!(
+        writer,
+        "Counterparty name: {}",
+        sanitize_terminal_text(counterparty.display_name().unwrap_or("(not provided)"))
+    )?;
+    writeln!(
+        writer,
+        "Counterparty username: {}",
+        sanitize_terminal_text(&username)
+    )?;
+    writeln!(
+        writer,
+        "Counterparty user ID: {}",
+        sanitize_terminal_text(counterparty.user_id().as_str())
+    )?;
+    writeln!(writer, "Amount: ${}", request.amount())?;
+    writeln!(writer, "Created: {created}")?;
+    writeln!(
+        writer,
+        "Note: {}",
+        sanitize_terminal_text(request.note().unwrap_or("(not provided)"))
+    )?;
+    writeln!(
+        writer,
+        "Audience: {}",
+        sanitize_terminal_text(request.audience().unwrap_or("(not provided)"))
+    )
+}
 
 pub(crate) fn write_requests<W: Write, E: Write>(
     stdout: &mut W,

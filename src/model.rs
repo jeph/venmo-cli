@@ -5,18 +5,19 @@
 //! expose their own protocol-specific facades rather than widening this one.
 
 pub use crate::features::activity::continuation::ActivityBeforeId;
+pub use crate::features::activity::info::ActivityInfoResult;
 pub use crate::features::activity::list::ActivityListResult;
 pub use crate::features::activity::model::{
     Activity, ActivityAction, ActivityCounterparty, ActivityDirection, ActivityId,
     ActivityLabelParseError, ActivityStatus,
 };
-pub use crate::features::activity::show::ActivityShowResult;
 pub use crate::features::payments::model::{
     CreatedPayment, FinancialStatus, PayPlan, PaymentId, PeerFundingFee, PeerFundingMethod,
     PeerFundingRole,
 };
 pub use crate::features::payments::pay::PayResult;
 pub use crate::features::people::friends::FriendsResult;
+pub use crate::features::people::info::UserInfoResult;
 pub use crate::features::people::recipient::{RecipientInput, RecipientParseError};
 pub use crate::features::people::user::{
     User, UserProfileKind, UserSearchQuery, UserSearchQueryParseError,
@@ -26,6 +27,7 @@ pub use crate::features::requests::accept::AcceptResult;
 pub use crate::features::requests::continuation::RequestsBefore;
 pub use crate::features::requests::create::RequestCreateResult;
 pub use crate::features::requests::decline::DeclineResult;
+pub use crate::features::requests::info::RequestInfoResult;
 pub use crate::features::requests::list::RequestsResult;
 pub use crate::features::requests::model::{
     CreatedRequest, RequestAction, RequestDirection, RequestDirectionFilter, RequestId,

@@ -2,9 +2,9 @@
 source: tests/cli.rs
 expression: help
 ---
-Show one activity record
+Show information about one activity record
 
-Usage: show <ACTIVITY_ID>
+Usage: info <ACTIVITY_ID>
 
 Arguments:
   <ACTIVITY_ID>

@@ -1,14 +1,18 @@
 use std::io::Write;
 
 use crate::features::activity::{self as activity, ActivityDetailApi, ActivityListApi};
-use crate::features::people::{FriendsApi, UserSearchApi, friends, users};
-use crate::features::requests::{RequestsApi, list as requests};
+use crate::features::people::{
+    self as people, FriendsApi, UserLookupApi, UserSearchApi, friends, users,
+};
+use crate::features::requests::{
+    self as requests, RequestLookupApi, RequestsApi, list as request_list,
+};
 use crate::features::wallet::{BalanceApi, PaymentMethodsApi, balance, payment_methods};
 use crate::shared::CredentialReader;
 
 use super::super::args::{
     ActivityArgs, ActivityOperation, FriendsArgs, FriendsOperation, PaymentMethodsArgs,
-    PaymentMethodsOperation, RequestsArgs, RequestsOperation, UsersArgs, UsersOperation,
+    PaymentMethodsOperation, RequestInfoArgs, RequestsListArgs, UserInfoArgs, UserSearchArgs,
 };
 use super::super::{error::AppError, output};
 
@@ -63,16 +67,16 @@ where
             let result = activity::list(store, api, args.limit, args.before_id.as_ref()).await?;
             output::write_activity_list(stdout, stderr, &result)?;
         }
-        ActivityOperation::Show(args) => {
-            let result = activity::show(store, api, &args.activity_id).await?;
-            output::write_activity_show(stdout, &result)?;
+        ActivityOperation::Info(args) => {
+            let result = activity::info(store, api, &args.activity_id).await?;
+            output::write_activity_info(stdout, &result)?;
         }
     }
     Ok(())
 }
 
-pub(super) async fn run_requests<R, A, W, E>(
-    args: RequestsArgs,
+pub(super) async fn run_requests_list<R, A, W, E>(
+    args: RequestsListArgs,
     store: &R,
     api: &A,
     stdout: &mut W,
@@ -84,24 +88,36 @@ where
     W: Write,
     E: Write,
 {
-    match args.operation {
-        RequestsOperation::List(args) => {
-            let result = requests::list(
-                store,
-                api,
-                args.direction.into(),
-                args.limit,
-                args.before.as_ref(),
-            )
-            .await?;
-            output::write_requests(stdout, stderr, &result)?;
-        }
-    }
+    let result = request_list::list(
+        store,
+        api,
+        args.direction.into(),
+        args.limit,
+        args.before.as_ref(),
+    )
+    .await?;
+    output::write_requests(stdout, stderr, &result)?;
     Ok(())
 }
 
-pub(super) async fn run_users<R, A, W, E>(
-    args: UsersArgs,
+pub(super) async fn run_request_info<R, A, W>(
+    args: RequestInfoArgs,
+    store: &R,
+    api: &A,
+    stdout: &mut W,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: RequestLookupApi,
+    W: Write,
+{
+    let result = requests::info(store, api, &args.request_id).await?;
+    output::write_request_info(stdout, &result)?;
+    Ok(())
+}
+
+pub(super) async fn run_user_search<R, A, W, E>(
+    args: UserSearchArgs,
     store: &R,
     api: &A,
     stdout: &mut W,
@@ -113,12 +129,24 @@ where
     W: Write,
     E: Write,
 {
-    match args.operation {
-        UsersOperation::Search(args) => {
-            let result = users::search(store, api, &args.query, args.limit, args.offset).await?;
-            output::write_user_search(stdout, stderr, &result)?;
-        }
-    }
+    let result = users::search(store, api, &args.query, args.limit, args.offset).await?;
+    output::write_user_search(stdout, stderr, &result)?;
+    Ok(())
+}
+
+pub(super) async fn run_user_info<R, A, W>(
+    args: UserInfoArgs,
+    store: &R,
+    api: &A,
+    stdout: &mut W,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: UserLookupApi,
+    W: Write,
+{
+    let result = people::info(store, api, &args.user_id).await?;
+    output::write_user_info(stdout, &result)?;
     Ok(())
 }
 

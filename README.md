@@ -73,7 +73,19 @@ venmo activity list [--limit N] [--before-id TOKEN]
 venmo requests list [--direction all|incoming|outgoing] [--limit N] [--before TOKEN]
 ```
 
-Each invocation requests exactly one source API page, validates and buffers that complete page, and then renders its records. `--limit` is the server request page size; it defaults to 10 and cannot exceed 50. Friend listing and user search use a typed nonnegative `--offset` that defaults to 0. Activity uses its opaque `--before-id`, while pending requests use their opaque `--before`. There is no universal continuation input, universal offset, page number, or public multi-page collector.
+Each of these four invocations requests exactly one source API page, validates and buffers that complete page, and then renders its records. `--limit` is the server request page size; it defaults to 10 and cannot exceed 50. Friend listing and user search use a typed nonnegative `--offset` that defaults to 0. Activity uses its opaque `--before-id`, while pending requests use their opaque `--before`. There is no universal continuation input, universal offset, page number, or public multi-page collector.
+
+The non-paginated `users info <USER_ID>`, `activity info <ACTIVITY_ID>`, and
+`requests info <REQUEST_ID>` commands inspect one known canonical user, activity, or open-request ID. User
+detail requires the API response to preserve the exact requested user ID. Request detail uses the
+broad payment/request lookup internally but exposes only `action=charge` records whose status is
+exactly `pending` or `held`, in either direction. Payment (`action=pay`) and terminal request
+records are rejected as usage errors rather than displayed as open requests.
+
+Peer-payment reads are intentionally not exposed yet. The request-specific `/payments` contracts do
+not establish a safe general payment list, and a dated settled-PaymentId detail probe returned HTTP
+500 even though the corresponding activity story was readable. `payments list` and `payments info`
+remain evidence-gated rather than guessing from activity IDs or payment-shaped request data.
 
 When the validated source response has another page, the CLI writes only the endpoint-native copyable continuation to stderr, after record output succeeds: `Next offset: <N>`, `Next before-id: <TOKEN>`, or `Next before: <TOKEN>`. Friends use the offset from the validated server next link. User search provisionally synthesizes the next offset when the source page is full, so one final empty page can be required to observe exhaustion. Raw next URLs are never printed or followed.
 
@@ -126,4 +138,4 @@ The user-facing command descriptions above are not contributor test instructions
 - [Testing strategy](docs/testing.md)
 - [Retained integration/manual contracts](docs/retained-test-contracts.md)
 - [Evidence-gated follow-ups](docs/evidence-gated-follow-ups.md)
-- [Public facade inventory and 0.1 compatibility](docs/public-api.md)
+- [Public facade inventory and compatibility](docs/public-api.md)

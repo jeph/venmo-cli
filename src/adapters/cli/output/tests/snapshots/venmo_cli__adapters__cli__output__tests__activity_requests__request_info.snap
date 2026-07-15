@@ -1,0 +1,15 @@
+---
+source: src/adapters/cli/output/tests/activity_requests.rs
+expression: output
+---
+Request ID: request-1
+Status: held
+Direction: outgoing
+Action: charge
+Counterparty name: Bob\n\u{001B}[31mExample
+Counterparty username: @bob
+Counterparty user ID: 456
+Amount: $12.34
+Created: 1970-01-01T00:00:00Z
+Note: note\u{202E}text\nline
+Audience: private\u{0007}

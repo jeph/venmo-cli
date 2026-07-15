@@ -9,14 +9,15 @@ use std::str::FromStr;
 use clap::Parser;
 
 use super::*;
-use crate::adapters::cli::args::{Cli, Command};
+use crate::adapters::cli::args::{Cli, Command, RequestsOperation, UsersOperation};
 use crate::adapters::cli::error::ErrorCategory;
 use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDirection,
     ActivityId, ActivityPage, ActivityPageRequest, ActivityStatus,
 };
 use crate::features::people::{
-    FriendsPage, FriendsPageRequest, User, UserSearchPage, UserSearchPageRequest, UserSearchQuery,
+    FriendsPage, FriendsPageRequest, User, UserProfileKind, UserSearchPage, UserSearchPageRequest,
+    UserSearchQuery,
 };
 use crate::features::requests::{
     PendingRequestsPage, PendingRequestsPageRequest, RequestAction, RequestDirection, RequestId,
@@ -73,6 +74,10 @@ enum ReadCall {
         query: UserSearchQuery,
         page: UserSearchPageRequest,
     },
+    UserInfo {
+        session: SessionCall,
+        user_id: UserId,
+    },
     Friends {
         session: SessionCall,
         current_user_id: UserId,
@@ -86,7 +91,7 @@ enum ReadCall {
         current_user_id: UserId,
         page: ActivityPageRequest,
     },
-    ActivityShow {
+    ActivityInfo {
         session: SessionCall,
         current_user_id: UserId,
         activity_id: ActivityId,
@@ -95,6 +100,11 @@ enum ReadCall {
         session: SessionCall,
         current_user_id: UserId,
         page: PendingRequestsPageRequest,
+    },
+    RequestInfo {
+        session: SessionCall,
+        current_user_id: UserId,
+        request_id: RequestId,
     },
     StdoutWrite,
     StderrWrite,
@@ -256,12 +266,12 @@ impl PaymentMethodsApi for PaymentMethodsFake {
     }
 }
 
-struct UsersFake {
+struct UserSearchFake {
     responses: ResponseQueue<UserSearchPage>,
     transcript: Transcript,
 }
 
-impl UserSearchApi for UsersFake {
+impl UserSearchApi for UserSearchFake {
     type Error = FakeApiError;
 
     fn search_users<'a>(
@@ -275,6 +285,28 @@ impl UserSearchApi for UsersFake {
             session: session_call(access_token, device_id),
             query: query.clone(),
             page,
+        });
+        ready(self.responses.take())
+    }
+}
+
+struct UserInfoFake {
+    responses: ResponseQueue<User>,
+    transcript: Transcript,
+}
+
+impl UserLookupApi for UserInfoFake {
+    type Error = FakeApiError;
+
+    fn user_by_id<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        user_id: &'a UserId,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(ReadCall::UserInfo {
+            session: session_call(access_token, device_id),
+            user_id: user_id.clone(),
         });
         ready(self.responses.take())
     }
@@ -326,7 +358,7 @@ impl BalanceApi for BalanceFake {
 
 struct ActivityFake {
     list_responses: ResponseQueue<ActivityPage>,
-    show_responses: ResponseQueue<Activity>,
+    info_responses: ResponseQueue<Activity>,
     transcript: Transcript,
 }
 
@@ -359,21 +391,21 @@ impl ActivityDetailApi for ActivityFake {
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
     ) -> impl Future<Output = Result<Activity, Self::Error>> + Send + 'a {
-        self.transcript.borrow_mut().push(ReadCall::ActivityShow {
+        self.transcript.borrow_mut().push(ReadCall::ActivityInfo {
             session: session_call(access_token, device_id),
             current_user_id: current_user_id.clone(),
             activity_id: activity_id.clone(),
         });
-        ready(self.show_responses.take())
+        ready(self.info_responses.take())
     }
 }
 
-struct RequestsFake {
+struct RequestsListFake {
     responses: ResponseQueue<PendingRequestsPage>,
     transcript: Transcript,
 }
 
-impl RequestsApi for RequestsFake {
+impl RequestsApi for RequestsListFake {
     type Error = FakeApiError;
 
     fn pending_requests<'a>(
@@ -390,6 +422,30 @@ impl RequestsApi for RequestsFake {
                 current_user_id: current_user_id.clone(),
                 page,
             });
+        ready(self.responses.take())
+    }
+}
+
+struct RequestInfoFake {
+    responses: ResponseQueue<RequestRecord>,
+    transcript: Transcript,
+}
+
+impl RequestLookupApi for RequestInfoFake {
+    type Error = FakeApiError;
+
+    fn request_by_id<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        request_id: &'a RequestId,
+    ) -> impl Future<Output = Result<RequestRecord, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(ReadCall::RequestInfo {
+            session: session_call(access_token, device_id),
+            current_user_id: current_user_id.clone(),
+            request_id: request_id.clone(),
+        });
         ready(self.responses.take())
     }
 }
@@ -423,7 +479,7 @@ struct ReadState<ApiState> {
 #[derive(Debug, Eq, PartialEq)]
 struct ActivityApiState {
     list: Vec<ResponseId>,
-    show: Vec<ResponseId>,
+    info: Vec<ResponseId>,
 }
 
 fn observation<ApiState>(

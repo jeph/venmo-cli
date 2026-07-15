@@ -5,7 +5,7 @@ use crate::adapters::credentials::NativeCredentialStore;
 use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
 
-use super::super::args::Command;
+use super::super::args::{Command, RequestsOperation, UsersOperation};
 use super::super::completions;
 use super::super::error::AppError;
 use super::super::prompt::{DialoguerPrompt, TerminalCapabilities};
@@ -62,10 +62,16 @@ where
             let (store, api) = provider.credential_store_and_api()?;
             reads::run_payment_methods(args, &store, &api, stdout).await
         }
-        Command::Users(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            reads::run_users(args, &store, &api, stdout, stderr).await
-        }
+        Command::Users(args) => match args.operation {
+            UsersOperation::Search(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                reads::run_user_search(args, &store, &api, stdout, stderr).await
+            }
+            UsersOperation::Info(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                reads::run_user_info(args, &store, &api, stdout).await
+            }
+        },
         Command::Friends(args) => {
             let (store, api) = provider.credential_store_and_api()?;
             reads::run_friends(args, &store, &api, stdout, stderr).await
@@ -78,10 +84,16 @@ where
             let (store, api) = provider.credential_store_and_api()?;
             reads::run_activity(args, &store, &api, stdout, stderr).await
         }
-        Command::Requests(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            reads::run_requests(args, &store, &api, stdout, stderr).await
-        }
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::List(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                reads::run_requests_list(args, &store, &api, stdout, stderr).await
+            }
+            RequestsOperation::Info(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                reads::run_request_info(args, &store, &api, stdout).await
+            }
+        },
         Command::Doctor => doctor::run_production(provider, stdout).await,
         Command::Pay(args) => {
             let (store, api) = provider.credential_store_and_api()?;

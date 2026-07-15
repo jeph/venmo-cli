@@ -1,0 +1,15 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Show information about one open request
+
+Usage: info <REQUEST_ID>
+
+Arguments:
+  <REQUEST_ID>
+          Canonical request ID
+
+Options:
+  -h, --help
+          Print help

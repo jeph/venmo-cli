@@ -4,7 +4,7 @@ use tabled::builder::Builder;
 use time::format_description::well_known::Rfc3339;
 
 use crate::features::activity::{
-    ActivityBeforeId, ActivityCounterparty, ActivityListResult, ActivityShowResult,
+    ActivityBeforeId, ActivityCounterparty, ActivityInfoResult, ActivityListResult,
 };
 
 use super::shared::{sanitize_terminal_text, user_label, write_table};
@@ -49,9 +49,9 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
     write_next_before_id(stderr, result.next_before_id())
 }
 
-pub(crate) fn write_activity_show<W: Write>(
+pub(crate) fn write_activity_info<W: Write>(
     writer: &mut W,
-    result: &ActivityShowResult,
+    result: &ActivityInfoResult,
 ) -> io::Result<()> {
     let activity = result.activity();
     let timestamp = activity

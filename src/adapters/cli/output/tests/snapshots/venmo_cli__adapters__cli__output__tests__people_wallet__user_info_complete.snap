@@ -1,0 +1,9 @@
+---
+source: src/adapters/cli/output/tests/people_wallet.rs
+expression: complete_output
+---
+User ID: 123
+Username: @alice
+Display name: Alice\n\u{001B}[31mExample
+Profile kind: personal
+Payable: yes

@@ -96,14 +96,31 @@ pub(super) fn payment_methods_args() -> TestResult<PaymentMethodsArgs> {
     }
 }
 
-pub(super) fn users_args() -> TestResult<UsersArgs> {
+pub(super) fn users_args() -> TestResult<UserSearchArgs> {
     match Cli::try_parse_from([
         "venmo", "users", "search", "alice", "--limit", "1", "--offset", "10",
     ])?
     .command
     {
-        Command::Users(args) => Ok(args),
+        Command::Users(args) => match args.operation {
+            UsersOperation::Search(args) => Ok(args),
+            UsersOperation::Info(_) => {
+                Err(io::Error::other("user-search arguments parsed as user-info arguments").into())
+            }
+        },
         _ => Err(io::Error::other("user arguments parsed as another command").into()),
+    }
+}
+
+pub(super) fn user_info_args() -> TestResult<UserInfoArgs> {
+    match Cli::try_parse_from(["venmo", "users", "info", "123"])?.command {
+        Command::Users(args) => match args.operation {
+            UsersOperation::Info(args) => Ok(args),
+            UsersOperation::Search(_) => {
+                Err(io::Error::other("user-info arguments parsed as user-search arguments").into())
+            }
+        },
+        _ => Err(io::Error::other("user-info arguments parsed as another command").into()),
     }
 }
 
@@ -133,14 +150,14 @@ pub(super) fn activity_list_args() -> TestResult<ActivityArgs> {
     }
 }
 
-pub(super) fn activity_show_args() -> TestResult<ActivityArgs> {
-    match Cli::try_parse_from(["venmo", "activity", "show", "story-1"])?.command {
+pub(super) fn activity_info_args() -> TestResult<ActivityArgs> {
+    match Cli::try_parse_from(["venmo", "activity", "info", "story-1"])?.command {
         Command::Activity(args) => Ok(args),
-        _ => Err(io::Error::other("activity-show arguments parsed as another command").into()),
+        _ => Err(io::Error::other("activity-info arguments parsed as another command").into()),
     }
 }
 
-pub(super) fn requests_args() -> TestResult<RequestsArgs> {
+pub(super) fn requests_args() -> TestResult<RequestsListArgs> {
     match Cli::try_parse_from([
         "venmo",
         "requests",
@@ -154,8 +171,27 @@ pub(super) fn requests_args() -> TestResult<RequestsArgs> {
     ])?
     .command
     {
-        Command::Requests(args) => Ok(args),
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::List(args) => Ok(args),
+            RequestsOperation::Info(_) => Err(io::Error::other(
+                "request-list arguments parsed as request-info arguments",
+            )
+            .into()),
+        },
         _ => Err(io::Error::other("request-list arguments parsed as another command").into()),
+    }
+}
+
+pub(super) fn request_info_args() -> TestResult<RequestInfoArgs> {
+    match Cli::try_parse_from(["venmo", "requests", "info", "request-1"])?.command {
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::Info(args) => Ok(args),
+            RequestsOperation::List(_) => Err(io::Error::other(
+                "request-info arguments parsed as request-list arguments",
+            )
+            .into()),
+        },
+        _ => Err(io::Error::other("request-info arguments parsed as another command").into()),
     }
 }
 
@@ -171,6 +207,14 @@ pub(super) const USERS_OUTPUT: &str = concat!(
     " 123 | @alice   | Alice\\u{001B}[31m\n",
 );
 
+pub(super) const USER_INFO_OUTPUT: &str = concat!(
+    "User ID: 123\n",
+    "Username: @alice\n",
+    "Display name: Alice\\nExample\n",
+    "Profile kind: personal\n",
+    "Payable: yes\n",
+);
+
 pub(super) const FRIENDS_OUTPUT: &str = concat!(
     " ID  | USERNAME | NAME\n",
     "-----+----------+-----------\n",
@@ -184,7 +228,7 @@ pub(super) const ACTIVITY_LIST_OUTPUT: &str = concat!(
     " story-transfer | 1970-01-01T00:00:00Z | transfer:standard | outgoing  | Bank\\nname (bank ••••1234) | $12.34 | issued |\n",
 );
 
-pub(super) const ACTIVITY_SHOW_OUTPUT: &str = concat!(
+pub(super) const ACTIVITY_INFO_OUTPUT: &str = concat!(
     "Activity ID: story-1\n",
     "Time: 1970-01-01T00:00:00Z\n",
     "Action: pay\n",
@@ -200,4 +244,18 @@ pub(super) const REQUESTS_OUTPUT: &str = concat!(
     " ID        | DIRECTION | COUNTERPARTY | AMOUNT | CREATED              | STATUS  | NOTE\n",
     "-----------+-----------+--------------+--------+----------------------+---------+---------------------\n",
     " request-1 | incoming  | @bob         | $0.01  | 1970-01-01T00:00:00Z | pending | request\\u{202E}note\n",
+);
+
+pub(super) const REQUEST_INFO_OUTPUT: &str = concat!(
+    "Request ID: request-1\n",
+    "Status: pending\n",
+    "Direction: incoming\n",
+    "Action: charge\n",
+    "Counterparty name: Synthetic User\n",
+    "Counterparty username: @bob\n",
+    "Counterparty user ID: 456\n",
+    "Amount: $0.01\n",
+    "Created: 1970-01-01T00:00:00Z\n",
+    "Note: request\\u{202E}note\n",
+    "Audience: (not provided)\n",
 );

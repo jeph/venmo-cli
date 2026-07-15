@@ -248,6 +248,15 @@ _arguments "${_arguments_options[@]}" : \
 ':query -- Search text:_default' \
 && ret=0
 ;;
+(info)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':user_id -- Canonical user ID:_default' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_venmo__subcmd__users__subcmd__help_commands" \
@@ -261,6 +270,10 @@ _arguments "${_arguments_options[@]}" : \
         curcontext="${curcontext%:*:*}:venmo-users-help-command-$line[1]:"
         case $line[1] in
             (search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(info)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -362,7 +375,7 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
-(show)
+(info)
 _arguments "${_arguments_options[@]}" : \
 '-v[Write redacted diagnostics to stderr]' \
 '--verbose[Write redacted diagnostics to stderr]' \
@@ -387,7 +400,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(show)
+(info)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -430,6 +443,15 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(info)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':request_id -- Canonical request ID:_default' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_venmo__subcmd__requests__subcmd__help_commands" \
@@ -443,6 +465,10 @@ _arguments "${_arguments_options[@]}" : \
         curcontext="${curcontext%:*:*}:venmo-requests-help-command-$line[1]:"
         case $line[1] in
             (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(info)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -571,6 +597,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(info)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
         esac
     ;;
 esac
@@ -615,7 +645,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(show)
+(info)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -636,6 +666,10 @@ _arguments "${_arguments_options[@]}" : \
         curcontext="${curcontext%:*:*}:venmo-help-requests-command-$line[1]:"
         case $line[1] in
             (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(info)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -693,7 +727,7 @@ _venmo__subcmd__accept_commands() {
 _venmo__subcmd__activity_commands() {
     local commands; commands=(
 'list:List recent activity' \
-'show:Show one activity record' \
+'info:Show information about one activity record' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'venmo activity commands' commands "$@"
@@ -702,7 +736,7 @@ _venmo__subcmd__activity_commands() {
 _venmo__subcmd__activity__subcmd__help_commands() {
     local commands; commands=(
 'list:List recent activity' \
-'show:Show one activity record' \
+'info:Show information about one activity record' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'venmo activity help commands' commands "$@"
@@ -712,25 +746,25 @@ _venmo__subcmd__activity__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'venmo activity help help commands' commands "$@"
 }
+(( $+functions[_venmo__subcmd__activity__subcmd__help__subcmd__info_commands] )) ||
+_venmo__subcmd__activity__subcmd__help__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo activity help info commands' commands "$@"
+}
 (( $+functions[_venmo__subcmd__activity__subcmd__help__subcmd__list_commands] )) ||
 _venmo__subcmd__activity__subcmd__help__subcmd__list_commands() {
     local commands; commands=()
     _describe -t commands 'venmo activity help list commands' commands "$@"
 }
-(( $+functions[_venmo__subcmd__activity__subcmd__help__subcmd__show_commands] )) ||
-_venmo__subcmd__activity__subcmd__help__subcmd__show_commands() {
+(( $+functions[_venmo__subcmd__activity__subcmd__info_commands] )) ||
+_venmo__subcmd__activity__subcmd__info_commands() {
     local commands; commands=()
-    _describe -t commands 'venmo activity help show commands' commands "$@"
+    _describe -t commands 'venmo activity info commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__activity__subcmd__list_commands] )) ||
 _venmo__subcmd__activity__subcmd__list_commands() {
     local commands; commands=()
     _describe -t commands 'venmo activity list commands' commands "$@"
-}
-(( $+functions[_venmo__subcmd__activity__subcmd__show_commands] )) ||
-_venmo__subcmd__activity__subcmd__show_commands() {
-    local commands; commands=()
-    _describe -t commands 'venmo activity show commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__auth_commands] )) ||
 _venmo__subcmd__auth_commands() {
@@ -879,19 +913,19 @@ _venmo__subcmd__help__subcmd__accept_commands() {
 _venmo__subcmd__help__subcmd__activity_commands() {
     local commands; commands=(
 'list:List recent activity' \
-'show:Show one activity record' \
+'info:Show information about one activity record' \
     )
     _describe -t commands 'venmo help activity commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__activity__subcmd__info_commands] )) ||
+_venmo__subcmd__help__subcmd__activity__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help activity info commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__help__subcmd__activity__subcmd__list_commands] )) ||
 _venmo__subcmd__help__subcmd__activity__subcmd__list_commands() {
     local commands; commands=()
     _describe -t commands 'venmo help activity list commands' commands "$@"
-}
-(( $+functions[_venmo__subcmd__help__subcmd__activity__subcmd__show_commands] )) ||
-_venmo__subcmd__help__subcmd__activity__subcmd__show_commands() {
-    local commands; commands=()
-    _describe -t commands 'venmo help activity show commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__help__subcmd__auth_commands] )) ||
 _venmo__subcmd__help__subcmd__auth_commands() {
@@ -986,8 +1020,14 @@ _venmo__subcmd__help__subcmd__request_commands() {
 _venmo__subcmd__help__subcmd__requests_commands() {
     local commands; commands=(
 'list:List pending requests involving the active account' \
+'info:Show information about one open request' \
     )
     _describe -t commands 'venmo help requests commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__requests__subcmd__info_commands] )) ||
+_venmo__subcmd__help__subcmd__requests__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help requests info commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__help__subcmd__requests__subcmd__list_commands] )) ||
 _venmo__subcmd__help__subcmd__requests__subcmd__list_commands() {
@@ -998,8 +1038,14 @@ _venmo__subcmd__help__subcmd__requests__subcmd__list_commands() {
 _venmo__subcmd__help__subcmd__users_commands() {
     local commands; commands=(
 'search:Search for Venmo users' \
+'info:Show information about one Venmo user' \
     )
     _describe -t commands 'venmo help users commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__users__subcmd__info_commands] )) ||
+_venmo__subcmd__help__subcmd__users__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help users info commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__help__subcmd__users__subcmd__search_commands] )) ||
 _venmo__subcmd__help__subcmd__users__subcmd__search_commands() {
@@ -1051,6 +1097,7 @@ _venmo__subcmd__request_commands() {
 _venmo__subcmd__requests_commands() {
     local commands; commands=(
 'list:List pending requests involving the active account' \
+'info:Show information about one open request' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'venmo requests commands' commands "$@"
@@ -1059,6 +1106,7 @@ _venmo__subcmd__requests_commands() {
 _venmo__subcmd__requests__subcmd__help_commands() {
     local commands; commands=(
 'list:List pending requests involving the active account' \
+'info:Show information about one open request' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'venmo requests help commands' commands "$@"
@@ -1068,10 +1116,20 @@ _venmo__subcmd__requests__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'venmo requests help help commands' commands "$@"
 }
+(( $+functions[_venmo__subcmd__requests__subcmd__help__subcmd__info_commands] )) ||
+_venmo__subcmd__requests__subcmd__help__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo requests help info commands' commands "$@"
+}
 (( $+functions[_venmo__subcmd__requests__subcmd__help__subcmd__list_commands] )) ||
 _venmo__subcmd__requests__subcmd__help__subcmd__list_commands() {
     local commands; commands=()
     _describe -t commands 'venmo requests help list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__requests__subcmd__info_commands] )) ||
+_venmo__subcmd__requests__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo requests info commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__requests__subcmd__list_commands] )) ||
 _venmo__subcmd__requests__subcmd__list_commands() {
@@ -1082,6 +1140,7 @@ _venmo__subcmd__requests__subcmd__list_commands() {
 _venmo__subcmd__users_commands() {
     local commands; commands=(
 'search:Search for Venmo users' \
+'info:Show information about one Venmo user' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'venmo users commands' commands "$@"
@@ -1090,6 +1149,7 @@ _venmo__subcmd__users_commands() {
 _venmo__subcmd__users__subcmd__help_commands() {
     local commands; commands=(
 'search:Search for Venmo users' \
+'info:Show information about one Venmo user' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'venmo users help commands' commands "$@"
@@ -1099,10 +1159,20 @@ _venmo__subcmd__users__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'venmo users help help commands' commands "$@"
 }
+(( $+functions[_venmo__subcmd__users__subcmd__help__subcmd__info_commands] )) ||
+_venmo__subcmd__users__subcmd__help__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo users help info commands' commands "$@"
+}
 (( $+functions[_venmo__subcmd__users__subcmd__help__subcmd__search_commands] )) ||
 _venmo__subcmd__users__subcmd__help__subcmd__search_commands() {
     local commands; commands=()
     _describe -t commands 'venmo users help search commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__users__subcmd__info_commands] )) ||
+_venmo__subcmd__users__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo users info commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__users__subcmd__search_commands] )) ||
 _venmo__subcmd__users__subcmd__search_commands() {

@@ -7,10 +7,12 @@ use crate::features::activity::ActivityError;
 use crate::features::auth::{AuthStatusError, LoginError};
 use crate::features::payments::pay::PayError;
 use crate::features::people::friends::FriendsError;
+use crate::features::people::info::UserInfoError;
 use crate::features::people::users::{UserSearchError, UserSearchFailureKind};
 use crate::features::requests::accept::AcceptError;
 use crate::features::requests::create::RequestCreateError;
 use crate::features::requests::decline::DeclineError;
+use crate::features::requests::info::RequestInfoError;
 use crate::features::requests::list::RequestsError;
 use crate::features::wallet::balance::BalanceError;
 use crate::features::wallet::payment_methods::PaymentMethodsError;
@@ -148,6 +150,12 @@ pub enum AppError {
     },
 
     #[error(transparent)]
+    UserInfo {
+        #[from]
+        source: UserInfoError,
+    },
+
+    #[error(transparent)]
     Friends {
         #[from]
         source: FriendsError,
@@ -169,6 +177,12 @@ pub enum AppError {
     Requests {
         #[from]
         source: RequestsError,
+    },
+
+    #[error(transparent)]
+    RequestInfo {
+        #[from]
+        source: RequestInfoError,
     },
 
     #[error("doctor found one or more required failures; review the report")]
@@ -209,10 +223,12 @@ impl AppError {
                 UserSearchFailureKind::ResponseContract => ErrorCategory::ApiContract,
                 UserSearchFailureKind::Internal => ErrorCategory::Internal,
             },
+            Self::UserInfo { source } => read_failure_category(source.failure_kind()),
             Self::Friends { source } => read_failure_category(source.failure_kind()),
             Self::Balance { source } => read_failure_category(source.failure_kind()),
             Self::Activity { source } => read_failure_category(source.failure_kind()),
             Self::Requests { source } => read_failure_category(source.failure_kind()),
+            Self::RequestInfo { source } => application_failure_category(source.failure_kind()),
             Self::DoctorIncomplete => ErrorCategory::Api,
             Self::FinancialWriteInterruptedUnknown => ErrorCategory::AmbiguousWrite,
             Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
