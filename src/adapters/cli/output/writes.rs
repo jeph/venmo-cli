@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use time::format_description::well_known::Rfc3339;
 
 use crate::features::payments::pay::{PayResult, PreparedPay};
-use crate::features::payments::{FinancialStatus, PeerFundingMethod};
+use crate::features::payments::{FinancialStatus, PeerFundingFee, PeerFundingMethod};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
 use crate::features::requests::create::RequestCreateResult;
 use crate::features::requests::decline::{DeclineResult, PreparedDecline};
@@ -35,17 +35,32 @@ pub(crate) fn write_pay_preflight<W: Write>(
         sanitize_terminal_text(plan.note().as_str())
     )?;
     writeln!(writer, "  Audience: private")?;
-    writeln!(writer, "  Fee: $0.00")?;
-    writeln!(writer, "  Total: ${}", plan.amount())?;
     writeln!(
         writer,
         "  Available Venmo balance: {}",
         plan.balance().available()
     )?;
     write_backup_method(writer, plan.backup_method())?;
+    write_method_fee(writer, plan.backup_method().fee())?;
+    writeln!(
+        writer,
+        "  Eligibility-reported fee: ${}",
+        format_usd_cents(u128::from(plan.eligibility_fee_cents()))
+    )?;
+    writeln!(
+        writer,
+        "  Eligibility-reported total: ${}",
+        format_usd_cents(
+            u128::from(plan.amount().cents()) + u128::from(plan.eligibility_fee_cents())
+        )
+    )?;
     writeln!(
         writer,
         "  Warning: Venmo may use available balance before the submitted backup method."
+    )?;
+    writeln!(
+        writer,
+        "  Warning: eligibility is not bound to the submitted backup method; the final fee may differ."
     )
 }
 
@@ -69,12 +84,17 @@ pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> 
     writeln!(writer, "Audience: private")?;
     writeln!(
         writer,
+        "Eligibility-reported fee: ${}",
+        format_usd_cents(u128::from(result.plan().eligibility_fee_cents()))
+    )?;
+    writeln!(
+        writer,
         "Submitted backup method ID: {}",
         sanitize_terminal_text(result.plan().backup_method().method().id().as_str())
     )?;
     writeln!(
         writer,
-        "Venmo may have used available balance before the submitted backup method."
+        "The response does not prove the final funding source or fee; Venmo may have used available balance before the submitted backup method."
     )
 }
 
@@ -282,6 +302,22 @@ fn write_backup_method(writer: &mut impl Write, method: &PeerFundingMethod) -> i
         "  Submitted backup method: {name} ({method_type}{last_four}, ID {})",
         sanitize_terminal_text(method.id().as_str())
     )
+}
+
+fn write_method_fee(writer: &mut impl Write, fee: PeerFundingFee) -> io::Result<()> {
+    match fee {
+        PeerFundingFee::ProvenZero => writeln!(writer, "  Submitted method fee: $0.00"),
+        PeerFundingFee::NonZero { cents } => writeln!(
+            writer,
+            "  Submitted method fee: ${}",
+            format_usd_cents(u128::from(cents.get()))
+        ),
+        PeerFundingFee::Unknown => writeln!(writer, "  Submitted method fee: unknown"),
+    }
+}
+
+fn format_usd_cents(cents: u128) -> String {
+    format!("{}.{:02}", cents / 100, cents % 100)
 }
 
 const fn financial_status(status: FinancialStatus) -> &'static str {

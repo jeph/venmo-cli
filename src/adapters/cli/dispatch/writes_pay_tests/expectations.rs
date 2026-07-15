@@ -56,6 +56,7 @@ pub(super) fn create_payment_call() -> PayCall {
             amount_cents: 1,
             note: "Synthetic payment".to_owned(),
             backup_method_id: "bank-1".to_owned(),
+            eligibility_fee_cents: 0,
         },
     }
 }

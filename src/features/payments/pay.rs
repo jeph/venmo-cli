@@ -77,8 +77,6 @@ pub enum PayError {
         #[source]
         source: ApiOperationFailure,
     },
-    #[error("the payment eligibility response reported a nonzero fee")]
-    NonZeroEligibilityFee,
     #[error(
         "payment confirmation requires both stdin and stderr to be terminals; pass `--yes` to authorize non-interactively"
     )]
@@ -107,9 +105,7 @@ impl PayError {
             | Self::Eligibility { source }
             | Self::Create { source } => ApplicationFailureKind::Api(source.kind()),
             Self::FundingSelection(source) => source.failure_kind(),
-            Self::NonZeroEligibilityFee | Self::ConfirmationRequired => {
-                ApplicationFailureKind::Usage
-            }
+            Self::ConfirmationRequired => ApplicationFailureKind::Usage,
             Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
             Self::Confirmation { source } => prompt_failure_kind(source),
         }
@@ -170,9 +166,7 @@ where
         .map_err(|source| PayError::Eligibility {
             source: ApiOperationFailure::new(source),
         })?;
-    if eligibility.overall_fee_cents() != 0 {
-        return Err(PayError::NonZeroEligibilityFee);
-    }
+    let eligibility_fee_cents = eligibility.overall_fee_cents();
     let plan = PayPlan::new(
         generator.generate(),
         account,
@@ -181,6 +175,7 @@ where
         note,
         balance,
         funding,
+        eligibility_fee_cents,
         eligibility.into_token(),
     );
     Ok(PreparedPay::new(credential, plan))

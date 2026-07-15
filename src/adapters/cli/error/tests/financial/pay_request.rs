@@ -72,10 +72,6 @@ fn pay_and_request_creation_variants_have_deliberate_categories() {
             ErrorCategory::ApiContract,
         ),
         (
-            AppError::from(PayError::NonZeroEligibilityFee),
-            ErrorCategory::Usage,
-        ),
-        (
             AppError::from(PayError::ConfirmationRequired),
             ErrorCategory::Usage,
         ),

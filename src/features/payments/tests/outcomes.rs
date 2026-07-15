@@ -42,9 +42,7 @@ impl From<&PromptError> for PromptFailure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum FundingFailure {
     NoEligibleMethods,
-    NoProvenZeroFeeMethods,
     ExplicitMethodUnavailable,
-    ExplicitMethodFeeNotZero,
     DuplicateMethodIds,
     MultipleDefaults,
     ExplicitMethodRequired,
@@ -55,9 +53,7 @@ impl From<&FundingSelectionError> for FundingFailure {
     fn from(error: &FundingSelectionError) -> Self {
         match error {
             FundingSelectionError::NoEligibleMethods => Self::NoEligibleMethods,
-            FundingSelectionError::NoProvenZeroFeeMethods => Self::NoProvenZeroFeeMethods,
             FundingSelectionError::ExplicitMethodUnavailable => Self::ExplicitMethodUnavailable,
-            FundingSelectionError::ExplicitMethodFeeNotZero => Self::ExplicitMethodFeeNotZero,
             FundingSelectionError::DuplicateMethodIds => Self::DuplicateMethodIds,
             FundingSelectionError::MultipleDefaults => Self::MultipleDefaults,
             FundingSelectionError::ExplicitMethodRequired => Self::ExplicitMethodRequired,
@@ -77,7 +73,6 @@ pub(super) enum PayFailure {
     FundingMethods(ApiFailureKind),
     FundingSelection(FundingFailure),
     Eligibility(ApiFailureKind),
-    NonZeroEligibilityFee,
     ConfirmationRequired,
     ConfirmationDeclined,
     Confirmation(PromptFailure),
@@ -109,7 +104,6 @@ pub(super) fn pay_outcome(result: Result<PayResult, PayError>) -> PayOutcome {
                 PayFailure::FundingSelection(FundingFailure::from(&source))
             }
             PayError::Eligibility { source } => PayFailure::Eligibility(source.kind()),
-            PayError::NonZeroEligibilityFee => PayFailure::NonZeroEligibilityFee,
             PayError::ConfirmationRequired => PayFailure::ConfirmationRequired,
             PayError::ConfirmationDeclined => PayFailure::ConfirmationDeclined,
             PayError::Confirmation { source } => {

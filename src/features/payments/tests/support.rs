@@ -22,6 +22,7 @@ pub(super) struct PayPlanCall {
     pub(super) note: Note,
     pub(super) balance: Balance,
     pub(super) backup_method: PeerFundingMethod,
+    pub(super) eligibility_fee_cents: u64,
     pub(super) eligibility_token: RedactedSecret,
 }
 
@@ -35,6 +36,7 @@ impl From<&PayPlan> for PayPlanCall {
             note: plan.note().clone(),
             balance: plan.balance().clone(),
             backup_method: plan.backup_method().clone(),
+            eligibility_fee_cents: plan.eligibility_fee_cents(),
             eligibility_token: RedactedSecret::Redacted,
         }
     }
@@ -493,6 +495,14 @@ pub(super) async fn run_pay(
 }
 
 pub(super) fn successful_calls(amount: Money, note: Note) -> Result<Vec<Call>, Box<dyn Error>> {
+    successful_calls_with_fee(amount, note, 0)
+}
+
+pub(super) fn successful_calls_with_fee(
+    amount: Money,
+    note: Note,
+    eligibility_fee_cents: u64,
+) -> Result<Vec<Call>, Box<dyn Error>> {
     let recipient = financial_user()?;
     let account = test_account()?;
     let balance = test_balance();
@@ -526,6 +536,7 @@ pub(super) fn successful_calls(amount: Money, note: Note) -> Result<Vec<Call>, B
                 note,
                 balance,
                 backup_method: method,
+                eligibility_fee_cents,
                 eligibility_token: RedactedSecret::Redacted,
             }),
         },
@@ -635,6 +646,19 @@ pub(super) fn pay_plan(
     balance: Balance,
     method: PeerFundingMethod,
 ) -> Result<PayPlan, Box<dyn Error>> {
+    pay_plan_with_fee(account, recipient, amount, note, balance, method, 0)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn pay_plan_with_fee(
+    account: Account,
+    recipient: User,
+    amount: Money,
+    note: Note,
+    balance: Balance,
+    method: PeerFundingMethod,
+    eligibility_fee_cents: u64,
+) -> Result<PayPlan, Box<dyn Error>> {
     Ok(PayPlan::new(
         fixed_request_id(),
         account,
@@ -643,6 +667,7 @@ pub(super) fn pay_plan(
         note,
         balance,
         method,
+        eligibility_fee_cents,
         EligibilityToken::parse_owned(ELIGIBILITY_TOKEN.to_owned())?,
     ))
 }

@@ -47,15 +47,7 @@ fn nested_financial_failure_variants_have_deliberate_classes() {
             ApplicationFailureKind::Usage,
         ),
         (
-            FundingSelectionError::NoProvenZeroFeeMethods,
-            ApplicationFailureKind::Usage,
-        ),
-        (
             FundingSelectionError::ExplicitMethodUnavailable,
-            ApplicationFailureKind::Usage,
-        ),
-        (
-            FundingSelectionError::ExplicitMethodFeeNotZero,
             ApplicationFailureKind::Usage,
         ),
         (

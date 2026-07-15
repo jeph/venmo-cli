@@ -64,6 +64,7 @@ struct PayPlanCall {
     amount_cents: u64,
     note: String,
     backup_method_id: String,
+    eligibility_fee_cents: u64,
 }
 
 impl From<&PayPlan> for PayPlanCall {
@@ -75,6 +76,7 @@ impl From<&PayPlan> for PayPlanCall {
             amount_cents: plan.amount().cents(),
             note: plan.note().as_str().to_owned(),
             backup_method_id: plan.backup_method().method().id().to_string(),
+            eligibility_fee_cents: plan.eligibility_fee_cents(),
         }
     }
 }

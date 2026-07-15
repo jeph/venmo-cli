@@ -7,5 +7,6 @@ Status: settled
 Recipient: @bob (Synthetic\nrecipient)
 Amount: $0.01
 Audience: private
+Eligibility-reported fee: $0.03
 Submitted backup method ID: bank-1
-Venmo may have used available balance before the submitted backup method.
+The response does not prove the final funding source or fee; Venmo may have used available balance before the submitted backup method.

@@ -181,6 +181,7 @@ pub struct PayPlan {
     note: Note,
     balance: Balance,
     backup_method: PeerFundingMethod,
+    eligibility_fee_cents: u64,
     eligibility_token: EligibilityToken,
 }
 
@@ -195,6 +196,7 @@ impl PayPlan {
         note: Note,
         balance: Balance,
         backup_method: PeerFundingMethod,
+        eligibility_fee_cents: u64,
         eligibility_token: EligibilityToken,
     ) -> Self {
         Self {
@@ -205,6 +207,7 @@ impl PayPlan {
             note,
             balance,
             backup_method,
+            eligibility_fee_cents,
             eligibility_token,
         }
     }
@@ -242,6 +245,11 @@ impl PayPlan {
     #[must_use]
     pub const fn backup_method(&self) -> &PeerFundingMethod {
         &self.backup_method
+    }
+
+    #[must_use]
+    pub const fn eligibility_fee_cents(&self) -> u64 {
+        self.eligibility_fee_cents
     }
 
     #[must_use]

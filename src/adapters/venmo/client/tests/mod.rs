@@ -545,6 +545,7 @@ fn pay_plan() -> Result<PayPlan, Box<dyn Error>> {
             SignedUsdAmount::from_cents(0),
         ),
         zero_fee_peer_method()?,
+        0,
         EligibilityToken::parse_owned("synthetic-eligibility-token".to_owned())?,
     ))
 }

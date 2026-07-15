@@ -114,7 +114,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
         }
         'venmo;pay' {
             [CompletionResult]::new('--note', '--note', [CompletionResultType]::ParameterName, 'Non-empty payment note')
-            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'Preferred external/backup method ID; Venmo balance may be used first')
+            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'Preferred external/backup method ID; fees do not block selection and balance may be used first')
             [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Skip only the final default-No confirmation')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')

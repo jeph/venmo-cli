@@ -1,7 +1,16 @@
 use super::*;
 
 pub(super) fn pay_args() -> TestResult<PayArgs> {
-    let cli = Cli::try_parse_from(["venmo", "pay", "456", "0.01", "--note", "Synthetic payment"])?;
+    let cli = Cli::try_parse_from([
+        "venmo",
+        "pay",
+        "456",
+        "0.01",
+        "--note",
+        "Synthetic payment",
+        "--from",
+        "bank-1",
+    ])?;
     match cli.command {
         Command::Pay(args) => Ok(args),
         _ => Err(io::Error::other("pay arguments parsed as another command").into()),
@@ -56,7 +65,7 @@ pub(super) fn funding_method() -> TestResult<PeerFundingMethod> {
             true,
         ),
         PeerFundingRole::Default,
-        PeerFundingFee::ProvenZero,
+        PeerFundingFee::Unknown,
     ))
 }
 
@@ -81,11 +90,13 @@ pub(super) const PAY_PREFLIGHT: &str = concat!(
     "  Amount: $0.01\n",
     "  Note: Synthetic payment\n",
     "  Audience: private\n",
-    "  Fee: $0.00\n",
-    "  Total: $0.01\n",
     "  Available Venmo balance: $3.00\n",
     "  Submitted backup method: Synthetic bank (bank ending 1234, ID bank-1)\n",
+    "  Submitted method fee: unknown\n",
+    "  Eligibility-reported fee: $0.00\n",
+    "  Eligibility-reported total: $0.01\n",
     "  Warning: Venmo may use available balance before the submitted backup method.\n",
+    "  Warning: eligibility is not bound to the submitted backup method; the final fee may differ.\n",
 );
 
 pub(super) const PAY_RESULT: &str = concat!(
@@ -94,6 +105,7 @@ pub(super) const PAY_RESULT: &str = concat!(
     "Recipient: @bob (Synthetic recipient)\n",
     "Amount: $0.01\n",
     "Audience: private\n",
+    "Eligibility-reported fee: $0.00\n",
     "Submitted backup method ID: bank-1\n",
-    "Venmo may have used available balance before the submitted backup method.\n",
+    "The response does not prove the final funding source or fee; Venmo may have used available balance before the submitted backup method.\n",
 );

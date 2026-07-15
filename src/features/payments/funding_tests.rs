@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use super::*;
 use crate::features::auth::PromptAvailability;
-use crate::features::payments::PeerFundingRole;
+use crate::features::payments::{PeerFundingFee, PeerFundingRole};
 use crate::features::wallet::PaymentMethod;
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -101,9 +101,7 @@ enum PromptFailure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FundingFailure {
     NoEligibleMethods,
-    NoProvenZeroFeeMethods,
     ExplicitMethodUnavailable,
-    ExplicitMethodFeeNotZero,
     DuplicateMethodIds,
     MultipleDefaults,
     ExplicitMethodRequired,
@@ -114,9 +112,7 @@ impl From<&FundingSelectionError> for FundingFailure {
     fn from(error: &FundingSelectionError) -> Self {
         match error {
             FundingSelectionError::NoEligibleMethods => Self::NoEligibleMethods,
-            FundingSelectionError::NoProvenZeroFeeMethods => Self::NoProvenZeroFeeMethods,
             FundingSelectionError::ExplicitMethodUnavailable => Self::ExplicitMethodUnavailable,
-            FundingSelectionError::ExplicitMethodFeeNotZero => Self::ExplicitMethodFeeNotZero,
             FundingSelectionError::DuplicateMethodIds => Self::DuplicateMethodIds,
             FundingSelectionError::MultipleDefaults => Self::MultipleDefaults,
             FundingSelectionError::ExplicitMethodRequired => Self::ExplicitMethodRequired,
@@ -183,7 +179,11 @@ fn deterministic_selection_and_validation_table_compares_whole_results() -> Test
                 PeerFundingFee::Unknown,
             )?],
             requested: Some(PaymentMethodId::from_str("unknown-fee")?),
-            expected: FundingOutcome::Failure(FundingFailure::ExplicitMethodFeeNotZero),
+            expected: FundingOutcome::Selected(method_with_fee(
+                "unknown-fee",
+                false,
+                PeerFundingFee::Unknown,
+            )?),
         },
         Case {
             methods: vec![backup_zero],
@@ -197,7 +197,24 @@ fn deterministic_selection_and_validation_table_compares_whole_results() -> Test
                 PeerFundingFee::Unknown,
             )?],
             requested: None,
-            expected: FundingOutcome::Failure(FundingFailure::NoProvenZeroFeeMethods),
+            expected: FundingOutcome::Selected(method_with_fee(
+                "unknown-only",
+                false,
+                PeerFundingFee::Unknown,
+            )?),
+        },
+        Case {
+            methods: vec![method_with_fee(
+                "nonzero-explicit",
+                false,
+                PeerFundingFee::from_cents(3),
+            )?],
+            requested: Some(PaymentMethodId::from_str("nonzero-explicit")?),
+            expected: FundingOutcome::Selected(method_with_fee(
+                "nonzero-explicit",
+                false,
+                PeerFundingFee::from_cents(3),
+            )?),
         },
         Case {
             methods: vec![method("duplicate", false)?, method("duplicate", false)?],
@@ -230,7 +247,11 @@ fn interactive_selection_cancel_error_invalid_choice_and_noninteractive_ambiguit
         (
             true,
             PromptScript::Index(1),
-            FundingOutcome::Selected(method("bank-2", false)?),
+            FundingOutcome::Selected(method_with_fee(
+                "bank-2",
+                false,
+                PeerFundingFee::from_cents(3),
+            )?),
             true,
         ),
         (
@@ -262,7 +283,10 @@ fn interactive_selection_cancel_error_invalid_choice_and_noninteractive_ambiguit
         ),
     ] {
         // Setup.
-        let methods = vec![method("bank-1", false)?, method("bank-2", false)?];
+        let methods = vec![
+            method_with_fee("bank-1", false, PeerFundingFee::Unknown)?,
+            method_with_fee("bank-2", false, PeerFundingFee::from_cents(3))?,
+        ];
 
         // Immutable initial state.
         let transcript = Rc::new(RefCell::new(Vec::new()));
@@ -297,12 +321,12 @@ fn interactive_selection_cancel_error_invalid_choice_and_noninteractive_ambiguit
 }
 
 #[test]
-fn nonzero_default_is_ineligible_and_single_zero_backup_is_selected() -> TestResult {
+fn nonzero_default_remains_the_automatic_selection() -> TestResult {
     let methods = vec![
         method_with_fee("default-nonzero", true, PeerFundingFee::from_cents(1))?,
         method("backup-zero", false)?,
     ];
-    let expected = FundingOutcome::Selected(methods[1].clone());
+    let expected = FundingOutcome::Selected(methods[0].clone());
     let observed = project(select(&NoPrompt, &methods, None));
     assert_eq!(observed, expected);
     Ok(())

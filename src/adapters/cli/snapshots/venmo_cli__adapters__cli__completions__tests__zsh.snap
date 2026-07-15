@@ -127,7 +127,7 @@ esac
 (pay)
 _arguments "${_arguments_options[@]}" : \
 '--note=[Non-empty payment note]:NOTE:_default' \
-'--from=[Preferred external/backup method ID; Venmo balance may be used first]:METHOD_ID:_default' \
+'--from=[Preferred external/backup method ID; fees do not block selection and balance may be used first]:METHOD_ID:_default' \
 '--yes[Skip only the final default-No confirmation]' \
 '-v[Write redacted diagnostics to stderr]' \
 '--verbose[Write redacted diagnostics to stderr]' \

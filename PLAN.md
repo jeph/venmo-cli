@@ -51,7 +51,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Keep direct request creation as `venmo request ...`. Make the frequent request-state actions top-level `venmo accept ...` and `venmo decline ...`; reject nested `venmo request accept ...` and add no compatibility alias.
 - Call transaction history `activity`.
 - Keep payment audience private in the first release.
-- Limit ordinary payment release to personal-profile peer-to-peer operations with a fee proven by the verified contract to be exactly zero. Acceptance is a documented exception: it requires full available-balance coverage and submits no external funding method, but the update and response do not prove the actual source or fee.
+- Limit ordinary payment release to personal-profile peer-to-peer operations with a valid eligibility token. Allow any peer-eligible external method regardless of method-level or eligibility-reported fee, disclose available fee evidence before confirmation, and do not claim the final fee is proven. Acceptance requires full available-balance coverage and submits no external funding method, but the update and response do not prove the actual source or fee.
 - Treat `--from` as the submitted preferred external or backup funding method, not a guarantee that the method will be debited. Venmo wallet balance may take priority; preflight must state that behavior and success output may name an actual source only when authoritative evidence proves it.
 - Require default-No confirmation only when the user sends money: `pay` and `accept`.
 - Expose `--yes` only on `pay` and `accept`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a financial confirmation prompt. `decline` sends no money, writes immediately after authoritative validation, and accepts no `--yes`.
@@ -227,7 +227,7 @@ Funding-source selection order:
 4. An interactive selection when a terminal is available.
 5. A clear failure in non-interactive use.
 
-Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact external `bank`/`card` type; wallet balance, merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible backup source. The live response can omit a usable method-level fee for the automatic default external source, so only that exact default may proceed with an unknown method fee to the transaction-specific blank-source eligibility check. A zero total from that check proves the candidate transaction's overall fee, while the selected default method correctly remains `Unknown` because the request's empty funding-source field does not bind the proof to that method. A known nonzero method fee always fails, and an explicit `--from` or non-default source with an unknown method fee remains blocked for the same reason. Duplicate IDs, unknown peer roles, or multiple defaults are contract failures; an explicit unavailable ID fails; and multiple non-default methods require an explicit proven-zero `--from` or interactive selection among already proven-zero methods followed by the same transaction eligibility check.
+Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact external `bank`/`card` type; wallet balance, merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible backup source. Method-level fee evidence does not filter those peer-eligible methods: proven-zero, known-nonzero, and unknown-fee methods may be selected explicitly, automatically, or interactively. The transaction-specific blank-source eligibility call remains required for its token, but its fee is not used as a rejection gate. Because that call sends an empty funding-source field, preflight displays its reported fee separately from the selected method's fee evidence and warns that the final fee may differ. Duplicate IDs, unknown peer roles, or multiple defaults are contract failures; an explicit unavailable ID fails; and multiple non-default methods require an explicit `--from` or interactive selection.
 
 Before confirmation, show:
 
@@ -235,7 +235,8 @@ Before confirmation, show:
 - Exact amount.
 - Note.
 - Private audience.
-- Proven fee of `$0.00` and exact total.
+- Selected method fee evidence (`$0.00`, a known nonzero amount, or `unknown`).
+- Eligibility-reported fee and corresponding total, with a warning that eligibility is not method-bound and the final fee may differ.
 - Current Venmo wallet balance when supplied by the verified preflight contract.
 - Submitted preferred external or backup payment method, including a safe label and ID.
 - A warning that Venmo may use available wallet balance before the submitted backup method.
@@ -1178,10 +1179,10 @@ Before writing, and before the confirmation prompt for `pay`:
 4. Validate the non-empty note.
 5. Verify a personal, payable, non-self recipient for the exact operation.
 6. Resolve the strictly peer-eligible backup funding method for `pay`.
-7. Prove that every applicable fee is exactly zero; missing or unknown fee semantics fail closed.
+7. Preserve the selected method's fee evidence and the eligibility-reported fee without rejecting zero, nonzero, or unknown fee states.
 8. Read the wallet balance required for the balance-priority disclosure.
 9. Build an immutable private-audience plan.
-10. For `pay`, render a sanitized complete summary including zero fee, exact total, wallet balance, backup method, and balance-priority warning before confirmation.
+10. For `pay`, render a sanitized complete summary including method fee evidence, eligibility-reported fee and total, wallet balance, backup method, method-binding caveat, and balance-priority warning before confirmation.
 
 If any preflight step fails, send no write request.
 

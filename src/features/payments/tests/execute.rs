@@ -64,6 +64,7 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
                     note: Note::from_str("Synthetic payment note")?,
                     balance,
                     backup_method: method,
+                    eligibility_fee_cents: 0,
                     eligibility_token: RedactedSecret::Redacted,
                 }),
             },

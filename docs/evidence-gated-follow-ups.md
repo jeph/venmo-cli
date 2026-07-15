@@ -36,12 +36,14 @@ The stricter peer-funding path continues to use its separately verified exact ro
 
 ## Method-bound eligibility
 
-The eligibility request intentionally sends an empty `funding_source_id`. Its zero-fee result can
-prove the overall candidate transaction fee, but it cannot prove that a selected default or
-override method has a zero method-level fee. The selected method therefore remains `Unknown` when
-its own response lacks fee evidence; it is not upgraded to `ProvenZero`. Binding the proof to a
-method requires a controlled capture showing the request field, token, response, and resulting
-payment all refer to that exact method.
+The eligibility request intentionally sends an empty `funding_source_id`. Its reported fee describes
+the candidate transaction, but it cannot prove the fee for a selected default or override method.
+The selected method therefore remains `Unknown` when its own response lacks fee evidence; it is not
+upgraded to `ProvenZero`. Method-level fee evidence does not gate selection: zero-fee, nonzero-fee,
+and unknown-fee peer methods may all be submitted. Preflight reports the method evidence and
+eligibility fee separately and warns that the final fee may differ. Binding the proof to a method
+requires a controlled capture showing the request field, token, response, and resulting payment all
+refer to that exact method.
 
 ## Exact-recipient acceptance at the exhaustive bound
 

@@ -158,8 +158,9 @@ fn synthetic_pay_plan() -> Result<PayPlan, Box<dyn Error>> {
                 true,
             ),
             PeerFundingRole::Default,
-            PeerFundingFee::ProvenZero,
+            PeerFundingFee::Unknown,
         ),
+        3,
         EligibilityToken::parse_owned("synthetic-eligibility".to_owned())?,
     ))
 }

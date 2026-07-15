@@ -126,7 +126,7 @@ async fn recipient_and_funding_contract_failures_never_reach_eligibility_or_writ
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn nonzero_transaction_fee_stops_after_the_single_eligibility_check() -> TestResult {
+async fn nonzero_transaction_fee_is_retained_and_payment_proceeds() -> TestResult {
     // Setup.
     let amount = Money::from_cents(1)?;
     let note = Note::from_str("Synthetic note")?;
@@ -145,12 +145,22 @@ async fn nonzero_transaction_fee_stops_after_the_single_eligibility_check() -> T
     );
 
     // Complete expected final outcome and state.
+    let expected_plan = pay_plan_with_fee(
+        test_account()?,
+        financial_user()?,
+        amount,
+        note.clone(),
+        test_balance(),
+        peer_method(
+            "bank-1",
+            PeerFundingRole::Default,
+            PeerFundingFee::ProvenZero,
+        )?,
+        1,
+    )?;
     let expected = Observation::new(
-        PayOutcome::Failure(PayFailure::NonZeroEligibilityFee),
-        successful_calls(amount, note.clone())?
-            .into_iter()
-            .take(6)
-            .collect(),
+        PayOutcome::Success(Box::new(PayResult::new(expected_plan, created_payment()?))),
+        successful_calls_with_fee(amount, note.clone(), 1)?,
     );
 
     // Execute once.

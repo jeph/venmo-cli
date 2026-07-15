@@ -24,7 +24,7 @@ pub struct PayArgs {
     #[arg(long, value_name = "NOTE")]
     pub note: Note,
 
-    /// Preferred external/backup method ID; Venmo balance may be used first.
+    /// Preferred external/backup method ID; fees do not block selection and balance may be used first.
     #[arg(long, value_name = "METHOD_ID")]
     pub from: Option<PaymentMethodId>,
 
