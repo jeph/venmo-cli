@@ -81,7 +81,7 @@ pub enum AcceptError {
         source: ApiOperationFailure,
     },
     #[error(
-        "acceptance requires available Venmo balance covering the full request; external funding is unavailable until its request-acceptance contract is verified"
+        "acceptance requires available Venmo balance covering the full request; the CLI submits no external funding method"
     )]
     InsufficientWalletBalance,
     #[error(

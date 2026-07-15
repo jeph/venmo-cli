@@ -44,10 +44,10 @@ pub enum Command {
     /// Create a request immediately.
     Request(RequestArgs),
 
-    /// Candidate incoming-request acceptance; unavailable pending live validation.
+    /// Accept an incoming request after authoritative validation and confirmation.
     Accept(AcceptArgs),
 
-    /// Candidate incoming-request decline; unavailable pending live validation.
+    /// Decline an incoming request without sending money.
     Decline(DeclineArgs),
 
     /// Inspect friends of the active account.

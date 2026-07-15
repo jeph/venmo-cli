@@ -68,21 +68,15 @@ enum LoggingBehavior {
 
 struct DispatchSetup {
     cli: Cli,
-    release_gates: ReleaseGates,
     terminals: TerminalCapabilities,
     logging_behavior: LoggingBehavior,
     executor_behavior: ExecutorBehavior,
 }
 
 impl DispatchSetup {
-    fn parse(
-        arguments: &[&str],
-        release_gates: ReleaseGates,
-        terminals: TerminalCapabilities,
-    ) -> Result<Self, clap::Error> {
+    fn parse(arguments: &[&str], terminals: TerminalCapabilities) -> Result<Self, clap::Error> {
         Ok(Self {
             cli: Cli::try_parse_from(arguments)?,
-            release_gates,
             terminals,
             logging_behavior: LoggingBehavior::Succeed,
             executor_behavior: ExecutorBehavior::Succeed,
@@ -102,7 +96,6 @@ impl DispatchSetup {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ErrorVariant {
-    CommandUnavailable,
     LoggingInitialization,
     RuntimeInitialization,
     AuthLogin,
@@ -124,11 +117,7 @@ enum ResultSnapshot {
 #[tokio::test(flavor = "current_thread")]
 async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
-    let completion_setup = DispatchSetup::parse(
-        &["venmo", "completions", "bash"],
-        ReleaseGates::production(),
-        terminals,
-    )?;
+    let completion_setup = DispatchSetup::parse(&["venmo", "completions", "bash"], terminals)?;
     let initial_state = DispatchState::default();
     let expected = Observed::new(
         ResultSnapshot::Success,
@@ -143,16 +132,6 @@ async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
     assert_eq!(observed, expected);
 
     for (arguments, variant, message) in [
-        (
-            &["venmo", "accept", "request-1", "--yes"][..],
-            ErrorVariant::CommandUnavailable,
-            "the `accept` command is implemented as a candidate but unavailable pending controlled live validation",
-        ),
-        (
-            &["venmo", "decline", "request-1"][..],
-            ErrorVariant::CommandUnavailable,
-            "the `decline` command is implemented as a candidate but unavailable pending controlled live validation",
-        ),
         (
             &["venmo", "auth", "login"][..],
             ErrorVariant::AuthLogin,
@@ -169,7 +148,7 @@ async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
             "an interactive terminal is required",
         ),
     ] {
-        let setup = DispatchSetup::parse(arguments, ReleaseGates::production(), terminals)?;
+        let setup = DispatchSetup::parse(arguments, terminals)?;
         let initial_state = DispatchState::default();
         let expected = Observed::new(
             ResultSnapshot::Failure {
@@ -199,12 +178,9 @@ async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
 #[tokio::test(flavor = "current_thread")]
 async fn production_preconditions_do_not_call_the_logging_initializer() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
-    let completion_setup = DispatchSetup::parse(
-        &["venmo", "--verbose", "completions", "bash"],
-        ReleaseGates::production(),
-        terminals,
-    )?
-    .with_logging_behavior(LoggingBehavior::Fail);
+    let completion_setup =
+        DispatchSetup::parse(&["venmo", "--verbose", "completions", "bash"], terminals)?
+            .with_logging_behavior(LoggingBehavior::Fail);
     let initial_state = DispatchState::default();
     let expected = Observed::new(
         ResultSnapshot::Success,
@@ -219,16 +195,6 @@ async fn production_preconditions_do_not_call_the_logging_initializer() -> TestR
     assert_eq!(observed, expected);
 
     for (arguments, variant, message) in [
-        (
-            &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
-            ErrorVariant::CommandUnavailable,
-            "the `accept` command is implemented as a candidate but unavailable pending controlled live validation",
-        ),
-        (
-            &["venmo", "--verbose", "decline", "request-1"][..],
-            ErrorVariant::CommandUnavailable,
-            "the `decline` command is implemented as a candidate but unavailable pending controlled live validation",
-        ),
         (
             &["venmo", "--verbose", "auth", "login"][..],
             ErrorVariant::AuthLogin,
@@ -245,7 +211,7 @@ async fn production_preconditions_do_not_call_the_logging_initializer() -> TestR
             "an interactive terminal is required",
         ),
     ] {
-        let setup = DispatchSetup::parse(arguments, ReleaseGates::production(), terminals)?
+        let setup = DispatchSetup::parse(arguments, terminals)?
             .with_logging_behavior(LoggingBehavior::Fail);
         let initial_state = DispatchState::default();
         let expected = Observed::new(
@@ -275,90 +241,88 @@ async fn production_preconditions_do_not_call_the_logging_initializer() -> TestR
 
 #[tokio::test(flavor = "current_thread")]
 async fn delegated_production_commands_initialize_logging_before_execution() -> TestResult {
-    let setup = DispatchSetup::parse(
-        &["venmo", "--verbose", "doctor"],
-        ReleaseGates::production(),
-        TerminalCapabilities::new(false, false),
-    )?;
-    let delegated_command = setup.cli.command.clone();
-    let initial_state = DispatchState::default();
-    let expected = Observed::new(
-        ResultSnapshot::Success,
-        DispatchState {
-            calls: vec![
-                DispatchCall::InitializeLogging { verbose: true },
-                DispatchCall::Execute(delegated_command),
-            ],
-            ..DispatchState::default()
-        },
-    );
+    for arguments in [
+        &["venmo", "--verbose", "doctor"][..],
+        &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
+        &["venmo", "--verbose", "decline", "request-1"][..],
+    ] {
+        let setup = DispatchSetup::parse(arguments, TerminalCapabilities::new(false, false))?;
+        let delegated_command = setup.cli.command.clone();
+        let initial_state = DispatchState::default();
+        let expected = Observed::new(
+            ResultSnapshot::Success,
+            DispatchState {
+                calls: vec![
+                    DispatchCall::InitializeLogging { verbose: true },
+                    DispatchCall::Execute(delegated_command),
+                ],
+                ..DispatchState::default()
+            },
+        );
 
-    let observed = execute_production_dispatch(setup, initial_state).await;
+        let observed = execute_production_dispatch(setup, initial_state).await;
 
-    assert_eq!(observed, expected);
+        assert_eq!(observed, expected, "arguments: {arguments:?}");
+    }
     Ok(())
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn logging_initialization_failures_prevent_production_execution() -> TestResult {
-    let setup = DispatchSetup::parse(
-        &["venmo", "--verbose", "doctor"],
-        ReleaseGates::production(),
-        TerminalCapabilities::new(false, false),
-    )?
-    .with_logging_behavior(LoggingBehavior::Fail);
-    let initial_state = DispatchState::default();
-    let expected = Observed::new(
-        ResultSnapshot::Failure {
-            variant: ErrorVariant::LoggingInitialization,
-            category: ErrorCategory::Internal,
-            exit_code: 1,
-            message: "failed to initialize verbose diagnostics".to_owned(),
-        },
-        DispatchState {
-            calls: vec![DispatchCall::InitializeLogging { verbose: true }],
-            ..DispatchState::default()
-        },
-    );
+    for arguments in [
+        &["venmo", "--verbose", "doctor"][..],
+        &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
+        &["venmo", "--verbose", "decline", "request-1"][..],
+    ] {
+        let setup = DispatchSetup::parse(arguments, TerminalCapabilities::new(false, false))?
+            .with_logging_behavior(LoggingBehavior::Fail);
+        let initial_state = DispatchState::default();
+        let expected = Observed::new(
+            ResultSnapshot::Failure {
+                variant: ErrorVariant::LoggingInitialization,
+                category: ErrorCategory::Internal,
+                exit_code: 1,
+                message: "failed to initialize verbose diagnostics".to_owned(),
+            },
+            DispatchState {
+                calls: vec![DispatchCall::InitializeLogging { verbose: true }],
+                ..DispatchState::default()
+            },
+        );
 
-    let observed = execute_production_dispatch(setup, initial_state).await;
+        let observed = execute_production_dispatch(setup, initial_state).await;
 
-    assert_eq!(observed, expected);
+        assert_eq!(observed, expected, "arguments: {arguments:?}");
+    }
     Ok(())
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn every_service_command_can_reach_the_typed_executor_without_production_services()
 -> TestResult {
-    for (arguments, gates, terminals) in [
+    for (arguments, terminals) in [
         (
             &["venmo", "auth", "login"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(true, true),
         ),
         (
             &["venmo", "auth", "login", "--token"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(true, true),
         ),
         (
             &["venmo", "auth", "reauthenticate"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(true, true),
         ),
         (
             &["venmo", "auth", "status"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "auth", "logout"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "auth", "logout", "--revoke"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
@@ -371,66 +335,54 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
                 "Synthetic",
                 "--yes",
             ][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "request", "456", "0.01", "--note", "Synthetic"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "accept", "request-1", "--yes"][..],
-            ReleaseGates::new(true, false),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "decline", "request-1"][..],
-            ReleaseGates::new(false, true),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "friends", "list"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "users", "search", "alice"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "payment-methods", "list"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "balance"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "activity", "list"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "activity", "show", "story-1"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "requests", "list"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "doctor"][..],
-            ReleaseGates::production(),
             TerminalCapabilities::new(false, false),
         ),
     ] {
-        let setup = DispatchSetup::parse(arguments, gates, terminals)?;
+        let setup = DispatchSetup::parse(arguments, terminals)?;
         let delegated_command = setup.cli.command.clone();
         let initial_state = DispatchState::default();
         let expected = Observed::new(
@@ -452,7 +404,6 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
 async fn executor_failures_preserve_the_complete_result_and_state() -> TestResult {
     let setup = DispatchSetup::parse(
         &["venmo", "doctor"],
-        ReleaseGates::production(),
         TerminalCapabilities::new(false, false),
     )?
     .with_executor_behavior(ExecutorBehavior::Fail);
@@ -480,12 +431,9 @@ async fn executor_failures_preserve_the_complete_result_and_state() -> TestResul
 #[test]
 fn runtime_initialization_keeps_every_service_free_precondition_service_free() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
-    let completion_setup = DispatchSetup::parse(
-        &["venmo", "--verbose", "completions", "fish"],
-        ReleaseGates::production(),
-        terminals,
-    )?
-    .with_logging_behavior(LoggingBehavior::Fail);
+    let completion_setup =
+        DispatchSetup::parse(&["venmo", "--verbose", "completions", "fish"], terminals)?
+            .with_logging_behavior(LoggingBehavior::Fail);
     let initial_state = DispatchState::default();
     let expected = Observed::new(
         ResultSnapshot::Success,
@@ -500,20 +448,6 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
     assert_eq!(observed, expected);
 
     for (arguments, variant, category, exit_code, message) in [
-        (
-            &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
-            ErrorVariant::CommandUnavailable,
-            ErrorCategory::Internal,
-            1,
-            "the `accept` command is implemented as a candidate but unavailable pending controlled live validation",
-        ),
-        (
-            &["venmo", "--verbose", "decline", "request-1"][..],
-            ErrorVariant::CommandUnavailable,
-            ErrorCategory::Internal,
-            1,
-            "the `decline` command is implemented as a candidate but unavailable pending controlled live validation",
-        ),
         (
             &["venmo", "--verbose", "auth", "login"][..],
             ErrorVariant::AuthLogin,
@@ -543,6 +477,20 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
             "failed to initialize the asynchronous runtime",
         ),
         (
+            &["venmo", "accept", "request-1", "--yes"][..],
+            ErrorVariant::RuntimeInitialization,
+            ErrorCategory::Internal,
+            1,
+            "failed to initialize the asynchronous runtime",
+        ),
+        (
+            &["venmo", "decline", "request-1"][..],
+            ErrorVariant::RuntimeInitialization,
+            ErrorCategory::Internal,
+            1,
+            "failed to initialize the asynchronous runtime",
+        ),
+        (
             &["venmo", "auth", "login"][..],
             ErrorVariant::RuntimeInitialization,
             ErrorCategory::Internal,
@@ -557,7 +505,7 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
         } else {
             terminals
         };
-        let setup = DispatchSetup::parse(arguments, ReleaseGates::production(), case_terminals)?;
+        let setup = DispatchSetup::parse(arguments, case_terminals)?;
         let setup = if variant == ErrorVariant::RuntimeInitialization {
             setup
         } else {
@@ -592,7 +540,6 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
 fn runtime_failure_preserves_logging_errors_before_delegated_fallbacks() -> TestResult {
     let setup = DispatchSetup::parse(
         &["venmo", "--verbose", "balance"],
-        ReleaseGates::production(),
         TerminalCapabilities::new(false, false),
     )?
     .with_logging_behavior(LoggingBehavior::Fail);
@@ -629,7 +576,6 @@ async fn execute_dispatch(
         setup.cli,
         &mut stdout,
         &mut stderr,
-        setup.release_gates,
         setup.terminals,
         move |command, _, _| {
             transcript.borrow_mut().push(DispatchCall::Execute(command));
@@ -663,7 +609,6 @@ async fn execute_production_dispatch(
         setup.cli,
         &mut stdout,
         &mut stderr,
-        setup.release_gates,
         setup.terminals,
         move |verbose| {
             logging_transcript
@@ -708,7 +653,6 @@ fn execute_runtime_failure(
         setup.cli,
         &mut stdout,
         &mut stderr,
-        setup.release_gates,
         setup.terminals,
         io::Error::other("sensitive runtime detail"),
         move |verbose| {
@@ -738,7 +682,6 @@ fn snapshot_result(result: Result<(), AppError>) -> ResultSnapshot {
         Ok(()) => ResultSnapshot::Success,
         Err(error) => ResultSnapshot::Failure {
             variant: match &error {
-                AppError::CommandUnavailable { .. } => ErrorVariant::CommandUnavailable,
                 AppError::LoggingInitialization { .. } => ErrorVariant::LoggingInitialization,
                 AppError::RuntimeInitialization { .. } => ErrorVariant::RuntimeInitialization,
                 AppError::AuthLogin { .. } => ErrorVariant::AuthLogin,

@@ -2,7 +2,7 @@
 source: tests/cli.rs
 expression: help
 ---
-Candidate incoming-request decline; unavailable pending live validation
+Decline an incoming request without sending money
 
 Usage: decline <REQUEST_ID>
 

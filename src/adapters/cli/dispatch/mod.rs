@@ -15,30 +15,7 @@ mod doctor;
 mod reads;
 mod writes;
 
-/// Immutable release policy owned by the private CLI composition boundary.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ReleaseGates {
-    accept: bool,
-    decline: bool,
-}
-
-impl ReleaseGates {
-    #[cfg(test)]
-    #[must_use]
-    const fn new(accept: bool, decline: bool) -> Self {
-        Self { accept, decline }
-    }
-
-    #[must_use]
-    const fn production() -> Self {
-        Self {
-            accept: false,
-            decline: false,
-        }
-    }
-}
-
-/// Runs production command composition with closed release gates and process terminal state.
+/// Runs production command composition with process terminal state.
 pub async fn run<W, E>(cli: Cli, stdout: &mut W, stderr: &mut E) -> Result<(), AppError>
 where
     W: Write,
@@ -49,7 +26,6 @@ where
         cli,
         stdout,
         stderr,
-        ReleaseGates::production(),
         terminal_capabilities,
         super::logging::initialize,
         move |command, stdout, stderr| {
@@ -63,7 +39,6 @@ async fn run_production_with<'a, W, E, I, X, F>(
     cli: Cli,
     stdout: &'a mut W,
     stderr: &'a mut E,
-    release_gates: ReleaseGates,
     terminal_capabilities: TerminalCapabilities,
     initialize_logging: I,
     execute: X,
@@ -80,7 +55,6 @@ where
         cli,
         stdout,
         stderr,
-        release_gates,
         terminal_capabilities,
         move |command, stdout, stderr| {
             execute_after_logging(
@@ -117,13 +91,12 @@ where
 
 /// Test seam for the service-free dispatch boundary.
 ///
-/// The executor is reached only after completions, release gates, and authentication terminal
-/// preconditions have been resolved without constructing a credential store or API client.
+/// The executor is reached only after completions and authentication terminal preconditions have
+/// been resolved without constructing a credential store or API client.
 async fn run_with<'a, W, E, X, F>(
     cli: Cli,
     stdout: &'a mut W,
     stderr: &'a mut E,
-    release_gates: ReleaseGates,
     terminal_capabilities: TerminalCapabilities,
     execute: X,
 ) -> Result<(), AppError>
@@ -136,8 +109,6 @@ where
     match cli.command {
         Command::Completions(args) => completions::write(args.shell, stdout)
             .map_err(|source| AppError::CompletionOutput { source }),
-        Command::Accept(_) if !release_gates.accept => unavailable("accept"),
-        Command::Decline(_) if !release_gates.decline => unavailable("decline"),
         Command::Auth(args)
             if auth_requires_interactive_terminal(&args) && !terminal_capabilities.can_prompt() =>
         {
@@ -170,7 +141,6 @@ where
         cli,
         stdout,
         stderr,
-        ReleaseGates::production(),
         TerminalCapabilities::from_process(),
         source,
         super::logging::initialize,
@@ -181,7 +151,6 @@ fn handle_runtime_initialization_failure_with<W, E, I>(
     cli: Cli,
     stdout: &mut W,
     stderr: &mut E,
-    release_gates: ReleaseGates,
     terminal_capabilities: TerminalCapabilities,
     source: io::Error,
     initialize_logging: I,
@@ -196,8 +165,6 @@ where
             return completions::write(args.shell, stdout)
                 .map_err(|source| AppError::CompletionOutput { source });
         }
-        Command::Accept(_) if !release_gates.accept => return unavailable("accept"),
-        Command::Decline(_) if !release_gates.decline => return unavailable("decline"),
         Command::Auth(args)
             if auth_requires_interactive_terminal(&args) && !terminal_capabilities.can_prompt() =>
         {
@@ -223,10 +190,6 @@ where
         }
         _ => Err(failure),
     }
-}
-
-fn unavailable(command: &'static str) -> Result<(), AppError> {
-    Err(AppError::CommandUnavailable { command })
 }
 
 fn write_and_flush<W, T>(

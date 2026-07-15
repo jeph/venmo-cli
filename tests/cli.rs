@@ -28,7 +28,7 @@ fn assert_rejected(arguments: &[&str]) {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn public_production_dispatch_owns_policy_and_terminal_detection() {
+async fn public_production_dispatch_keeps_completions_service_free() {
     let cli = Cli::try_parse_from(["venmo", "completions", "bash"]);
     assert!(cli.is_ok());
     if let Ok(cli) = cli {
@@ -44,7 +44,7 @@ async fn public_production_dispatch_owns_policy_and_terminal_detection() {
 }
 
 #[test]
-fn public_runtime_fallback_owns_policy_and_terminal_detection() {
+fn public_runtime_fallback_keeps_completions_service_free() {
     let cli = Cli::try_parse_from(["venmo", "completions", "fish"]);
     assert!(cli.is_ok());
     if let Ok(cli) = cli {

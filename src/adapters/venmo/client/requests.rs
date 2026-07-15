@@ -49,21 +49,21 @@ impl RequestMutation {
         }
     }
 
-    const fn expected_response_action(self) -> RequestAction {
+    const fn allows_response_action(self, action: RequestAction) -> bool {
         match self {
-            Self::Accept => RequestAction::Pay,
-            Self::Decline => RequestAction::Charge,
+            Self::Accept => matches!(action, RequestAction::Pay | RequestAction::Charge),
+            Self::Decline => matches!(action, RequestAction::Charge),
         }
     }
 
     fn expected_parties<'a>(
-        self,
+        response_action: RequestAction,
         request: &'a RequestRecord,
         account_id: &'a UserId,
     ) -> (&'a UserId, &'a UserId) {
-        match self {
-            Self::Accept => (account_id, request.counterparty().user_id()),
-            Self::Decline => (request.counterparty().user_id(), account_id),
+        match response_action {
+            RequestAction::Pay => (account_id, request.counterparty().user_id()),
+            RequestAction::Charge => (request.counterparty().user_id(), account_id),
         }
     }
 
@@ -481,8 +481,7 @@ fn validate_updated_record(
 ) -> Result<RequestMutationStatus, VenmoApiError> {
     let operation = mutation.operation();
     let record = payment.payment();
-    let (expected_actor, expected_target) = mutation.expected_parties(request, account_id);
-    if record.id.as_str() != request.id().as_str() {
+    if mutation == RequestMutation::Decline && record.id.as_str() != request.id().as_str() {
         return financial_contract_unknown(
             operation,
             "the response returned a different request ID",
@@ -498,9 +497,11 @@ fn validate_updated_record(
             );
         }
     };
-    if response_action != mutation.expected_response_action() {
+    if !mutation.allows_response_action(response_action) {
         return financial_contract_unknown(operation, "the response returned a different action");
     }
+    let (expected_actor, expected_target) =
+        RequestMutation::expected_parties(response_action, request, account_id);
     let amount = Money::from_str(&record.amount.as_str()).map_err(|_| {
         VenmoApiError::FinancialOutcomeUnknown {
             operation,
@@ -530,11 +531,26 @@ fn validate_updated_record(
                 operation,
                 problem: "the mutation plan omitted the original creation timestamp",
             })?;
-    if response_created_at.unix_timestamp_nanos() != expected_created_at.unix_timestamp_nanos() {
-        return financial_contract_unknown(
-            operation,
-            "the response returned a different creation timestamp",
-        );
+    match mutation {
+        RequestMutation::Accept
+            if response_created_at.unix_timestamp_nanos()
+                < expected_created_at.unix_timestamp_nanos() =>
+        {
+            return financial_contract_unknown(
+                operation,
+                "the accepted payment predates the original request",
+            );
+        }
+        RequestMutation::Decline
+            if response_created_at.unix_timestamp_nanos()
+                != expected_created_at.unix_timestamp_nanos() =>
+        {
+            return financial_contract_unknown(
+                operation,
+                "the response returned a different creation timestamp",
+            );
+        }
+        RequestMutation::Accept | RequestMutation::Decline => {}
     }
     let status = RequestStatus::from_str(&record.status).map_err(|_| {
         VenmoApiError::FinancialOutcomeUnknown {

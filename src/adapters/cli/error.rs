@@ -48,11 +48,6 @@ impl ErrorCategory {
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error(
-        "the `{command}` command is implemented as a candidate but unavailable pending controlled live validation"
-    )]
-    CommandUnavailable { command: &'static str },
-
     #[error("failed to write shell completions")]
     CompletionOutput {
         #[source]
@@ -221,8 +216,7 @@ impl AppError {
             Self::DoctorIncomplete => ErrorCategory::Api,
             Self::FinancialWriteInterruptedUnknown => ErrorCategory::AmbiguousWrite,
             Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
-            Self::CommandUnavailable { .. }
-            | Self::CompletionOutput { .. }
+            Self::CompletionOutput { .. }
             | Self::LoggingInitialization { .. }
             | Self::RuntimeInitialization { .. }
             | Self::SignalInitialization { .. }

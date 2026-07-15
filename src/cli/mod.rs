@@ -4,12 +4,7 @@
 //! crate-private under `adapters`; this module exposes only the process and
 //! Clap-schema surface needed by the binary and frontend tests.
 //!
-//! Release gates, terminal-capability injection, and raw logging initialization are intentionally
-//! not public API:
-//!
-//! ```compile_fail
-//! use venmo_cli::cli::ReleaseGates;
-//! ```
+//! Terminal-capability injection and raw logging initialization are intentionally not public API:
 //!
 //! ```compile_fail
 //! use venmo_cli::cli::TerminalCapabilities;

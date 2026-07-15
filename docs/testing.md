@@ -17,8 +17,8 @@ terminal behavior against captured writers or service-free child processes.
 | Feature tests | Orchestration, capability use, ordered calls, zero/one-write behavior, no retry, and complete outcomes |
 | Venmo adapter tests | Exact request shape, credential mode, response mapping, bounds, fixed-origin continuation validation, and transport error classification |
 | Credential adapter tests | Exact codec compatibility and native-adapter behavior through a scripted backend |
-| CLI adapter tests | Argument grammar, dispatch, logging/precondition order, private gate/terminal seams, prompts, interruption handling, rendering, error categories, and output failures |
-| `tests/*.rs` and facade compile-fail doctests | Public `cli`/`model` facade usability, absence of public policy injection, and service-free compiled-process contracts |
+| CLI adapter tests | Argument grammar, dispatch, logging/precondition order, private terminal seams, prompts, interruption handling, rendering, error categories, and output failures |
+| `tests/*.rs` and facade compile-fail doctests | Public `cli`/`model` facade usability and service-free compiled-process contracts |
 
 Use synthetic values only. `ScriptedTransport` proves the typed client request without opening a
 socket; loopback `wiremock` tests prove the concrete HTTP transport. Neither is a reason to call the
@@ -136,21 +136,21 @@ pass.
 ## Integration and retained manual contracts
 
 `tests/cli.rs`, `tests/domain.rs`, and `tests/errors.rs` exercise only the curated public facades.
-The CLI facade compile-fail doctest proves that release gates and terminal-capability snapshots
-cannot be imported publicly, while positive public-API tests compile and execute completion paths
-using `run(cli, stdout, stderr)` and the policy-free runtime fallback signatures. Private dispatch
-tests may open one test-only candidate gate solely to reach a fake typed executor; production and
-process tests never open a gate.
+The CLI facade compile-fail doctest proves that terminal-capability snapshots cannot be imported
+publicly, while positive public-API tests compile and execute completion paths using
+`run(cli, stdout, stderr)` and the runtime fallback signatures. Private dispatch tests inject only
+synthetic terminal state, logging initialization, and fake command execution.
 
 `tests/process.rs` launches the compiled binary only for service-free paths such as help, version,
-argument rejection, release gates, completion generation, and manpage rendering. A process test
+argument rejection, completion generation, and manpage rendering. A process test
 must fail before keyring or network access unless access is the explicitly isolated contract under
 test.
 
 Verbose precondition coverage injects a recording/failing logging initializer into the private
-dispatch seam. Complete state equality proves completion generation, closed `accept`/`decline`,
-and noninteractive login/reauthentication make zero initializer and executor calls. Delegated fake
-commands prove initialization occurs first and that an initialization error prevents execution.
+dispatch seam. Complete state equality proves completion generation and
+noninteractive login/reauthentication make zero initializer and executor calls. Delegated fake
+commands, including `accept` and `decline`, prove initialization occurs first and that an
+initialization error prevents execution.
 These tests never install the real process-global subscriber.
 
 Some platform, interactive-terminal, global-subscriber, and historical read-contract coverage is

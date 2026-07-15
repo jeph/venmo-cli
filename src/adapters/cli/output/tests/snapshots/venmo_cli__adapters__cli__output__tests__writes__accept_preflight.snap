@@ -11,7 +11,7 @@ Request acceptance preflight:
   Audience: private
   Current request status: pending
   Created: 1970-01-01T00:00:00Z
-  Fee/source proof: unavailable in the candidate request-update contract
+  Fee/source proof: unavailable in the request-update contract
   Available Venmo balance: $0.01
   Funding guard: available balance covers the request and no external funding method will be submitted.
-  Warning: the candidate update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request.
+  Warning: the update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request.

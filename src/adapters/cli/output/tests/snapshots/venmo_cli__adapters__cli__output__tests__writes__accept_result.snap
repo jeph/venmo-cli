@@ -7,4 +7,4 @@ Payment ID: request-1
 Status: settled
 Paid requester: @requester (Synthetic\nrequester)
 Amount: $0.01
-Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source.
+Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee.

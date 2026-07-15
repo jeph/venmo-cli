@@ -51,3 +51,12 @@ returns the same immutable ID and case-insensitive exact username; no match rema
 multiple matches remain ambiguous. Changing that boundary rule in either direction requires
 evidence about server-side username uniqueness and whether detail-by-ID independently proves the
 absence of another exact match beyond the bounded search.
+
+## Request-acceptance funding and fee evidence
+
+Request acceptance retains a residual evidence gap. Preflight requires an available Venmo balance
+snapshot covering the full request, and the approval submits no external funding-method
+identifier. The mutation does not bind that
+snapshot, however, and its response proves neither the final funding source nor the fee. Output
+must disclose that limitation and must not claim wallet funding or a `$0.00` fee. Changing those
+claims requires transaction-bound source and fee evidence from the acceptance operation itself.

@@ -16,7 +16,7 @@ probe, use the production keychain entry, or invoke a real `pay`, request-creati
 step. Separately authorized owner/release procedures are outside routine contribution and are not
 initiated by these docs.
 
-Changes must preserve the behavioral and safety contracts in [`PLAN.md`](PLAN.md), especially release gates, one-write/no-retry behavior, bounded resource use, redaction, and ambiguous-outcome reporting.
+Changes must preserve the behavioral and safety contracts in [`PLAN.md`](PLAN.md), especially evidence requirements, one-write/no-retry behavior, bounded resource use, redaction, and ambiguous-outcome reporting.
 
 ## Required verification
 

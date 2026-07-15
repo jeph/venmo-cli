@@ -53,7 +53,7 @@ pub struct RequestArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "Accepting sends the exact requested amount to the requester and requires enough available Venmo balance to cover it. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
+    after_long_help = "Accepting sends the exact requested amount to the requester and requires an available Venmo balance snapshot covering it. The approval submits no external funding-method identifier, but neither the snapshot nor the response proves the final funding source or fee. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
 )]
 pub struct AcceptArgs {
     /// Canonical incoming request ID.

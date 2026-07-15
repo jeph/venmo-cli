@@ -113,25 +113,6 @@ fn completion_generation_is_a_service_free_success_path() -> TestResult {
 }
 
 #[test]
-fn candidate_request_mutations_fail_before_keychain_or_network_access() -> TestResult {
-    for (arguments, command) in [
-        (&["accept", "synthetic-request", "--yes"][..], "accept"),
-        (&["decline", "synthetic-request"][..], "decline"),
-    ] {
-        Command::cargo_bin("venmo")?
-            .args(arguments)
-            .assert()
-            .code(1)
-            .stdout(predicate::str::is_empty())
-            .stderr(predicate::eq(format!(
-                "error: the `{command}` command is implemented as a candidate but unavailable pending controlled live validation\n"
-            )));
-    }
-
-    Ok(())
-}
-
-#[test]
 fn noninteractive_login_fails_before_keychain_or_network_access() -> TestResult {
     for arguments in [
         &["auth", "login"][..],

@@ -143,7 +143,7 @@ pub(crate) fn write_accept_preflight<W: Write>(
     }
     writeln!(
         writer,
-        "  Fee/source proof: unavailable in the candidate request-update contract"
+        "  Fee/source proof: unavailable in the request-update contract"
     )?;
     writeln!(
         writer,
@@ -156,7 +156,7 @@ pub(crate) fn write_accept_preflight<W: Write>(
     )?;
     writeln!(
         writer,
-        "  Warning: the candidate update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request."
+        "  Warning: the update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request."
     )
 }
 
@@ -189,7 +189,7 @@ pub(crate) fn write_accept_result<W: Write>(
     writeln!(writer, "Amount: ${}", result.plan().request().amount())?;
     writeln!(
         writer,
-        "Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source."
+        "Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee."
     )
 }
 

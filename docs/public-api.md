@@ -29,15 +29,14 @@ and black-box tests.
 - Types: `AppError`, `ErrorCategory`.
 - Functions: `run`, `handle_runtime_initialization_failure`, and `write_error`.
 
-`run(cli, stdout, stderr)` is the only asynchronous production dispatcher. It always applies the
-closed production gates for candidate `accept` and `decline`, reads prompt capability from the
-actual process stdin/stderr, and initializes verbose diagnostics only after service-free
-preconditions delegate a command to the production executor. Callers can supply output writers,
-but cannot supply release policy or synthetic terminal state.
+`run(cli, stdout, stderr)` is the only asynchronous production dispatcher. It reads prompt
+capability from the actual process stdin/stderr and initializes verbose diagnostics only after
+service-free preconditions delegate a command to the production executor. Callers can supply
+output writers, but cannot supply synthetic terminal state.
 
 `handle_runtime_initialization_failure(cli, stdout, stderr, source)` is the synchronous fallback
-used when the process runtime cannot be built. It owns the same closed gates and process terminal
-check. Completion generation, unavailable candidates, and noninteractive authentication return
+used when the process runtime cannot be built. It owns the same process terminal check. Completion
+generation and noninteractive authentication return
 before logging initialization; local-only logout still deletes locally, and revoking logout still
 attempts local deletion while reporting that remote revocation was not attempted.
 
@@ -99,8 +98,8 @@ visibility for an internal re-export:
 - `VenmoApiClient`, `VenmoHttpTransport`, transport request/response types, and every Venmo DTO;
 - native keyring and credential-codec types;
 - CLI composition providers, renderer functions, prompt implementations, and test transports;
-- release-gate values, terminal-capability snapshots, logging initialization, and the internal
-  `run_with`/runtime-fallback test seams; and
+- terminal-capability snapshots, logging initialization, and the internal `run_with`/
+  runtime-fallback test seams; and
 - secret-bearing credential/authentication values.
 
 Do not widen visibility to help an external caller build another frontend. An in-repository

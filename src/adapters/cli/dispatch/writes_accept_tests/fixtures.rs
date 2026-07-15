@@ -81,10 +81,10 @@ pub(super) const ACCEPT_PREFLIGHT: &str = concat!(
     "  Audience: private\n",
     "  Current request status: pending\n",
     "  Created: 1970-01-01T00:00:00Z\n",
-    "  Fee/source proof: unavailable in the candidate request-update contract\n",
+    "  Fee/source proof: unavailable in the request-update contract\n",
     "  Available Venmo balance: $0.01\n",
     "  Funding guard: available balance covers the request and no external funding method will be submitted.\n",
-    "  Warning: the candidate update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request.\n",
+    "  Warning: the update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request.\n",
 );
 
 pub(super) const ACCEPT_RESULT: &str = concat!(
@@ -93,5 +93,5 @@ pub(super) const ACCEPT_RESULT: &str = concat!(
     "Status: settled\n",
     "Paid requester: @requester (Synthetic requester)\n",
     "Amount: $0.01\n",
-    "Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source.\n",
+    "Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee.\n",
 );

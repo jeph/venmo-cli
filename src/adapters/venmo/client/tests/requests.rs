@@ -243,29 +243,31 @@ async fn request_detail_preserves_terminal_state_for_mutation_preflight() -> Tes
 
 #[tokio::test(flavor = "current_thread")]
 async fn request_acceptance_uses_exact_approve_update_and_validates_settlement() -> TestResult {
-    let server = MockServer::start().await;
-    Mock::given(method("PUT"))
-        .and(path("/v1/payments/request-1"))
-        .and(header("accept", "application/json"))
-        .and(header("content-type", "application/json"))
-        .and(header("authorization", "Bearer synthetic-token"))
-        .and(header("device-id", "synthetic-device"))
-        .and(body_string(r#"{"action":"approve"}"#))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(updated_payment_body("pay", "settled", "123", "456")),
-        )
-        .mount(&server)
-        .await;
-    let client = test_client(&server)?;
-    let (token, device_id) = test_session()?;
-    let accepted = client
-        .accept_request(&token, &device_id, &accept_plan()?)
-        .await?;
-    assert_eq!(accepted.payment_id().as_str(), "request-1");
-    assert_eq!(accepted.status(), FinancialStatus::Settled);
-    assert_request_count(&server, 1).await;
-    assert_requests_have_no_query(&server).await;
+    for (action, actor_id, target_id) in [("charge", "456", "123"), ("pay", "123", "456")] {
+        let server = MockServer::start().await;
+        let mut response = updated_payment_body(action, "settled", actor_id, target_id);
+        response["data"]["id"] = Value::String("payment-1".to_owned());
+        response["data"]["date_created"] = Value::String("2026-07-14T23:50:08Z".to_owned());
+        Mock::given(method("PUT"))
+            .and(path("/v1/payments/request-1"))
+            .and(header("accept", "application/json"))
+            .and(header("content-type", "application/json"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_string(r#"{"action":"approve"}"#))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let accepted = client
+            .accept_request(&token, &device_id, &accept_plan()?)
+            .await?;
+        assert_eq!(accepted.payment_id().as_str(), "payment-1");
+        assert_eq!(accepted.status(), FinancialStatus::Settled);
+        assert_request_count(&server, 1).await;
+        assert_requests_have_no_query(&server).await;
+    }
     Ok(())
 }
 
@@ -303,8 +305,15 @@ async fn request_decline_uses_deny_not_cancel_and_requires_terminal_response() -
 
 #[tokio::test(flavor = "current_thread")]
 async fn request_update_mismatches_and_unverified_errors_are_ambiguous() -> TestResult {
+    let mut invalid_payment_id = updated_payment_body("pay", "settled", "123", "456");
+    invalid_payment_id["data"]["id"] = Value::String("bad id".to_owned());
+    let mut predating_payment = updated_payment_body("pay", "settled", "123", "456");
+    predating_payment["data"]["id"] = Value::String("payment-1".to_owned());
+    predating_payment["data"]["date_created"] = Value::String("2026-07-11T11:59:59Z".to_owned());
     for (status, body) in [
         (200, updated_payment_body("pay", "settled", "456", "123")),
+        (200, invalid_payment_id),
+        (200, predating_payment),
         (
             200,
             serde_json::json!({"data":{"id":"request-1","status":"settled"}}),
