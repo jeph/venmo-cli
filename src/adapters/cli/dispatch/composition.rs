@@ -5,7 +5,7 @@ use crate::adapters::credentials::NativeCredentialStore;
 use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
 
-use super::super::args::{Command, RequestsOperation, UsersOperation};
+use super::super::args::{Command, RequestsOperation, TransferOperation, UsersOperation};
 use super::super::completions;
 use super::super::error::AppError;
 use super::super::prompt::{DialoguerPrompt, TerminalCapabilities};
@@ -92,6 +92,26 @@ where
             RequestsOperation::Info(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
                 reads::run_request_info(args, &store, &api, stdout).await
+            }
+        },
+        Command::Transfer(args) => match args.operation {
+            TransferOperation::Options => {
+                let (store, api) = provider.credential_store_and_api()?;
+                reads::run_transfer_options(&store, &api, stdout).await
+            }
+            TransferOperation::Out(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                writes::run_transfer_out_with(
+                    args,
+                    &store,
+                    &api,
+                    &prompt,
+                    stdout,
+                    stderr,
+                    writes::production_financial_interruption,
+                )
+                .await
             }
         },
         Command::Doctor => doctor::run_production(provider, stdout).await,

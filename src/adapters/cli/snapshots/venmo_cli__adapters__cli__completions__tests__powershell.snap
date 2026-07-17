@@ -42,6 +42,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('balance', 'balance', [CompletionResultType]::ParameterValue, 'Show the Venmo wallet balance')
             [CompletionResult]::new('activity', 'activity', [CompletionResultType]::ParameterValue, 'Inspect account activity')
             [CompletionResult]::new('requests', 'requests', [CompletionResultType]::ParameterValue, 'Inspect pending requests')
+            [CompletionResult]::new('transfer', 'transfer', [CompletionResultType]::ParameterValue, 'Inspect transfer eligibility or perform a confirmed standard-bank cash-out')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Run read-only diagnostics')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Generate shell completion source')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -333,6 +334,47 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
         'venmo;requests;help;help' {
             break
         }
+        'venmo;transfer' {
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('options', 'options', [CompletionResultType]::ParameterValue, 'Show current inbound and outbound transfer eligibility without moving money')
+            [CompletionResult]::new('out', 'out', [CompletionResultType]::ParameterValue, 'Transfer Venmo balance to the unique selected standard bank destination')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'venmo;transfer;options' {
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'venmo;transfer;out' {
+            [CompletionResult]::new('--speed', '--speed', [CompletionResultType]::ParameterName, 'Transfer speed; only standard is currently accepted')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Skip only the final default-No confirmation')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'venmo;transfer;help' {
+            [CompletionResult]::new('options', 'options', [CompletionResultType]::ParameterValue, 'Show current inbound and outbound transfer eligibility without moving money')
+            [CompletionResult]::new('out', 'out', [CompletionResultType]::ParameterValue, 'Transfer Venmo balance to the unique selected standard bank destination')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'venmo;transfer;help;options' {
+            break
+        }
+        'venmo;transfer;help;out' {
+            break
+        }
+        'venmo;transfer;help;help' {
+            break
+        }
         'venmo;doctor' {
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
@@ -359,6 +401,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('balance', 'balance', [CompletionResultType]::ParameterValue, 'Show the Venmo wallet balance')
             [CompletionResult]::new('activity', 'activity', [CompletionResultType]::ParameterValue, 'Inspect account activity')
             [CompletionResult]::new('requests', 'requests', [CompletionResultType]::ParameterValue, 'Inspect pending requests')
+            [CompletionResult]::new('transfer', 'transfer', [CompletionResultType]::ParameterValue, 'Inspect transfer eligibility or perform a confirmed standard-bank cash-out')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Run read-only diagnostics')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Generate shell completion source')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -443,6 +486,17 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             break
         }
         'venmo;help;requests;info' {
+            break
+        }
+        'venmo;help;transfer' {
+            [CompletionResult]::new('options', 'options', [CompletionResultType]::ParameterValue, 'Show current inbound and outbound transfer eligibility without moving money')
+            [CompletionResult]::new('out', 'out', [CompletionResultType]::ParameterValue, 'Transfer Venmo balance to the unique selected standard bank destination')
+            break
+        }
+        'venmo;help;transfer;options' {
+            break
+        }
+        'venmo;help;transfer;out' {
             break
         }
         'venmo;help;doctor' {

@@ -1,0 +1,25 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Transfer Venmo balance to the unique selected standard bank destination
+
+Usage: out [OPTIONS] --speed <SPEED> <AMOUNT>
+
+Arguments:
+  <AMOUNT>
+          Positive USD amount with at most two fractional digits
+
+Options:
+      --speed <SPEED>
+          Transfer speed; only standard is currently accepted
+
+          [possible values: standard]
+
+      --yes
+          Skip only the final default-No confirmation
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Confirmation defaults to No. Financial exit code 3 means the transfer outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app. Only standard bank cash-out is supported; inbound, instant, debit, manual destination selection, and challenge continuation remain unavailable.

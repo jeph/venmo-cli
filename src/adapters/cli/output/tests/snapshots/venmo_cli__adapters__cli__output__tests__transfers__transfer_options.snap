@@ -1,0 +1,14 @@
+---
+source: src/adapters/cli/output/tests/transfers.rs
+expression: output
+---
+Preferred inbound speed: none
+Preferred outbound speed: standard
+standard estimate: 1-3 business days
+standard fee metadata: absent
+instant estimate: Usually within minutes
+instant fee metadata: present; units unverified
+ SPEED    | DIRECTION | ID            | NAME          | ASSET    | TYPE | LAST4 | DEFAULT | ESTIMATE
+----------+-----------+---------------+---------------+----------+------+-------+---------+-------------------
+ standard | in        | source-1      | Inbound\nBank | Checking | bank | 1111  | yes     | 1-3 business days
+ standard | out       | destination-1 | Outbound Bank | Checking | bank | 2222  | yes     | 1-3 business days

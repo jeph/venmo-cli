@@ -3,7 +3,8 @@ use std::io;
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
     AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg, RequestsOperation,
-    UsersOperation, VisibilityArg, handle_runtime_initialization_failure, run,
+    TransferOperation, TransferSpeedArg, UsersOperation, VisibilityArg,
+    handle_runtime_initialization_failure, run,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -556,6 +557,49 @@ fn argument_only_validation_errors_are_clap_errors() {
 }
 
 #[test]
+fn transfer_options_and_guarded_standard_out_have_exact_grammar() {
+    let options = Cli::try_parse_from(["venmo", "transfer", "options"]);
+    assert!(options.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Transfer(args) if matches!(args.operation, TransferOperation::Options)
+    )));
+
+    let out = Cli::try_parse_from([
+        "venmo", "transfer", "out", "12.34", "--speed", "standard", "--yes",
+    ]);
+    assert!(out.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Transfer(args)
+            if matches!(
+                &args.operation,
+                TransferOperation::Out(out)
+                    if out.amount.cents() == 1_234
+                        && out.speed == TransferSpeedArg::Standard
+                        && out.yes
+            )
+    )));
+
+    for arguments in [
+        &["venmo", "transfer", "out", "1.00", "--speed", "instant"][..],
+        &["venmo", "transfer", "out", "1.00"][..],
+        &[
+            "venmo",
+            "transfer",
+            "out",
+            "1.00",
+            "--speed",
+            "standard",
+            "--destination",
+            "bank-1",
+        ][..],
+        &["venmo", "transfer", "in", "1.00", "--speed", "standard"][..],
+        &["venmo", "transfer", "options", "--yes"][..],
+    ] {
+        assert_rejected(arguments);
+    }
+}
+
+#[test]
 fn every_command_has_a_help_snapshot() {
     let cases: &[(&str, &[&str])] = &[
         ("top_level", &[]),
@@ -582,6 +626,9 @@ fn every_command_has_a_help_snapshot() {
         ("requests", &["requests"]),
         ("requests_list", &["requests", "list"]),
         ("requests_info", &["requests", "info"]),
+        ("transfer", &["transfer"]),
+        ("transfer_options", &["transfer", "options"]),
+        ("transfer_out", &["transfer", "out"]),
         ("doctor", &["doctor"]),
         ("completions", &["completions"]),
     ];

@@ -42,6 +42,10 @@ use crate::features::requests::{
     RequestAcceptanceApi, RequestAction, RequestCreationApi, RequestDeclineApi, RequestDirection,
     RequestId, RequestLookupApi, RequestRecord, RequestStatus, RequestsApi, RequestsBefore,
 };
+use crate::features::transfers::{
+    TransferCreationApi, TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix,
+    TransferOptionsApi, TransferOutPlan, TransferSpeed,
+};
 use crate::features::wallet::{
     Balance, BalanceApi, PaymentMethod, PaymentMethodId, PaymentMethodsApi, SignedUsdAmount,
 };
@@ -101,6 +105,7 @@ mod payments;
 mod people;
 mod requests;
 mod response;
+mod transfers;
 mod wallet;
 
 fn scripted_client(

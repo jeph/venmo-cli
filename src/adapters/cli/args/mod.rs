@@ -4,6 +4,7 @@ mod auth;
 mod completions;
 mod parsers;
 mod reads;
+mod transfers;
 mod writes;
 
 pub use auth::{AuthArgs, AuthOperation, LoginArgs, LogoutArgs};
@@ -14,6 +15,7 @@ pub use reads::{
     RequestDirectionArg, RequestInfoArgs, RequestsArgs, RequestsListArgs, RequestsOperation,
     UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
 };
+pub use transfers::{TransferArgs, TransferOperation, TransferOutArgs, TransferSpeedArg};
 pub use writes::{AcceptArgs, DeclineArgs, PayArgs, RequestArgs, VisibilityArg};
 
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]
@@ -67,6 +69,9 @@ pub enum Command {
 
     /// Inspect pending requests.
     Requests(RequestsArgs),
+
+    /// Inspect transfer eligibility or perform a confirmed standard-bank cash-out.
+    Transfer(TransferArgs),
 
     /// Run read-only diagnostics.
     Doctor,

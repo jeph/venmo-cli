@@ -485,6 +485,73 @@ esac
     ;;
 esac
 ;;
+(transfer)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_venmo__subcmd__transfer_commands" \
+"*::: :->transfer" \
+&& ret=0
+
+    case $state in
+    (transfer)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-transfer-command-$line[1]:"
+        case $line[1] in
+            (options)
+_arguments "${_arguments_options[@]}" : \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(out)
+_arguments "${_arguments_options[@]}" : \
+'--speed=[Transfer speed; only standard is currently accepted]:SPEED:(standard)' \
+'--yes[Skip only the final default-No confirmation]' \
+'-v[Write redacted diagnostics to stderr]' \
+'--verbose[Write redacted diagnostics to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':amount -- Positive USD amount with at most two fractional digits:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__transfer__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-transfer-help-command-$line[1]:"
+        case $line[1] in
+            (options)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(out)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
 (doctor)
 _arguments "${_arguments_options[@]}" : \
 '-v[Write redacted diagnostics to stderr]' \
@@ -678,6 +745,30 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(transfer)
+_arguments "${_arguments_options[@]}" : \
+":: :_venmo__subcmd__help__subcmd__transfer_commands" \
+"*::: :->transfer" \
+&& ret=0
+
+    case $state in
+    (transfer)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:venmo-help-transfer-command-$line[1]:"
+        case $line[1] in
+            (options)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(out)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (doctor)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -713,6 +804,7 @@ _venmo_commands() {
 'balance:Show the Venmo wallet balance' \
 'activity:Inspect account activity' \
 'requests:Inspect pending requests' \
+'transfer:Inspect transfer eligibility or perform a confirmed standard-bank cash-out' \
 'doctor:Run read-only diagnostics' \
 'completions:Generate shell completion source' \
 'help:Print this message or the help of the given subcommand(s)' \
@@ -899,6 +991,7 @@ _venmo__subcmd__help_commands() {
 'balance:Show the Venmo wallet balance' \
 'activity:Inspect account activity' \
 'requests:Inspect pending requests' \
+'transfer:Inspect transfer eligibility or perform a confirmed standard-bank cash-out' \
 'doctor:Run read-only diagnostics' \
 'completions:Generate shell completion source' \
 'help:Print this message or the help of the given subcommand(s)' \
@@ -1035,6 +1128,24 @@ _venmo__subcmd__help__subcmd__requests__subcmd__list_commands() {
     local commands; commands=()
     _describe -t commands 'venmo help requests list commands' commands "$@"
 }
+(( $+functions[_venmo__subcmd__help__subcmd__transfer_commands] )) ||
+_venmo__subcmd__help__subcmd__transfer_commands() {
+    local commands; commands=(
+'options:Show current inbound and outbound transfer eligibility without moving money' \
+'out:Transfer Venmo balance to the unique selected standard bank destination' \
+    )
+    _describe -t commands 'venmo help transfer commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__transfer__subcmd__options_commands] )) ||
+_venmo__subcmd__help__subcmd__transfer__subcmd__options_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help transfer options commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__help__subcmd__transfer__subcmd__out_commands] )) ||
+_venmo__subcmd__help__subcmd__transfer__subcmd__out_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo help transfer out commands' commands "$@"
+}
 (( $+functions[_venmo__subcmd__help__subcmd__users_commands] )) ||
 _venmo__subcmd__help__subcmd__users_commands() {
     local commands; commands=(
@@ -1136,6 +1247,49 @@ _venmo__subcmd__requests__subcmd__info_commands() {
 _venmo__subcmd__requests__subcmd__list_commands() {
     local commands; commands=()
     _describe -t commands 'venmo requests list commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__transfer_commands] )) ||
+_venmo__subcmd__transfer_commands() {
+    local commands; commands=(
+'options:Show current inbound and outbound transfer eligibility without moving money' \
+'out:Transfer Venmo balance to the unique selected standard bank destination' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo transfer commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__transfer__subcmd__help_commands] )) ||
+_venmo__subcmd__transfer__subcmd__help_commands() {
+    local commands; commands=(
+'options:Show current inbound and outbound transfer eligibility without moving money' \
+'out:Transfer Venmo balance to the unique selected standard bank destination' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'venmo transfer help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__transfer__subcmd__help__subcmd__help_commands] )) ||
+_venmo__subcmd__transfer__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo transfer help help commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__transfer__subcmd__help__subcmd__options_commands] )) ||
+_venmo__subcmd__transfer__subcmd__help__subcmd__options_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo transfer help options commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__transfer__subcmd__help__subcmd__out_commands] )) ||
+_venmo__subcmd__transfer__subcmd__help__subcmd__out_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo transfer help out commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__transfer__subcmd__options_commands] )) ||
+_venmo__subcmd__transfer__subcmd__options_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo transfer options commands' commands "$@"
+}
+(( $+functions[_venmo__subcmd__transfer__subcmd__out_commands] )) ||
+_venmo__subcmd__transfer__subcmd__out_commands() {
+    local commands; commands=()
+    _describe -t commands 'venmo transfer out commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__users_commands] )) ||
 _venmo__subcmd__users_commands() {

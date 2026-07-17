@@ -9,6 +9,7 @@ mod people;
 mod requests;
 mod response;
 mod support;
+mod transfers;
 mod wallet;
 
 use super::transport::{TransportBuildError, VenmoHttpTransport};
@@ -51,6 +52,8 @@ pub(super) const REQUEST_DETAIL_OPERATION: &str = "request detail";
 pub(super) const REQUEST_LIST_OPERATION: &str = "pending-request listing";
 pub(super) const USER_LOOKUP_OPERATION: &str = "user lookup";
 pub(super) const USER_SEARCH_OPERATION: &str = "user search";
+pub(super) const TRANSFER_OPTIONS_OPERATION: &str = "transfer options";
+pub(super) const TRANSFER_CREATION_OPERATION: &str = "transfer creation";
 
 #[cfg(test)]
 mod tests;

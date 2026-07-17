@@ -7,6 +7,7 @@ use crate::features::people::{
 use crate::features::requests::{
     self as requests, RequestLookupApi, RequestsApi, list as request_list,
 };
+use crate::features::transfers::{TransferOptionsApi, options as transfer_options};
 use crate::features::wallet::{BalanceApi, PaymentMethodsApi, balance, payment_methods};
 use crate::shared::CredentialReader;
 
@@ -167,6 +168,21 @@ where
             output::write_payment_methods(stdout, &result)?;
         }
     }
+    Ok(())
+}
+
+pub(super) async fn run_transfer_options<R, A, W>(
+    store: &R,
+    api: &A,
+    stdout: &mut W,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: TransferOptionsApi,
+    W: Write,
+{
+    let result = transfer_options::get(store, api).await?;
+    output::write_transfer_options(stdout, &result)?;
     Ok(())
 }
 

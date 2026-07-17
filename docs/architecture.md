@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the implemented 0.2 architecture. It is a hybrid of feature-first
+This document describes the implemented 0.3 architecture. It is a hybrid of feature-first
 organization and hexagonal boundaries: product concepts live in vertical feature slices, while
 side effects are reached through feature-owned ports and private adapters.
 
@@ -20,6 +20,7 @@ src/
     payments/
     people/
     requests/
+    transfers/
     wallet/
   adapters/
     cli/                        # Clap, dispatch, prompts, tables, and terminal errors
@@ -56,7 +57,8 @@ public facades are outward-facing allowlists, not modules for internal code to d
 
 Cross-feature dependencies must remain explicit and acyclic. For example, activity owns activity
 records but uses the people-owned `User`; payments composes auth, people, and wallet capabilities;
-requests composes auth, payments, people, and wallet capabilities. Move a concept to `shared` only
+requests composes auth, payments, people, and wallet capabilities; transfers composes auth,
+payments confirmation/account validation, and wallet balance capabilities. Move a concept to `shared` only
 when its identity and invariant are genuinely shared. Do not move a type merely to avoid choosing
 an owner.
 

@@ -4,6 +4,7 @@ mod common;
 mod payments;
 mod people;
 mod requests;
+mod transfers;
 mod wallet;
 
 pub(super) use activity::{
@@ -16,4 +17,9 @@ pub(super) use payments::{
 };
 pub(super) use people::{FriendsEnvelope, UserDto, UserEnvelope, UsersEnvelope};
 pub(super) use requests::{CreateRequestRequest, UpdatePaymentRequest};
+pub(super) use transfers::{
+    CreateTransferRequest, CreatedTransferEnvelope, PreferredTransferTypeDto,
+    RequiredNullableString, TransferFeeDto, TransferInstrumentDto, TransferModeOptionsDto,
+    TransferOptionsDto, TransferOptionsEnvelope,
+};
 pub(super) use wallet::{BalanceEnvelope, FeeDto, PaymentMethodDto, PaymentMethodsEnvelope};
