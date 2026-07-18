@@ -101,18 +101,6 @@ fn invalid_request_mutation_ids_are_redacted_and_service_free() -> TestResult {
 }
 
 #[test]
-fn completion_generation_is_a_service_free_success_path() -> TestResult {
-    Command::cargo_bin("venmo")?
-        .args(["completions", "bash"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("_venmo"))
-        .stderr(predicate::str::is_empty());
-
-    Ok(())
-}
-
-#[test]
 fn noninteractive_login_fails_before_keychain_or_network_access() -> TestResult {
     Command::cargo_bin("venmo")?
         .args(["auth", "login"])
@@ -127,9 +115,10 @@ fn noninteractive_login_fails_before_keychain_or_network_access() -> TestResult 
 }
 
 #[test]
-fn removed_auth_surfaces_and_secret_arguments_are_rejected() -> TestResult {
+fn removed_commands_auth_surfaces_and_secret_arguments_are_rejected() -> TestResult {
     for arguments in [
         &["doctor"][..],
+        &["completions", "bash"][..],
         &["auth", "reauthenticate"][..],
         &["auth", "login", "--token", "synthetic-secret-value"][..],
         &["auth", "logout", "--revoke"][..],

@@ -7,7 +7,6 @@ use std::rc::Rc;
 use clap::Parser;
 
 use super::*;
-use crate::adapters::cli::args::CompletionShell;
 use crate::adapters::cli::error::ErrorCategory;
 use crate::shared::test_support::Observed;
 
@@ -116,20 +115,6 @@ enum ResultSnapshot {
 #[tokio::test(flavor = "current_thread")]
 async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
-    let completion_setup = DispatchSetup::parse(&["venmo", "completions", "bash"], terminals)?;
-    let initial_state = DispatchState::default();
-    let expected = Observed::new(
-        ResultSnapshot::Success,
-        DispatchState {
-            stdout: writer_state(completion_output(CompletionShell::Bash)?),
-            ..DispatchState::default()
-        },
-    );
-
-    let observed = execute_dispatch(completion_setup, initial_state).await;
-
-    assert_eq!(observed, expected);
-
     for (arguments, variant, message) in [(
         &["venmo", "auth", "login"][..],
         ErrorVariant::AuthLogin,
@@ -165,22 +150,6 @@ async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
 #[tokio::test(flavor = "current_thread")]
 async fn production_preconditions_do_not_call_the_logging_initializer() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
-    let completion_setup =
-        DispatchSetup::parse(&["venmo", "--verbose", "completions", "bash"], terminals)?
-            .with_logging_behavior(LoggingBehavior::Fail);
-    let initial_state = DispatchState::default();
-    let expected = Observed::new(
-        ResultSnapshot::Success,
-        DispatchState {
-            stdout: writer_state(completion_output(CompletionShell::Bash)?),
-            ..DispatchState::default()
-        },
-    );
-
-    let observed = execute_production_dispatch(completion_setup, initial_state).await;
-
-    assert_eq!(observed, expected);
-
     for (arguments, variant, message) in [(
         &["venmo", "--verbose", "auth", "login"][..],
         ErrorVariant::AuthLogin,
@@ -390,22 +359,6 @@ async fn executor_failures_preserve_the_complete_result_and_state() -> TestResul
 #[test]
 fn runtime_initialization_keeps_every_service_free_precondition_service_free() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
-    let completion_setup =
-        DispatchSetup::parse(&["venmo", "--verbose", "completions", "fish"], terminals)?
-            .with_logging_behavior(LoggingBehavior::Fail);
-    let initial_state = DispatchState::default();
-    let expected = Observed::new(
-        ResultSnapshot::Success,
-        DispatchState {
-            stdout: writer_state(completion_output(CompletionShell::Fish)?),
-            ..DispatchState::default()
-        },
-    );
-
-    let observed = execute_runtime_failure(completion_setup, initial_state);
-
-    assert_eq!(observed, expected);
-
     for (arguments, variant, category, exit_code, message) in [
         (
             &["venmo", "--verbose", "auth", "login"][..],
@@ -640,18 +593,5 @@ fn snapshot_result(result: Result<(), AppError>) -> ResultSnapshot {
             exit_code: error.exit_code(),
             message: error.to_string(),
         },
-    }
-}
-
-fn completion_output(shell: CompletionShell) -> io::Result<Vec<u8>> {
-    let mut output = Vec::new();
-    completions::write(shell, &mut output)?;
-    Ok(output)
-}
-
-fn writer_state(bytes: Vec<u8>) -> WriterState {
-    WriterState {
-        bytes,
-        flush_count: 0,
     }
 }

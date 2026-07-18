@@ -1,13 +1,11 @@
 use clap::{Parser, Subcommand};
 
 mod auth;
-mod completions;
 mod parsers;
 mod reads;
 mod writes;
 
 pub use auth::{AuthArgs, AuthOperation};
-pub use completions::{CompletionShell, CompletionsArgs};
 pub use reads::{
     ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, FriendsArgs,
     FriendsListArgs, FriendsOperation, PaymentMethodsArgs, PaymentMethodsOperation,
@@ -67,7 +65,4 @@ pub enum Command {
 
     /// Inspect pending requests.
     Requests(RequestsArgs),
-
-    /// Generate shell completion source.
-    Completions(CompletionsArgs),
 }

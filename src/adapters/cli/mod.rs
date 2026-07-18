@@ -1,5 +1,4 @@
 pub mod args;
-mod completions;
 mod dispatch;
 mod error;
 mod logging;

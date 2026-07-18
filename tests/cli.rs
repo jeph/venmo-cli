@@ -1,9 +1,7 @@
-use std::io;
-
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
-    AuthOperation, Cli, Command, CompletionShell, RequestDirectionArg, RequestsOperation,
-    UsersOperation, VisibilityArg, handle_runtime_initialization_failure, run,
+    AuthOperation, Cli, Command, RequestDirectionArg, RequestsOperation, UsersOperation,
+    VisibilityArg,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -25,43 +23,6 @@ fn assert_rejected(arguments: &[&str]) {
         Cli::try_parse_from(arguments).is_err(),
         "accepted {arguments:?}"
     );
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn public_production_dispatch_keeps_completions_service_free() {
-    let cli = Cli::try_parse_from(["venmo", "completions", "bash"]);
-    assert!(cli.is_ok());
-    if let Ok(cli) = cli {
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-
-        let result = run(cli, &mut stdout, &mut stderr).await;
-
-        assert!(result.is_ok());
-        assert!(String::from_utf8_lossy(&stdout).contains("_venmo"));
-        assert!(stderr.is_empty());
-    }
-}
-
-#[test]
-fn public_runtime_fallback_keeps_completions_service_free() {
-    let cli = Cli::try_parse_from(["venmo", "completions", "fish"]);
-    assert!(cli.is_ok());
-    if let Ok(cli) = cli {
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-
-        let result = handle_runtime_initialization_failure(
-            cli,
-            &mut stdout,
-            &mut stderr,
-            io::Error::other("synthetic runtime failure"),
-        );
-
-        assert!(result.is_ok());
-        assert!(String::from_utf8_lossy(&stdout).contains("complete -c venmo"));
-        assert!(stderr.is_empty());
-    }
 }
 
 #[test]
@@ -300,6 +261,7 @@ fn removed_and_deferred_forms_are_rejected() {
         &["venmo", "init"][..],
         &["venmo", "deinit"][..],
         &["venmo", "doctor"][..],
+        &["venmo", "completions", "bash"][..],
         &["venmo", "charge", "@alice", "1.00", "note"][..],
         &[
             "venmo", "request", "create", "@alice", "1.00", "--note", "note",
@@ -329,7 +291,7 @@ fn removed_and_deferred_forms_are_rejected() {
 }
 
 #[test]
-fn direction_and_completion_shell_are_typed_enums() {
+fn request_direction_is_a_typed_enum() {
     let requests = Cli::try_parse_from([
         "venmo",
         "requests",
@@ -350,16 +312,6 @@ fn direction_and_completion_shell_are_typed_enums() {
         Err(_) => None,
     };
     assert_eq!(request_values, Some((RequestDirectionArg::Incoming, 50)));
-
-    let completions = Cli::try_parse_from(["venmo", "completions", "powershell"]);
-    let shell = match completions {
-        Ok(cli) => match cli.command {
-            Command::Completions(args) => Some(args.shell),
-            _ => None,
-        },
-        Err(_) => None,
-    };
-    assert_eq!(shell, Some(CompletionShell::PowerShell));
 }
 
 #[test]
@@ -524,7 +476,6 @@ fn argument_only_validation_errors_are_clap_errors() {
     assert_rejected(&["venmo", "pay", "@alice", "1.001", "--note", "Dinner"]);
     assert_rejected(&["venmo", "pay", "@alice", "1.00", "--note", "   "]);
     assert_rejected(&["venmo", "request", "accept"]);
-    assert_rejected(&["venmo", "completions", "nushell"]);
     assert_rejected(&["venmo", "users", "search", "   "]);
     assert_rejected(&["venmo", "users", "search", "@"]);
 }
@@ -555,7 +506,6 @@ fn every_command_has_a_help_snapshot() {
         ("requests", &["requests"]),
         ("requests_list", &["requests", "list"]),
         ("requests_info", &["requests", "info"]),
-        ("completions", &["completions"]),
     ];
 
     for (snapshot_name, path) in cases {

@@ -106,8 +106,8 @@ current injected boundaries are:
   request IDs;
 - CLI output through caller-provided `Write` values and financial interruption through an injected
   future factory; and
-- plain configuration values such as `BuildInfo`; crate-private CLI unit seams additionally inject
-  terminal snapshots, a logging initializer, and a fake command executor.
+- crate-private CLI unit seams that inject terminal snapshots, a logging initializer, and a fake
+  command executor.
 
 This makes service access, nondeterminism, user authorization, and externally visible I/O
 replaceable in tests. Fakes should implement only the capabilities under test; that is also a
@@ -117,8 +117,8 @@ than in a global service locator.
 Prompt availability is owned by the production boundary. The public `cli::run` and
 runtime-initialization fallback inspect the actual process streams rather than accepting a caller
 supplied terminal snapshot. Synthetic terminal state exists only behind crate-private test seams.
-The dispatcher resolves completions and noninteractive authentication before invoking the
-delegated production executor; that executor owns verbose logging initialization and service
+The dispatcher resolves noninteractive authentication before invoking the delegated production
+executor; that executor owns verbose logging initialization and service
 composition. The runtime itself is the one process bootstrap attempted before those asynchronous
 preconditions.
 

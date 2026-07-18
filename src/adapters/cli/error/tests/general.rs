@@ -21,7 +21,6 @@ use crate::shared::{ApiFailureKind, ApplicationFailureKind, CredentialAccessErro
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AppErrorVariant {
-    CompletionOutput,
     LoggingInitialization,
     RuntimeInitialization,
     SignalInitialization,
@@ -58,9 +57,6 @@ struct Classification {
 #[test]
 fn every_app_error_variant_has_a_complete_deliberate_classification() {
     let errors = [
-        AppError::CompletionOutput {
-            source: io::Error::other("synthetic completion output failure"),
-        },
         AppError::LoggingInitialization {
             source: Box::new(io::Error::other("synthetic logging failure")),
         },
@@ -121,7 +117,6 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         },
     ];
     let expected = [
-        classification(AppErrorVariant::CompletionOutput, ErrorCategory::Internal),
         classification(
             AppErrorVariant::LoggingInitialization,
             ErrorCategory::Internal,
@@ -185,7 +180,6 @@ const fn classification(variant: AppErrorVariant, category: ErrorCategory) -> Cl
 
 const fn variant(error: &AppError) -> AppErrorVariant {
     match error {
-        AppError::CompletionOutput { .. } => AppErrorVariant::CompletionOutput,
         AppError::LoggingInitialization { .. } => AppErrorVariant::LoggingInitialization,
         AppError::RuntimeInitialization { .. } => AppErrorVariant::RuntimeInitialization,
         AppError::SignalInitialization { .. } => AppErrorVariant::SignalInitialization,

@@ -52,12 +52,6 @@ impl ErrorCategory {
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("failed to write shell completions")]
-    CompletionOutput {
-        #[source]
-        source: io::Error,
-    },
-
     #[error("failed to initialize verbose diagnostics")]
     LoggingInitialization {
         #[source]
@@ -230,8 +224,7 @@ impl AppError {
             Self::RequestInfo { source } => application_failure_category(source.failure_kind()),
             Self::FinancialWriteInterruptedUnknown => ErrorCategory::AmbiguousWrite,
             Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
-            Self::CompletionOutput { .. }
-            | Self::LoggingInitialization { .. }
+            Self::LoggingInitialization { .. }
             | Self::RuntimeInitialization { .. }
             | Self::SignalInitialization { .. }
             | Self::ApiInitialization { .. }

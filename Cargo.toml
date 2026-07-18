@@ -20,7 +20,6 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.6.1", default-features = false, features = ["color", "derive", "error-context", "help", "std", "suggestions", "usage"] }
-clap_complete = { version = "4.6.7", default-features = false }
 dialoguer = { version = "0.12.0", default-features = false, features = ["password"] }
 keyring = { version = "4.1.4", default-features = false, features = ["v1"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }

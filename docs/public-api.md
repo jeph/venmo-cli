@@ -15,7 +15,7 @@ and black-box tests.
 ### Argument schema
 
 - Root: `Cli`, `Command`.
-- Authentication: `AuthArgs`, `AuthOperation`, `LoginArgs`, `LogoutArgs`.
+- Authentication: `AuthArgs`, `AuthOperation`.
 - Friends: `FriendsArgs`, `FriendsOperation`, `FriendsListArgs`.
 - Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`, `UserInfoArgs`.
 - Wallet reads: `PaymentMethodsArgs`, `PaymentMethodsOperation`.
@@ -23,7 +23,6 @@ and black-box tests.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
   `RequestDirectionArg`.
 - Financial command inputs: `PayArgs`, `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `VisibilityArg`.
-- Completion generation: `CompletionsArgs`, `CompletionShell`.
 
 ### Process/runtime surface
 

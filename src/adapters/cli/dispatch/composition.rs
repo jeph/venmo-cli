@@ -6,7 +6,6 @@ use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
 
 use super::super::args::{Command, RequestsOperation, UsersOperation};
-use super::super::completions;
 use super::super::error::AppError;
 use super::super::prompt::{DialoguerPrompt, TerminalCapabilities};
 
@@ -55,8 +54,6 @@ where
 {
     let provider = ProductionProvider::new(terminal_capabilities);
     match command {
-        Command::Completions(args) => completions::write(args.shell, stdout)
-            .map_err(|source| AppError::CompletionOutput { source }),
         Command::Auth(args) => auth::run_production(args, provider, stdout, stderr).await,
         Command::PaymentMethods(args) => {
             let (store, api) = provider.credential_store_and_api()?;

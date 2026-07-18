@@ -2,7 +2,6 @@ use std::future::Future;
 use std::io::{self, Write};
 
 use super::args::{AuthArgs, AuthOperation, Cli, Command};
-use super::completions;
 use super::error::AppError;
 use super::logging::InitializationError;
 use super::prompt::TerminalCapabilities;
@@ -90,8 +89,8 @@ where
 
 /// Test seam for the service-free dispatch boundary.
 ///
-/// The executor is reached only after completions and authentication terminal preconditions have
-/// been resolved without constructing a credential store or API client.
+/// The executor is reached only after authentication terminal preconditions have been resolved
+/// without constructing a credential store or API client.
 async fn run_with<'a, W, E, X, F>(
     cli: Cli,
     stdout: &'a mut W,
@@ -106,8 +105,6 @@ where
     F: Future<Output = Result<(), AppError>> + 'a,
 {
     match cli.command {
-        Command::Completions(args) => completions::write(args.shell, stdout)
-            .map_err(|source| AppError::CompletionOutput { source }),
         Command::Auth(args)
             if auth_requires_interactive_terminal(&args) && !terminal_capabilities.can_prompt() =>
         {
@@ -157,10 +154,6 @@ where
     I: FnOnce(bool) -> Result<(), InitializationError>,
 {
     let command = match cli.command {
-        Command::Completions(args) => {
-            return completions::write(args.shell, stdout)
-                .map_err(|source| AppError::CompletionOutput { source });
-        }
         Command::Auth(args)
             if auth_requires_interactive_terminal(&args) && !terminal_capabilities.can_prompt() =>
         {

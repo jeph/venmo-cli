@@ -116,7 +116,7 @@ secrets. Renderer and process snapshots must contain only reviewed synthetic dat
 
 Use **exact assertions** for contracts where any changed byte, field, order, or count matters:
 
-- command/help/completion schemas, rendered tables, sanitized errors, exit codes, and stream
+- command/help schemas, rendered tables, sanitized errors, exit codes, and stream
   placement;
 - the complete ordered feature transcript, including zero/one write and no retry;
 - HTTP method, fixed origin, route, query, required headers, content type, body, credential mode,
@@ -137,18 +137,18 @@ pass.
 
 `tests/cli.rs`, `tests/domain.rs`, and `tests/errors.rs` exercise only the curated public facades.
 The CLI facade compile-fail doctest proves that terminal-capability snapshots cannot be imported
-publicly, while positive public-API tests compile and execute completion paths using
-`run(cli, stdout, stderr)` and the runtime fallback signatures. Private dispatch tests inject only
-synthetic terminal state, logging initialization, and fake command execution.
+publicly, while positive public-API tests exercise the curated parser and runtime-fallback
+signatures. Private dispatch tests inject only synthetic terminal state, logging initialization,
+and fake command execution.
 
 `tests/process.rs` launches the compiled binary only for service-free paths such as help, version,
-argument rejection, completion generation, and manpage rendering. A process test
+argument rejection, and manpage rendering. A process test
 must fail before keyring or network access unless access is the explicitly isolated contract under
 test.
 
 Verbose precondition coverage injects a recording/failing logging initializer into the private
-dispatch seam. Complete state equality proves completion generation and
-noninteractive login make zero initializer and executor calls. Delegated fake
+dispatch seam. Complete state equality proves noninteractive login makes zero initializer and
+executor calls. Delegated fake
 commands, including `accept` and `decline`, prove initialization occurs first and that an
 initialization error prevents execution.
 These tests never install the real process-global subscriber.

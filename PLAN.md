@@ -60,10 +60,9 @@ The initial MCP release provides structured, read-only access to the already imp
 - Write no first-party `unsafe` Rust and prohibit it mechanically across every first-party target.
 - Use no `unwrap`, `unwrap_err`, `expect`, `expect_err`, or equivalent panic-based value extraction in first-party Rust, including tests and build tooling.
 - If the correct treatment of any failure is unclear, stop the affected implementation and ask the prompter/project owner rather than guessing, swallowing it, panicking, or choosing an arbitrary fallback.
-- Include shell completion generation in the first release.
 - Keep one Cargo package and shared library, add `venmo-mcp` as a second thin binary, and set Cargo `default-run = "venmo"` so existing `cargo run -- ...` behavior remains unambiguous.
 - Use local stdio as the only initial MCP transport. Do not enable Streamable HTTP, SSE, remote authentication, or network listening in the first MCP release.
-- Register only the eight read tools in Section 3.10 initially. Do not expose resources or prompts until a concrete use case requires them.
+- Register only the eight read tools in Section 3.9 initially. Do not expose resources or prompts until a concrete use case requires them.
 - Keep the entire credential lifecycle terminal-CLI-only. MCP may report authenticated status but must never offer login, password/OTP collection, logout, credential overrides, remote session mutation, or secret-bearing tool inputs.
 - Give MCP its own explicit input/output DTO and JSON Schema boundary. Do not serialize secret-bearing feature/shared types, stored credential envelopes, raw private-API DTOs, headers, bodies, or keychain errors.
 - Reload the native credential for every MCP tool invocation and drop it afterward. Never cache a bearer token or device ID in long-lived server state; MCP startup and `tools/list` must touch neither the keychain nor Venmo.
@@ -125,8 +124,6 @@ venmo activity list [--limit <N>] [--before-id <TOKEN>]
 venmo activity info <ACTIVITY_ID>
 venmo requests list [--direction <DIRECTION>] [--limit <N>] [--before <TOKEN>]
 venmo requests info <REQUEST_ID>
-
-venmo completions <SHELL>
 ```
 
 No compatibility aliases should be added initially. Add aliases only in response to demonstrated user need.
@@ -422,20 +419,7 @@ venmo requests list --direction incoming --before <TOKEN>
   exact-ID detail behavior before the corresponding command is implemented. Routine tests and
   contributor verification remain service-free.
 
-### 3.9 Shell completions
-
-```text
-venmo completions bash
-venmo completions zsh
-venmo completions fish
-venmo completions powershell
-```
-
-- Generates completion source to stdout using `clap_complete`.
-- Requires no logging-subscriber initialization, authentication, keychain, or network access.
-- Release archives should also include pre-generated completion files.
-
-### 3.10 Local MCP server
+### 3.9 Local MCP server
 
 ```text
 venmo-mcp
@@ -464,13 +448,13 @@ Do not register tools for:
 
 - `auth login`, `auth logout`, or any remote session mutation.
 - Passwords, OTPs, OTP secrets, bearer tokens, device IDs, cookies, CSRF values, or alternate credential sources.
-- Help, version, shell completion generation, or package management.
+- Help, version, or package management.
 - `pay`, request creation, request acceptance, or request decline until their CLI contracts and the later MCP write phase are complete.
 - Internal exact-recipient resolution, automatic funding policy, request detail, or any lower-level API merely because implementation code exists.
 
 “Auth-status-only” describes the MCP authentication command surface: `venmo_auth_status` is the sole auth-oriented tool.
 
-#### 3.10.1 Tool annotations and permission signaling
+#### 3.9.1 Tool annotations and permission signaling
 
 Every initial tool must explicitly publish standard MCP annotations equivalent to:
 
@@ -549,7 +533,6 @@ pub enum Command {
     Balance,
     Activity(ActivityArgs),
     Requests(RequestsArgs),
-    Completions(CompletionsArgs),
 }
 ```
 
@@ -563,13 +546,13 @@ Requirements:
 - Reject nested or mixed forms such as `request accept <id>` and `accept <id> <amount>`.
 - Reject `--from` everywhere; accept `--yes` only on `pay`, `accept`, and `decline`, and reject it on request creation.
 - Reject `--dry-run` everywhere; it is not part of the schema.
-- Use `ValueEnum` for request direction and shell selection.
+- Use `ValueEnum` for request direction.
 - Put validation that depends only on one value in `clap` parsers.
 - Put cross-field and network-dependent validation in the owning feature.
 - Snapshot top-level and every subcommand's help output.
 - Source version output from Cargo metadata; do not hardcode it separately.
 
-`clap` does **not** provide interactive prompting. It parses arguments, validates the command shape, and generates help/completions. Use `std::io::IsTerminal` for TTY detection and `dialoguer` behind a narrow prompt adapter for hidden token entry and default-No confirmation.
+`clap` does **not** provide interactive prompting. It parses arguments, validates the command shape, and generates help. Use `std::io::IsTerminal` for TTY detection and `dialoguer` behind a narrow prompt adapter for hidden token entry and default-No confirmation.
 
 This section defines only the `venmo` terminal adapter. `venmo-mcp` must not invoke the `clap` command dispatcher, parse terminal table output, or reuse human output writers. Its stdio stream is the protocol transport, so even a normal CLI banner or success message would corrupt framing. If a future startup policy flag such as `--allow-financial-writes` is added, parse only that server-composition setting before stdio service starts; it must never accept a secret or stand in for per-call human approval.
 
@@ -712,7 +695,7 @@ Immediately afterward, separate processes successfully used the mobile-issued to
 
 The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `payment-methods list` all succeeded. User search confirmed the inherited endpoint is fuzzy even for username-specific requests and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. Public single-token searches now intentionally normalize optional `@` spelling to the same `type=username` request, while multi-word searches remain general; the separate internal exhaustive traversal retains its fail-closed exact-match checks. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
 
-The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, and `requests list` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
+The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, and `requests list` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed.
 
 ### 7.2 New read capabilities required by the redesign
 
@@ -876,7 +859,6 @@ src/
       args/
       dispatch/
       output/
-      completions.rs
       error.rs
       logging.rs
       prompt.rs
@@ -1004,7 +986,7 @@ Select current compatible versions during scaffolding, minimize features, commit
 
 ### 9.1 Library-first policy
 
-Use an established community crate by default for non-feature functionality that is common across Rust applications. Do not build project-owned substitutes for capabilities such as argument parsing, hidden prompts, HTTP/TLS, URL handling, serialization, native credential storage, terminal capability detection, logging, shell completions, manpage generation, secure temporary files, date/time handling, signal handling, backoff primitives, or test servers when a suitable mature crate exists.
+Use an established community crate by default for non-feature functionality that is common across Rust applications. Do not build project-owned substitutes for capabilities such as argument parsing, hidden prompts, HTTP/TLS, URL handling, serialization, native credential storage, terminal capability detection, logging, manpage generation, secure temporary files, date/time handling, signal handling, backoff primitives, or test servers when a suitable mature crate exists.
 
 This policy is not a mandate to maximize dependency count. Keep Venmo-specific feature/model rules, financial-safety decisions, typed adapter glue, and small straightforward transformations in this repository. A new dependency must still reduce total implementation and maintenance risk compared with the local code it replaces.
 
@@ -1023,7 +1005,6 @@ Rolling a common component locally despite an appropriate crate requires an expl
 | Concern | Planned crate | Decision |
 | --- | --- | --- |
 | CLI | `clap` | Confirmed; derive API |
-| Completions | `clap_complete` | Confirmed |
 | Manpages | `clap_mangen` | Generate release documentation |
 | Runtime | `tokio` 1.52 | CLI keeps its current-thread runtime; MCP additionally needs reviewed stdio I/O, sync, and multi-thread runtime features |
 | HTTP/TLS | `reqwest` 0.13.4 with `rustls` | Confirmed; defaults disabled and only JSON plus rustls enabled |
@@ -1099,7 +1080,7 @@ Initial feature policy:
 - Use the SDK-compatible `schemars` version for JSON Schema 2020-12 input/output contracts; avoid a second conflicting schema version.
 - Preserve `serde_json` as the explicit structured-output representation and do not introduce a second general JSON model.
 - Add no sidecar runtime, Node dependency, browser component, generated protocol binary, or network listener.
-- Audit the published stdio transport's buffering and logging before acceptance. The production adapter must enforce the 64 KiB inbound frame bound and 2 MiB serialized-result bound from Section 3.10; an SDK path with unbounded line buffering is not acceptable without a bounded wrapper.
+- Audit the published stdio transport's buffering and logging before acceptance. The production adapter must enforce the 64 KiB inbound frame bound and 2 MiB serialized-result bound from Section 3.9; an SDK path with unbounded line buffering is not acceptable without a bounded wrapper.
 - Disable SDK/transport frame and payload tracing targets in production at every verbosity. A malformed JSON-RPC line, schema failure, or protocol error must never cause raw input/output to be written to stderr.
 
 The implementation targets the [MCP specification dated 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) unless the reviewed stable SDK requires a newer compatible revision. Record any spec-version change and rerun exact schema/protocol snapshots before release.
@@ -1330,15 +1311,15 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - `--dry-run` rejected by every command.
 - Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported funding arguments.
 - Absence of an undocumented `request create` alias.
-- Direction and shell enums.
+- Direction enum.
 - Limit bounds.
 - Exact endpoint-native pagination grammar, default limit/offset values, rejection of cross-endpoint or page/page-size forms, and redacted before-token debug/error formatting.
 - Absence of old `init`, `deinit`, `charge`, split, token-source, and multi-recipient forms.
 - Help/version paths that never initialize keyring or HTTP dependencies.
 - Compile/API coverage that the public CLI facade exports no terminal-capability injection and that
   production dispatch/runtime fallback accept no caller terminal policy.
-- Injected logging-initializer coverage proving completions and noninteractive authentication make
-  zero logging/service calls; delegated fake commands preserve logging errors and initialize before
+- Injected logging-initializer coverage proving noninteractive authentication makes zero
+  logging/service calls; delegated fake commands preserve logging errors and initialize before
   execution.
 
 ### 13.3 Feature tests with fakes
@@ -1516,7 +1497,6 @@ Release artifacts should contain:
 - README.
 - LICENSE.
 - Manpage.
-- Shell completions.
 - SHA-256 checksums.
 - Provenance/SBOM when supported by the release pipeline.
 
@@ -1534,7 +1514,7 @@ Evaluate `cargo-dist` after initial target builds are stable. Recommended channe
 
 Deliverables:
 
-- Freeze the terminal command surface and help text in Sections 3.1–3.9 and the MCP tool/schema/annotation surface in Section 3.10.
+- Freeze the terminal command surface and help text in Sections 3.1–3.8 and the MCP tool/schema/annotation surface in Section 3.9.
 - Verify token-retrieval steps for the README without automating them.
 - Validate the legacy password/SMS-OTP token issuance and device-trust paths without storing account identifier, password, or OTP material.
 - Validate current-account, search, user, payment-method, payment-creation, and request-creation contracts.
@@ -1573,7 +1553,7 @@ Exit criteria:
 
 - Every selected command parses.
 - Old command forms are rejected intentionally.
-- Help, version, and completions require no services.
+- Help and version require no services.
 
 ### Phase 2: Model and HTTP foundation
 
@@ -1668,7 +1648,7 @@ Deliverables:
   composition.
 - Testing, retained-contract, mutation-policy, and evidence-gated follow-up documentation.
 - Curated `cli`/`model` facade inventory and pre-1.0 semver expectations.
-- Manpage and completion generation.
+- Manpage generation.
 - LICENSE and security policy.
 - Release archives containing every completed binary, checksums, and native smoke tests.
 
@@ -1696,7 +1676,7 @@ Deliverables:
 - Add defensive bounds for every arbitrary ID accepted through MCP before any credential or network access.
 - Review and lock the official `rmcp` stable release and minimal stdio/server/schema feature set against Rust 1.95, supported targets, and cargo-deny.
 - Add explicit MCP input/output DTOs, JSON Schema, exact money/time/ID conversions, tagged activity views, safe error mapping, and hostile-content tests.
-- Add the exact eight-tool registry in Section 3.10 with accurate annotations and no resources, prompts, auth mutation, secret input, internal helper, or financial tools.
+- Add the exact eight-tool registry in Section 3.9 with accurate annotations and no resources, prompts, auth mutation, secret input, internal helper, or financial tools.
 - Add generic handlers over the existing feature/API ports, one shared production read-only API façade, per-call credential loading, and a one-permit async operation gate.
 - Add bounded 64 KiB ingress, 2 MiB serialized-result enforcement, non-waiting `server_busy` admission, capacity-one/two-second-refill rate limiting, and SDK payload-log suppression.
 - Add the `venmo-mcp` stdio binary with protocol-only stdout and stderr-only diagnostics while preserving `default-run = "venmo"`.
@@ -1740,7 +1720,7 @@ Exit criteria:
 
 ## 18. Definition of done
 
-- All CLI commands in Sections 3.1–3.9 and the initial MCP tools in Section 3.10 are implemented and documented.
+- All CLI commands in Sections 3.1–3.8 and the initial MCP tools in Section 3.9 are implemented and documented.
 - No old `init`, `deinit`, `charge`, split, or multi-recipient interface remains.
 - `auth login` prompts for the identifier, hidden password, and a newly supplied hidden trusted device ID in that order, and handles SMS OTP when required. It accepts no secrets through arguments, stdin flags, environment variables, or files.
 - Interactive prompts use the tested `dialoguer` adapter and never echo token material or write prompt UI to stdout.
@@ -1776,7 +1756,7 @@ Exit criteria:
 - Every manually approved live payment, request, acceptance, or decline test uses exactly $0.01 and the approved test counterparty under Section 13.6, apart from the documented one-time acceptance exception.
 - No material contradiction or ambiguity discovered during implementation is resolved without clarification from the prompter/project owner and a recorded plan/test update; finished CLI users are never asked to make implementation decisions.
 - `venmo` and `venmo-mcp` are thin adapters over the same feature use cases, shared models, credential implementation, and private-API client; MCP does not parse terminal output or duplicate HTTP contracts.
-- The initial MCP registry exposes exactly the eight Section 3.10 read tools, no resources/prompts, no auth mutation or secret input, and no financial/internal-helper tools.
+- The initial MCP registry exposes exactly the eight Section 3.9 read tools, no resources/prompts, no auth mutation or secret input, and no financial/internal-helper tools.
 - Every initial MCP tool has accurate read-only/non-destructive/open-world annotations, strict input/output schemas, and structured results using exact money, time, ID, tagged activity, and native continuation representations.
 - MCP initialization and tool listing are keychain/network-free; every tool reloads credentials per call through read-only capability and leaves no credential cached.
 - Type-level MCP state exposes neither local credential mutation nor remote login/device-trust capabilities.

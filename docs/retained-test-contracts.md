@@ -7,7 +7,7 @@
 ## Service-free process coverage
 
 `tests/process.rs` intentionally retains child-process coverage for help, version, invalid input,
-noninteractive confirmation rejection, completions, and manpage generation. Each
+noninteractive confirmation rejection, and manpage generation. Each
 path is deterministic and must complete without keychain or network access. Financial behavior is
 covered below the process boundary with fakes and synthetic HTTP contracts, not a real command.
 
@@ -30,8 +30,8 @@ live credential, keychain prompt, Venmo service, or financial operation.
 Verbose delegated production execution installs Rust's one-per-process global tracing subscriber.
 Phase 7 keeps that real installation out of in-process unit tests because exercising it would make
 results depend on test order, parallelism, and subscribers installed by the test harness or
-dependencies. An injected recording/failing initializer proves that completions and
-noninteractive authentication never attempt installation, while delegated commands including
+dependencies. An injected recording/failing initializer proves that noninteractive authentication
+never attempts installation, while delegated commands including
 `accept` and `decline` do so before their fake executor. The isolated logging-unit contract proves
 that disabled diagnostics do not install a subscriber. Exact redaction is tested at the structured values, HTTP
 request/response wrappers, errors, and renderers that can carry sensitive data.
