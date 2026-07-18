@@ -281,11 +281,13 @@ fn top_level_accept_and_decline_have_distinct_minimal_arguments() {
     assert!(accept.is_ok_and(|cli| matches!(cli.command, Command::Accept(args) if args.yes)));
 
     let decline = Cli::try_parse_from(["venmo", "decline", "request-123"]);
-    assert!(decline.is_ok_and(|cli| matches!(cli.command, Command::Decline(_))));
+    assert!(decline.is_ok_and(|cli| matches!(cli.command, Command::Decline(args) if !args.yes)));
+
+    let decline_yes = Cli::try_parse_from(["venmo", "decline", "request-123", "--yes"]);
+    assert!(decline_yes.is_ok_and(|cli| matches!(cli.command, Command::Decline(args) if args.yes)));
 
     assert_rejected(&["venmo", "request", "accept", "request-123"]);
     assert_rejected(&["venmo", "accept", "request-123", "--from", "method-456"]);
-    assert_rejected(&["venmo", "decline", "request-123", "--yes"]);
 }
 
 #[test]

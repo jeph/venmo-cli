@@ -11,4 +11,4 @@ Request decline preflight:
   Current request status: pending
   Created: 1970-01-01T00:00:00Z
   Action: decline this exact incoming request without sending money.
-  This command does not pause for confirmation after displaying this validated plan.
+  Confirmation defaults to No; --yes skips only the confirmation prompt.

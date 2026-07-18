@@ -571,7 +571,7 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__decline)
-            opts="-v -h --verbose --help"
+            opts="-v -h --yes --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

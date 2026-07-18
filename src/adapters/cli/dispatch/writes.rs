@@ -130,10 +130,11 @@ where
     Ok(())
 }
 
-pub(super) async fn run_decline_with<R, A, W, E, M, S>(
+pub(super) async fn run_decline_with<R, A, P, W, E, M, S>(
     args: DeclineArgs,
     store: &R,
     api: &A,
+    prompt: &P,
     stdout: &mut W,
     stderr: &mut E,
     make_interruption: M,
@@ -142,6 +143,7 @@ where
     R: CredentialReader,
     A: CurrentAccountApi + RequestLookupApi + RequestDeclineApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
+    P: DefaultNoConfirmation,
     W: Write,
     E: Write,
     M: FnOnce() -> Result<S, AppError>,
@@ -149,8 +151,10 @@ where
 {
     let prepared = decline::prepare(store, api, &args.request_id).await?;
     write_and_flush(stderr, &prepared, output::write_decline_preflight)?;
+    let authorized = decline::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
-    let result = protect_with_interruption(decline::execute(api, prepared), interruption).await??;
+    let result =
+        protect_with_interruption(decline::execute(api, authorized), interruption).await??;
     write_and_flush(stdout, &result, output::write_decline_result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())

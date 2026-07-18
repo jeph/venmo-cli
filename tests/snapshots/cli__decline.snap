@@ -4,14 +4,17 @@ expression: help
 ---
 Decline an incoming request without sending money
 
-Usage: decline <REQUEST_ID>
+Usage: decline [OPTIONS] <REQUEST_ID>
 
 Arguments:
   <REQUEST_ID>
           Canonical incoming request ID
 
 Options:
+      --yes
+          Skip only the final default-No confirmation
+
   -h, --help
           Print help (see a summary with '-h')
 
-Declining displays the authoritative request plan and then writes immediately without pausing for confirmation. It sends no money and has no `--yes` option. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app.
+Declining sends no money. Confirmation defaults to No and requires both stdin and stderr to be terminals unless `--yes` is supplied. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app.

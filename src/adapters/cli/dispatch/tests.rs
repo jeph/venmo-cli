@@ -244,7 +244,7 @@ async fn delegated_production_commands_initialize_logging_before_execution() -> 
     for arguments in [
         &["venmo", "--verbose", "doctor"][..],
         &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
-        &["venmo", "--verbose", "decline", "request-1"][..],
+        &["venmo", "--verbose", "decline", "request-1", "--yes"][..],
     ] {
         let setup = DispatchSetup::parse(arguments, TerminalCapabilities::new(false, false))?;
         let delegated_command = setup.cli.command.clone();
@@ -272,7 +272,7 @@ async fn logging_initialization_failures_prevent_production_execution() -> TestR
     for arguments in [
         &["venmo", "--verbose", "doctor"][..],
         &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
-        &["venmo", "--verbose", "decline", "request-1"][..],
+        &["venmo", "--verbose", "decline", "request-1", "--yes"][..],
     ] {
         let setup = DispatchSetup::parse(arguments, TerminalCapabilities::new(false, false))?
             .with_logging_behavior(LoggingBehavior::Fail);
@@ -346,7 +346,7 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
             TerminalCapabilities::new(false, false),
         ),
         (
-            &["venmo", "decline", "request-1"][..],
+            &["venmo", "decline", "request-1", "--yes"][..],
             TerminalCapabilities::new(false, false),
         ),
         (
@@ -484,7 +484,7 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
             "failed to initialize the asynchronous runtime",
         ),
         (
-            &["venmo", "decline", "request-1"][..],
+            &["venmo", "decline", "request-1", "--yes"][..],
             ErrorVariant::RuntimeInitialization,
             ErrorCategory::Internal,
             1,

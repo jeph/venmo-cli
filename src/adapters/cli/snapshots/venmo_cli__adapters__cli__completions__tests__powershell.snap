@@ -140,6 +140,7 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             break
         }
         'venmo;decline' {
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Skip only the final default-No confirmation')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')

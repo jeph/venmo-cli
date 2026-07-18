@@ -88,10 +88,14 @@ pub struct AcceptArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "Declining displays the authoritative request plan and then writes immediately without pausing for confirmation. It sends no money and has no `--yes` option. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app."
+    after_long_help = "Declining sends no money. Confirmation defaults to No and requires both stdin and stderr to be terminals unless `--yes` is supplied. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app."
 )]
 pub struct DeclineArgs {
     /// Canonical incoming request ID.
     #[arg(value_name = "REQUEST_ID", value_parser = RedactedRequestIdParser)]
     pub request_id: RequestId,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long)]
+    pub yes: bool,
 }

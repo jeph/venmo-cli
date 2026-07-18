@@ -1,12 +1,14 @@
 use std::cell::RefCell;
 use std::error::Error;
 use std::future::{Future, ready};
+use std::io;
 use std::rc::Rc;
 use std::str::FromStr;
 
 use time::OffsetDateTime;
 
 use super::*;
+use crate::features::auth::PromptAvailability;
 use crate::features::payments::FinancialValidationError;
 use crate::features::people::User;
 use crate::features::requests::validation::RequestMutationValidationError;
@@ -54,6 +56,10 @@ enum Call {
         current_user_id: UserId,
         request_id: RequestId,
     },
+    PromptAvailability,
+    ConfirmDefaultNo {
+        prompt: String,
+    },
     Decline {
         session: RedactedSecret,
         plan: Box<DeclinePlanCall>,
@@ -73,7 +79,16 @@ enum PreflightFailure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeclineFailure {
     Preflight(PreflightFailure),
+    ConfirmationRequired,
+    ConfirmationDeclined,
+    Confirmation(PromptFailure),
     Decline(ApiFailureKind),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PromptFailure {
+    Cancelled,
+    Interaction,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -109,6 +124,14 @@ fn project(result: Result<DeclineResult, DeclineError>) -> DeclineOutcome {
             }
             DeclineError::Preflight(RequestMutationPreflightError::RequestValidation(source)) => {
                 DeclineFailure::Preflight(PreflightFailure::RequestValidation(source))
+            }
+            DeclineError::ConfirmationRequired => DeclineFailure::ConfirmationRequired,
+            DeclineError::ConfirmationDeclined => DeclineFailure::ConfirmationDeclined,
+            DeclineError::Confirmation {
+                source: PromptError::Cancelled,
+            } => DeclineFailure::Confirmation(PromptFailure::Cancelled),
+            DeclineError::Confirmation { .. } => {
+                DeclineFailure::Confirmation(PromptFailure::Interaction)
             }
             DeclineError::Decline { source } => DeclineFailure::Decline(source.kind()),
         }),
@@ -259,13 +282,65 @@ impl RequestDeclineApi for FakeApi {
     }
 }
 
+#[derive(Clone, Copy)]
+enum PromptScript {
+    Answer(bool),
+    Cancelled,
+    Interaction,
+}
+
+struct FakePrompt {
+    interactive: bool,
+    script: PromptScript,
+    transcript: Transcript,
+}
+
+impl PromptAvailability for FakePrompt {
+    fn can_prompt(&self) -> bool {
+        self.transcript.borrow_mut().push(Call::PromptAvailability);
+        self.interactive
+    }
+}
+
+impl DefaultNoConfirmation for FakePrompt {
+    fn confirm_default_no(&self, prompt: &str) -> Result<bool, PromptError> {
+        self.transcript.borrow_mut().push(Call::ConfirmDefaultNo {
+            prompt: prompt.to_owned(),
+        });
+        match self.script {
+            PromptScript::Answer(answer) => Ok(answer),
+            PromptScript::Cancelled => Err(PromptError::Cancelled),
+            PromptScript::Interaction => Err(PromptError::Interaction {
+                source: io::Error::other("synthetic decline confirmation failure"),
+            }),
+        }
+    }
+}
+
 async fn run_decline(
     reader: &FakeReader,
     api: &FakeApi,
     request_id: &RequestId,
 ) -> Result<DeclineResult, DeclineError> {
     let prepared = prepare(reader, api, request_id).await?;
-    execute(api, prepared).await
+    let prompt = FakePrompt {
+        interactive: false,
+        script: PromptScript::Answer(false),
+        transcript: Rc::clone(&reader.transcript),
+    };
+    let authorized = authorize(&prompt, prepared, true)?;
+    execute(api, authorized).await
+}
+
+async fn run_decline_with_prompt(
+    reader: &FakeReader,
+    api: &FakeApi,
+    prompt: &FakePrompt,
+    request_id: &RequestId,
+) -> Result<DeclineResult, DeclineError> {
+    let prepared = prepare(reader, api, request_id).await?;
+    let authorized = authorize(prompt, prepared, false)?;
+    execute(api, authorized).await
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -428,6 +503,102 @@ async fn returned_id_mismatch_missing_creation_and_unsafe_state_never_write() ->
 
         // Execute once.
         let result = run_decline(&reader, &api, &request_id).await;
+        let observed = Observation {
+            outcome: project(result),
+            transcript: transcript.borrow().clone(),
+        };
+
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum ConfirmationCase {
+    Required,
+    Declined,
+    Cancelled,
+    Interaction,
+    Confirmed,
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn confirmation_required_declined_cancelled_failed_and_confirmed_are_distinct() -> TestResult
+{
+    for case in [
+        ConfirmationCase::Required,
+        ConfirmationCase::Declined,
+        ConfirmationCase::Cancelled,
+        ConfirmationCase::Interaction,
+        ConfirmationCase::Confirmed,
+    ] {
+        let request_id = RequestId::from_str("request-1")?;
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let reader = FakeReader {
+            script: ReaderScript::Present,
+            transcript: Rc::clone(&transcript),
+        };
+        let api = FakeApi::new(DeclineScript::successful()?, Rc::clone(&transcript));
+        let (interactive, script, expected_outcome) = match case {
+            ConfirmationCase::Required => (
+                false,
+                PromptScript::Answer(false),
+                DeclineOutcome::Failure(DeclineFailure::ConfirmationRequired),
+            ),
+            ConfirmationCase::Declined => (
+                true,
+                PromptScript::Answer(false),
+                DeclineOutcome::Failure(DeclineFailure::ConfirmationDeclined),
+            ),
+            ConfirmationCase::Cancelled => (
+                true,
+                PromptScript::Cancelled,
+                DeclineOutcome::Failure(DeclineFailure::Confirmation(PromptFailure::Cancelled)),
+            ),
+            ConfirmationCase::Interaction => (
+                true,
+                PromptScript::Interaction,
+                DeclineOutcome::Failure(DeclineFailure::Confirmation(PromptFailure::Interaction)),
+            ),
+            ConfirmationCase::Confirmed => (
+                true,
+                PromptScript::Answer(true),
+                DeclineOutcome::Success(Box::new(DeclineResult::new(
+                    DeclineRequestPlan::new(account("123")?, standard_request()?),
+                    declined_request()?,
+                ))),
+            ),
+        };
+        let prompt = FakePrompt {
+            interactive,
+            script,
+            transcript: Rc::clone(&transcript),
+        };
+
+        let mut expected_calls = successful_calls(&request_id)?
+            .into_iter()
+            .take(3)
+            .collect::<Vec<_>>();
+        expected_calls.push(Call::PromptAvailability);
+        if !matches!(case, ConfirmationCase::Required) {
+            expected_calls.push(Call::ConfirmDefaultNo {
+                prompt: "Decline this request without sending money?".to_owned(),
+            });
+        }
+        if matches!(case, ConfirmationCase::Confirmed) {
+            expected_calls.push(
+                successful_calls(&request_id)?
+                    .into_iter()
+                    .nth(3)
+                    .ok_or_else(|| io::Error::other("missing synthetic decline call"))?,
+            );
+        }
+        let expected = Observation {
+            outcome: expected_outcome,
+            transcript: expected_calls,
+        };
+
+        let result = run_decline_with_prompt(&reader, &api, &prompt, &request_id).await;
         let observed = Observation {
             outcome: project(result),
             transcript: transcript.borrow().clone(),

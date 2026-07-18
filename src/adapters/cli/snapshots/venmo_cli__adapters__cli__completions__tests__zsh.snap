@@ -161,6 +161,7 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (decline)
 _arguments "${_arguments_options[@]}" : \
+'--yes[Skip only the final default-No confirmation]' \
 '-v[Write redacted diagnostics to stderr]' \
 '--verbose[Write redacted diagnostics to stderr]' \
 '-h[Print help (see more with '\''--help'\'')]' \

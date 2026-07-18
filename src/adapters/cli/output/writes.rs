@@ -289,7 +289,7 @@ pub(crate) fn write_decline_preflight<W: Write>(
     )?;
     writeln!(
         writer,
-        "  This command does not pause for confirmation after displaying this validated plan."
+        "  Confirmation defaults to No; --yes skips only the confirmation prompt."
     )
 }
 

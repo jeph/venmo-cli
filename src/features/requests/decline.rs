@@ -5,7 +5,9 @@ use super::{
     DeclineRequestPlan, DeclinedRequest, RequestDeclineApi, RequestId, RequestLookupApi,
     RequestMutationPreflightError,
 };
-use crate::features::auth::CurrentAccountApi;
+use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
+use crate::features::payments::DefaultNoConfirmation;
+use crate::features::payments::confirmation::{self, DefaultNoConfirmationError};
 use crate::shared::{
     ApiFailure, ApiOperationFailure, ApplicationFailureKind, CredentialEnvelope, CredentialReader,
 };
@@ -55,6 +57,17 @@ impl DeclineResult {
 pub enum DeclineError {
     #[error(transparent)]
     Preflight(#[from] RequestMutationPreflightError),
+    #[error(
+        "request decline confirmation requires both stdin and stderr to be terminals; pass `--yes` to authorize non-interactively"
+    )]
+    ConfirmationRequired,
+    #[error("request decline cancelled")]
+    ConfirmationDeclined,
+    #[error("request decline confirmation failed: {source}")]
+    Confirmation {
+        #[source]
+        source: PromptError,
+    },
     #[error("failed to decline the Venmo request: {source}")]
     Decline {
         #[source]
@@ -67,10 +80,16 @@ impl DeclineError {
     pub const fn failure_kind(&self) -> ApplicationFailureKind {
         match self {
             Self::Preflight(source) => source.failure_kind(),
+            Self::ConfirmationRequired => ApplicationFailureKind::Usage,
+            Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
+            Self::Confirmation { source } => prompt_failure_kind(source),
             Self::Decline { source } => ApplicationFailureKind::Api(source.kind()),
         }
     }
 }
+
+#[derive(Debug)]
+pub(crate) struct AuthorizedDecline(PreparedDecline);
 
 pub(crate) async fn prepare<R, A>(
     credentials: &R,
@@ -91,13 +110,35 @@ where
     ))
 }
 
+pub(crate) fn authorize<P>(
+    prompt: &P,
+    prepared: PreparedDecline,
+    assume_yes: bool,
+) -> Result<AuthorizedDecline, DeclineError>
+where
+    P: DefaultNoConfirmation,
+{
+    confirmation::authorize(
+        prompt,
+        assume_yes,
+        "Decline this request without sending money?",
+    )
+    .map_err(|error| match error {
+        DefaultNoConfirmationError::Required => DeclineError::ConfirmationRequired,
+        DefaultNoConfirmationError::Declined => DeclineError::ConfirmationDeclined,
+        DefaultNoConfirmationError::Prompt(source) => DeclineError::Confirmation { source },
+    })?;
+    Ok(AuthorizedDecline(prepared))
+}
+
 pub(crate) async fn execute<A>(
     api: &A,
-    prepared: PreparedDecline,
+    authorized: AuthorizedDecline,
 ) -> Result<DeclineResult, DeclineError>
 where
     A: RequestDeclineApi,
 {
+    let AuthorizedDecline(prepared) = authorized;
     let declined = api
         .decline_request(
             prepared.credential.access_token(),

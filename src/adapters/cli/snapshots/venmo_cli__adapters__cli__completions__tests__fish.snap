@@ -83,6 +83,7 @@ complete -c venmo -n "__fish_venmo_using_subcommand request" -s h -l help -d 'Pr
 complete -c venmo -n "__fish_venmo_using_subcommand accept" -l yes -d 'Skip only the final default-No confirmation'
 complete -c venmo -n "__fish_venmo_using_subcommand accept" -s v -l verbose -d 'Write redacted diagnostics to stderr'
 complete -c venmo -n "__fish_venmo_using_subcommand accept" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c venmo -n "__fish_venmo_using_subcommand decline" -l yes -d 'Skip only the final default-No confirmation'
 complete -c venmo -n "__fish_venmo_using_subcommand decline" -s v -l verbose -d 'Write redacted diagnostics to stderr'
 complete -c venmo -n "__fish_venmo_using_subcommand decline" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c venmo -n "__fish_venmo_using_subcommand friends; and not __fish_seen_subcommand_from list help" -s v -l verbose -d 'Write redacted diagnostics to stderr'

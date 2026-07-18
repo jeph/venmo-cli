@@ -53,8 +53,8 @@ The initial MCP release provides structured, read-only access to the already imp
 - Let `pay` and direct request creation select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective, and disclose the restriction rule in payment preflight before confirmation. Do not add the option to action-only request acceptance or decline.
 - Limit ordinary payment release to personal-profile peer-to-peer operations with a valid eligibility token. Allow any peer-eligible external method regardless of method-level or eligibility-reported fee, disclose available fee evidence before confirmation, and do not claim the final fee is proven. Acceptance requires full available-balance coverage and submits no external funding method, but the update and response do not prove the actual source or fee.
 - Choose the submitted peer-eligible external backup method internally: validate duplicate IDs and multiple defaults, choose the unique default regardless of fee, otherwise choose only a sole eligible method, and fail closed on multiple non-default methods. Never choose by response order or fee, and expose no user funding-method override. Venmo wallet balance may take priority; preflight must state that behavior and success output may name an actual source only when authoritative evidence proves it.
-- Require default-No confirmation only when the user sends money: `pay` and `accept`.
-- Expose `--yes` only on `pay` and `accept`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a financial confirmation prompt. `decline` sends no money, writes immediately after authoritative validation, and accepts no `--yes`.
+- Require default-No confirmation for `pay`, `accept`, and the destructive request-state change performed by `decline`. Direct request creation remains the only immediate mutation.
+- Expose `--yes` only on `pay`, `accept`, and `decline`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or preflight.
 - Do not expose any `--dry-run` flags.
 - Never automatically retry payment creation, request creation, request acceptance, or request decline.
 - Write no first-party `unsafe` Rust and prohibit it mechanically across every first-party target.
@@ -114,7 +114,7 @@ venmo auth status
 venmo pay <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--yes]
 venmo request <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>]
 venmo accept <REQUEST_ID> [--yes]
-venmo decline <REQUEST_ID>
+venmo decline <REQUEST_ID> [--yes]
 
 venmo friends list [--limit <N>] [--offset <N>]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
@@ -303,18 +303,20 @@ The archived official contract lead is `PUT /v1/payments/{id}` with `action: "ap
 
 ```text
 venmo decline 123456789
+venmo decline 123456789 --yes
 ```
 
 This state-changing write refuses exactly one existing incoming request without sending money:
 
 - Fetches and validates the authoritative request by ID and requires exact incoming `pending` state addressed to the active account.
-- Takes no requester, amount, note, funding, or acknowledgement arguments.
-- Has no prompt and no `--yes`; after successful preflight it executes immediately, like direct request creation.
+- Takes no requester, amount, note, or funding arguments.
+- Displays and flushes the authoritative preflight, then asks for default-No confirmation. Non-interactive execution requires `--yes`.
+- `--yes` skips only terminal detection and the final confirmation; it never skips account, lookup, request-state, or preflight validation.
 - Sends exactly one `PUT /v1/payments/{id}` JSON update with `action: "deny"`, never outgoing-request `cancel`.
 - Requires a successful response to preserve the exact request ID, amount, parties, note, and audience and to prove the supported terminal `cancelled` server status. Any mismatch, empty response, unverified error, or transport uncertainty is exit `3` and requires reconciliation without retry.
 - Prints the authoritative server status and explicitly states that no money was sent; it does not invent a `declined` status value.
 
-The `deny` action is strongly documented by archived official Venmo material for a received request, while `cancel` applies to a request made by the authenticated user. Reconciled live validation established terminal remote refusal: the exact request reached server status `cancelled`, disappeared from pending results, created no activity, and changed no balance.
+Confirmation defaults to **No**. No, cancellation, prompt failure, or non-interactive execution without `--yes` sends a write. The `deny` action is strongly documented by archived official Venmo material for a received request, while `cancel` applies to a request made by the authenticated user. Reconciled live validation established terminal remote refusal: the exact request reached server status `cancelled`, disappeared from pending results, created no activity, and changed no balance.
 
 ### 3.5 Friends and user discovery
 
@@ -600,7 +602,7 @@ Requirements:
 - Keep `PayArgs`, `RequestArgs`, `AcceptArgs`, and `DeclineArgs` separate so invalid options are impossible by construction.
 - Prove that `request @user ...`, `request <numeric-id> ...`, `request @accept ...`, `accept <request-id>`, and `decline <request-id>` dispatch exactly as documented.
 - Reject nested or mixed forms such as `request accept <id>` and `accept <id> <amount>`.
-- Reject `--from` everywhere; accept `--yes` only on `pay` and `accept`, and reject it on request creation and decline.
+- Reject `--from` everywhere; accept `--yes` only on `pay`, `accept`, and `decline`, and reject it on request creation.
 - Reject `--dry-run` everywhere; it is not part of the schema.
 - Use `ValueEnum` for request direction and shell selection.
 - Put validation that depends only on one value in `clap` parsers.
@@ -612,11 +614,11 @@ Requirements:
 
 This section defines only the `venmo` terminal adapter. `venmo-mcp` must not invoke the `clap` command dispatcher, parse terminal table output, or reuse human output writers. Its stdio stream is the protocol transport, so even a normal CLI banner or success message would corrupt framing. If a future startup policy flag such as `--allow-financial-writes` is added, parse only that server-composition setting before stdio service starts; it must never accept a secret or stand in for per-call human approval.
 
-Interactive financial behavior is limited to `pay` and `accept`. On a TTY, either command shows its complete plan and asks for default-No confirmation unless `--yes` is present. Off a TTY, either command fails before writing unless `--yes` is present. Request creation and decline never prompt and do not accept `--yes`. `auth login` and `auth reauthenticate` remain intentional non-financial exceptions because credentials, OTP, and token import are interactive-only; neither has a `--yes` option.
+Interactive mutation confirmation applies to `pay`, `accept`, and `decline`. On a TTY, each command shows its complete plan and asks for default-No confirmation unless `--yes` is present. Off a TTY, each command fails before writing unless `--yes` is present. Direct request creation never prompts and does not accept `--yes`. `auth login` and `auth reauthenticate` remain intentional non-financial exceptions because credentials, OTP, and token import are interactive-only; neither has a `--yes` option.
 
 Prompt adapter rules:
 
-- Use `dialoguer::Input` for the account identifier, `dialoguer::Password` with result reporting disabled for password/OTP/bearer-token secrets, and `dialoguer::Confirm` with `default(false)` for money-sending confirmation.
+- Use `dialoguer::Input` for the account identifier, `dialoguer::Password` with result reporting disabled for password/OTP/bearer-token secrets, and `dialoguer::Confirm` with `default(false)` for mutation confirmation.
 - Render through `dialoguer::console::Term::stderr()` so prompts never contaminate stdout data.
 - Use `interact_opt` for confirmation so Escape or `q` maps to `Cancelled`. Map password interruption, Ctrl-C, EOF, and terminal failures into typed cancellation or terminal errors rather than panics; ordinary token text such as `q` remains valid password input.
 - Use `SimpleTheme` by default. Any later color theme must follow the CLI's TTY and `NO_COLOR` policy.
@@ -1265,25 +1267,26 @@ The verified server mutation must atomically enforce the request ID's payable st
 
 ### 11.3 Request-decline preflight
 
-Before the immediate decline write:
+Before the decline write:
 
 1. Parse one canonical request ID, load and verify the authenticated account, and fetch authoritative request detail by ID.
 2. Require exact incoming `pending` state addressed to that account; outgoing, `held`, terminal, inaccessible, wrong-account, or malformed records send no write.
 3. Bind an immutable decline plan to the fetched request ID, parties, amount, note, audience, and observed state.
-4. Render and flush a sanitized complete plan stating that this exact request will be declined without money movement; do not pause for confirmation afterward.
-5. Submit exactly one state-bound `deny` mutation with no funding fields. Never substitute outgoing `cancel`, ordinary payment creation, or a notification dismissal.
-6. Require the response to preserve every immutable request field and prove the supported terminal `cancelled` server status. Render that server status rather than inventing a remote `declined` value.
+4. Render and flush a sanitized complete plan stating that this exact request will be declined without money movement.
+5. Unless `--yes` was supplied, require both stdin and stderr to be terminals and ask `Decline this request without sending money?` with a default-No confirmation. No, cancellation, or prompt failure sends no write. `--yes` bypasses only this authorization step.
+6. Submit exactly one state-bound `deny` mutation with no funding fields. Never substitute outgoing `cancel`, ordinary payment creation, or a notification dismissal.
+7. Require the response to preserve every immutable request field and prove the supported terminal `cancelled` server status. Render that server status rather than inventing a remote `declined` value.
 
-`decline` has no prompt or `--yes` because it sends no money. Its explicit canonical request ID is the authorization for the state change, and help must disclose that the command writes immediately after validation. Despite having no money movement, possible transmission, interruption, response loss, or an unverified error is an ambiguous state mutation with exit code `3`; never retry it.
+`decline` requires explicit default-No confirmation because it is a destructive state change even though it sends no money. Its explicit canonical request ID identifies the state change but does not replace authorization. Possible transmission, interruption, response loss, or an unverified error is an ambiguous state mutation with exit code `3`; never retry it.
 
 ### 11.4 Execution rules
 
 Execution rules:
 
 - One invocation creates, accepts, or declines at most one operation.
-- For `pay` and `accept`, prompt only when both stdin and stderr are terminals and default to No.
-- For `pay` and `accept`, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation.
-- Request creation and decline never prompt, never require `--yes`, and reject that flag.
+- For `pay`, `accept`, and `decline`, prompt only when both stdin and stderr are terminals and default to No.
+- For `pay`, `accept`, and `decline`, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation.
+- Request creation never prompts, never requires `--yes`, and rejects that flag.
 - Send exactly one verified mutation for payment creation, request creation, request acceptance, or request decline.
 - Preserve the original API or transport cause on failure.
 - Never claim rollback or retry a write.
@@ -1365,7 +1368,7 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Every command and subcommand.
 - Required recipient, amount, and note.
 - Direct request creation versus top-level `accept`/`decline`, rejection of nested `request accept`, and the valid `@accept` recipient.
-- `--from` rejected by `pay` and every other command; `--yes` accepted by `pay` and `accept` and rejected by request creation and decline.
+- `--from` rejected by `pay` and every other command; `--yes` accepted by `pay`, `accept`, and `decline` and rejected by request creation.
 - `--dry-run` rejected by every command.
 - Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported funding arguments.
 - Absence of an undocumented `request create` alias.
@@ -1395,9 +1398,9 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - The separate internal exact-recipient traversal remains limited to four 50-record pages/200 unique users and accepts no public continuation. Exhaustion is required for normal not-found; one exact match found at the bound still requires matching authoritative detail-by-ID before use.
 - Balance does not infer unsupported values.
 - Funding is displayed before confirmation: `pay` has transaction-specific fee proof and shows its backup method, while `accept` shows full available-balance coverage, submits no external method, and explicitly does not claim request-bound source/fee proof.
-- Cancelled `pay`/acceptance prompts and all preflight failures send zero writes.
-- `pay` and `accept` prompt default-No on a TTY and require `--yes` off a TTY.
-- Request creation and decline never prompt and work off a TTY without `--yes`.
+- Cancelled `pay`, acceptance, and decline prompts and all preflight failures send zero writes.
+- `pay`, `accept`, and `decline` prompt default-No on a TTY and require `--yes` off a TTY.
+- Request creation never prompts and works off a TTY without `--yes`.
 - The `dialoguer` adapter sends prompts to stderr, never echoes the bearer token, maps default Enter to No, and distinguishes cancellation from terminal failure.
 - First write failure preserves its source.
 - Ambiguous writes are never retried.
@@ -1526,7 +1529,7 @@ Required sections:
 6. `venmo auth login`, stored-device `venmo auth reauthenticate`, trust-device warnings, status, logout, and revocation behavior.
 7. Friends and user-search examples, including server-page `--limit`, typed `--offset`, copyable next offsets, one-page behavior, and changing-dataset/no-snapshot semantics.
 8. Payment-method and balance examples.
-9. Pay, request-creation, top-level acceptance, and top-level decline examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for money-sending commands; the acceptance funding limitation; and immediate no-prompt behavior for request creation and decline.
+9. Pay, request-creation, top-level acceptance, and top-level decline examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for `pay`, `accept`, and `decline`; the acceptance funding limitation; and immediate no-prompt behavior only for request creation.
 10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `accept` or `decline`.
 11. Ambiguous mutation recovery steps, including checking activity, request state, and the official app before any later operation.
 12. Doctor and troubleshooting guidance.
@@ -1686,15 +1689,15 @@ Deliverables:
 - Single-recipient payment and request-creation models plus single-ID top-level `accept` and `decline` models.
 - Recipient and funding-source resolution.
 - Authoritative incoming-request lookup and state validation.
-- Complete default-No confirmation rendering for `pay` and request acceptance; no prompt for request creation or decline.
+- Complete default-No confirmation rendering for `pay`, request acceptance, and request decline; no prompt for request creation.
 - One-write execution, stale-state handling, and ambiguous-outcome handling.
 
 Exit criteria:
 
 - Every preflight failure sends zero writes.
-- `pay` and request-acceptance confirmation contains every safety-critical field and defaults to No.
+- `pay`, request-acceptance, and request-decline confirmation follows a complete authoritative preflight and defaults to No.
 - Request creation exposes neither `--yes` nor an interactive confirmation.
-- Request decline exposes neither `--yes` nor an interactive confirmation and proves a terminal server state without money movement.
+- Request decline exposes `--yes`, requires default-No confirmation without it, and proves a terminal server state without money movement.
 - No write is automatically retried.
 - Acceptance settles the identified pending request and cannot silently become an unrelated payment.
 - Decline terminally refuses the identified pending request and cannot silently become outgoing cancellation or local dismissal.
@@ -1793,8 +1796,8 @@ Exit criteria:
 - Balance semantics are verified and do not overclaim external balances.
 - Activity supports list and detail views usable for write reconciliation.
 - Pending requests are based on complete verified records and expose canonical IDs accepted by top-level `accept` and `decline`.
-- Payment and request-acceptance confirmation follows recipient/request and operation-specific funding resolution.
-- Only `pay` and `accept` expose `--yes` or use financial confirmation; request creation and decline prompt for neither.
+- Payment and request-acceptance confirmation follows recipient/request and operation-specific funding resolution; request-decline confirmation follows authoritative request-state preflight.
+- Only `pay`, `accept`, and `decline` expose `--yes` or use mutation confirmation; request creation prompts for neither.
 - No command exposes `--dry-run`.
 - `accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
 - `decline` validates an authoritative incoming pending record, sends no money, and proves that exact record reached the supported terminal server state.

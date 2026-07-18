@@ -140,6 +140,20 @@ fn request_mutation_variants_have_deliberate_categories() {
             ErrorCategory::ApiContract,
         ),
         (
+            AppError::from(DeclineError::ConfirmationRequired),
+            ErrorCategory::Usage,
+        ),
+        (
+            AppError::from(DeclineError::ConfirmationDeclined),
+            ErrorCategory::Cancelled,
+        ),
+        (
+            AppError::from(DeclineError::Confirmation {
+                source: PromptError::Cancelled,
+            }),
+            ErrorCategory::Cancelled,
+        ),
+        (
             AppError::from(DeclineError::Decline {
                 source: api_operation_failure(ApiFailureKind::AmbiguousWrite),
             }),

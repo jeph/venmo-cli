@@ -13,7 +13,8 @@ use clap::Parser;
 use super::tests::{ErrorVariant, ResultSnapshot, failure_snapshot, snapshot_result};
 use crate::adapters::cli::args::{Cli, Command, DeclineArgs};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
-use crate::features::auth::CurrentAccountApi;
+use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
+use crate::features::payments::DefaultNoConfirmation;
 use crate::features::people::User;
 use crate::features::requests::{
     DeclineRequestPlan, DeclinedRequest, RequestAction, RequestDeclineApi, RequestDirection,
@@ -64,6 +65,10 @@ enum DeclineCall {
     },
     StderrWrite,
     StderrFlush,
+    PromptAvailability,
+    ConfirmDefaultNo {
+        prompt: String,
+    },
     InstallInterruption,
     Decline {
         plan: DeclinePlanCall,
@@ -92,6 +97,12 @@ enum WriteStep {
 }
 
 #[derive(Clone, Copy)]
+enum ConfirmationStep {
+    Answer(bool),
+    Failure,
+}
+
+#[derive(Clone, Copy)]
 enum InterruptionStep {
     Pending,
     Ready,
@@ -103,6 +114,8 @@ struct DeclineScript {
     credentials: Vec<CredentialStep>,
     accounts: Vec<ApiStep>,
     requests: Vec<ApiStep>,
+    interactive: bool,
+    confirmations: Vec<ConfirmationStep>,
     interruptions: Vec<InterruptionStep>,
     declines: Vec<WriteStep>,
 }
@@ -113,6 +126,8 @@ impl DeclineScript {
             credentials: vec![CredentialStep::Present, CredentialStep::Missing],
             accounts: vec![ApiStep::Success, ApiStep::Failure],
             requests: vec![ApiStep::Success, ApiStep::Failure],
+            interactive: true,
+            confirmations: vec![ConfirmationStep::Answer(true), ConfirmationStep::Failure],
             interruptions: vec![InterruptionStep::Pending, InterruptionStep::StreamFailure],
             declines: vec![WriteStep::Success, WriteStep::Failure],
         }
@@ -128,6 +143,16 @@ impl DeclineScript {
         self
     }
 
+    fn with_interactive(mut self, interactive: bool) -> Self {
+        self.interactive = interactive;
+        self
+    }
+
+    fn with_first_confirmation(mut self, step: ConfirmationStep) -> Self {
+        self.confirmations = vec![step, ConfirmationStep::Failure];
+        self
+    }
+
     fn with_first_decline(mut self, step: WriteStep) -> Self {
         self.declines = vec![step, WriteStep::Failure];
         self
@@ -138,6 +163,8 @@ struct DeclineScriptState {
     credentials: RefCell<VecDeque<CredentialStep>>,
     accounts: RefCell<VecDeque<ApiStep>>,
     requests: RefCell<VecDeque<ApiStep>>,
+    interactive: bool,
+    confirmations: RefCell<VecDeque<ConfirmationStep>>,
     interruptions: RefCell<VecDeque<InterruptionStep>>,
     declines: RefCell<VecDeque<WriteStep>>,
 }
@@ -148,6 +175,8 @@ impl DeclineScriptState {
             credentials: RefCell::new(script.credentials.into()),
             accounts: RefCell::new(script.accounts.into()),
             requests: RefCell::new(script.requests.into()),
+            interactive: script.interactive,
+            confirmations: RefCell::new(script.confirmations.into()),
             interruptions: RefCell::new(script.interruptions.into()),
             declines: RefCell::new(script.declines.into()),
         }
@@ -158,6 +187,7 @@ impl DeclineScriptState {
             credentials: self.credentials.borrow().len(),
             accounts: self.accounts.borrow().len(),
             requests: self.requests.borrow().len(),
+            confirmations: self.confirmations.borrow().len(),
             interruptions: self.interruptions.borrow().len(),
             declines: self.declines.borrow().len(),
         }
@@ -169,6 +199,7 @@ struct RemainingDeclineScript {
     credentials: usize,
     accounts: usize,
     requests: usize,
+    confirmations: usize,
     interruptions: usize,
     declines: usize,
 }
@@ -179,6 +210,7 @@ impl RemainingDeclineScript {
             credentials: 1,
             accounts: 1,
             requests: 1,
+            confirmations: 1,
             interruptions: 1,
             declines: 1,
         }
@@ -297,6 +329,42 @@ impl RequestDeclineApi for FakeDeclineApi {
             .pop_front()
             .unwrap_or(WriteStep::Failure);
         DeclineFuture::new(step)
+    }
+}
+
+struct FakePrompt {
+    script: Rc<DeclineScriptState>,
+    transcript: Transcript,
+}
+
+impl PromptAvailability for FakePrompt {
+    fn can_prompt(&self) -> bool {
+        self.transcript
+            .borrow_mut()
+            .push(DeclineCall::PromptAvailability);
+        self.script.interactive
+    }
+}
+
+impl DefaultNoConfirmation for FakePrompt {
+    fn confirm_default_no(&self, prompt: &str) -> Result<bool, PromptError> {
+        self.transcript
+            .borrow_mut()
+            .push(DeclineCall::ConfirmDefaultNo {
+                prompt: prompt.to_owned(),
+            });
+        match self
+            .script
+            .confirmations
+            .borrow_mut()
+            .pop_front()
+            .unwrap_or(ConfirmationStep::Failure)
+        {
+            ConfirmationStep::Answer(answer) => Ok(answer),
+            ConfirmationStep::Failure => Err(PromptError::Interaction {
+                source: io::Error::other("synthetic decline confirmation failure"),
+            }),
+        }
     }
 }
 
@@ -440,6 +508,7 @@ struct DeclineHarness {
     transcript: Transcript,
     reader: FakeReader,
     api: FakeDeclineApi,
+    prompt: FakePrompt,
     stdout: OrderedWriter,
     stderr: OrderedWriter,
 }
@@ -458,6 +527,10 @@ impl DeclineHarness {
                 script: Rc::clone(&script),
                 transcript: Rc::clone(&transcript),
             },
+            prompt: FakePrompt {
+                script: Rc::clone(&script),
+                transcript: Rc::clone(&transcript),
+            },
             stdout: OrderedWriter::new(Stream::Stdout, initial.stdout, Rc::clone(&transcript)),
             stderr: OrderedWriter::new(Stream::Stderr, initial.stderr, Rc::clone(&transcript)),
             script,
@@ -472,6 +545,7 @@ impl DeclineHarness {
             self.args.clone(),
             &self.reader,
             &self.api,
+            &self.prompt,
             &mut self.stdout,
             &mut self.stderr,
             move || {
@@ -503,8 +577,7 @@ impl DeclineHarness {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn decline_handler_has_complete_preflight_no_confirmation_one_write_output_and_flush()
--> TestResult {
+async fn decline_handler_orders_default_no_confirmation_one_write_output_and_flush() -> TestResult {
     // Setup.
     let script = DeclineScript::successful();
 
@@ -522,6 +595,93 @@ async fn decline_handler_has_complete_preflight_no_confirmation_one_write_output
     let mut harness = DeclineHarness::new(script, initial)?;
 
     // Execute once.
+    let result = harness.execute().await;
+    let observed = harness.observed(result);
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn decline_confirmation_rejection_and_failures_stop_before_interruption_and_write()
+-> TestResult {
+    for (script, expected_result, expected_confirmation_count, expected_calls) in [
+        (
+            DeclineScript::successful()
+                .with_interactive(false)
+                .with_first_confirmation(ConfirmationStep::Answer(false)),
+            failure_snapshot(
+                ErrorVariant::Decline,
+                ErrorCategory::Usage,
+                "request decline confirmation requires both stdin and stderr to be terminals; pass `--yes` to authorize non-interactively",
+            ),
+            2,
+            preparation_and_prompt_availability_calls(),
+        ),
+        (
+            DeclineScript::successful().with_first_confirmation(ConfirmationStep::Answer(false)),
+            failure_snapshot(
+                ErrorVariant::Decline,
+                ErrorCategory::Cancelled,
+                "request decline cancelled",
+            ),
+            1,
+            preparation_and_authorization_calls(),
+        ),
+        (
+            DeclineScript::successful().with_first_confirmation(ConfirmationStep::Failure),
+            failure_snapshot(
+                ErrorVariant::Decline,
+                ErrorCategory::Internal,
+                "request decline confirmation failed: terminal interaction failed",
+            ),
+            1,
+            preparation_and_authorization_calls(),
+        ),
+    ] {
+        let expected = Observed::new(
+            expected_result,
+            DeclineState {
+                calls: expected_calls,
+                remaining: Some(RemainingDeclineScript {
+                    credentials: 1,
+                    accounts: 1,
+                    requests: 1,
+                    confirmations: expected_confirmation_count,
+                    interruptions: 2,
+                    declines: 2,
+                }),
+                stderr: writer_state(DECLINE_PREFLIGHT, 1),
+                ..DeclineState::default()
+            },
+        );
+        let mut harness = DeclineHarness::new(script, DeclineState::default())?;
+
+        let result = harness.execute().await;
+        let observed = harness.observed(result);
+
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn decline_yes_retains_preflight_and_one_write_without_prompt_calls() -> TestResult {
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        DeclineState {
+            calls: successful_yes_calls(),
+            remaining: Some(RemainingDeclineScript {
+                confirmations: 2,
+                ..RemainingDeclineScript::after_success()
+            }),
+            stdout: writer_state(DECLINE_RESULT, 1),
+            stderr: writer_state(DECLINE_PREFLIGHT, 1),
+        },
+    );
+    let mut harness = DeclineHarness::new(DeclineScript::successful(), DeclineState::default())?;
+    harness.args.yes = true;
+
     let result = harness.execute().await;
     let observed = harness.observed(result);
 
@@ -548,6 +708,7 @@ async fn decline_preflight_failure_stops_before_output_interruption_and_write() 
                 credentials: 1,
                 accounts: 2,
                 requests: 2,
+                confirmations: 2,
                 interruptions: 2,
                 declines: 2,
             }),
@@ -602,6 +763,7 @@ async fn decline_interruption_tie_and_signal_failure_preserve_exact_ambiguity_bo
         let initial = DeclineState::default();
         let mut calls = preparation_calls();
         calls.extend([DeclineCall::StderrWrite, DeclineCall::StderrFlush]);
+        calls.extend(authorization_calls());
         calls.push(DeclineCall::InstallInterruption);
         if write_started {
             calls.push(decline_call());
@@ -698,7 +860,45 @@ fn preparation_calls() -> Vec<DeclineCall> {
     ]
 }
 
+fn authorization_calls() -> Vec<DeclineCall> {
+    vec![
+        DeclineCall::PromptAvailability,
+        DeclineCall::ConfirmDefaultNo {
+            prompt: "Decline this request without sending money?".to_owned(),
+        },
+    ]
+}
+
+fn preparation_and_prompt_availability_calls() -> Vec<DeclineCall> {
+    let mut calls = preparation_calls();
+    calls.extend([
+        DeclineCall::StderrWrite,
+        DeclineCall::StderrFlush,
+        DeclineCall::PromptAvailability,
+    ]);
+    calls
+}
+
+fn preparation_and_authorization_calls() -> Vec<DeclineCall> {
+    let mut calls = preparation_calls();
+    calls.extend([DeclineCall::StderrWrite, DeclineCall::StderrFlush]);
+    calls.extend(authorization_calls());
+    calls
+}
+
 fn successful_calls_without_stdout_flush() -> Vec<DeclineCall> {
+    let mut calls = preparation_calls();
+    calls.extend([DeclineCall::StderrWrite, DeclineCall::StderrFlush]);
+    calls.extend(authorization_calls());
+    calls.extend([
+        DeclineCall::InstallInterruption,
+        decline_call(),
+        DeclineCall::StdoutWrite,
+    ]);
+    calls
+}
+
+fn successful_yes_calls() -> Vec<DeclineCall> {
     let mut calls = preparation_calls();
     calls.extend([
         DeclineCall::StderrWrite,
@@ -706,6 +906,7 @@ fn successful_calls_without_stdout_flush() -> Vec<DeclineCall> {
         DeclineCall::InstallInterruption,
         decline_call(),
         DeclineCall::StdoutWrite,
+        DeclineCall::StdoutFlush,
     ]);
     calls
 }
@@ -808,7 +1009,7 @@ const DECLINE_PREFLIGHT: &str = concat!(
     "  Current request status: pending\n",
     "  Created: 1970-01-01T00:00:00Z\n",
     "  Action: decline this exact incoming request without sending money.\n",
-    "  This command does not pause for confirmation after displaying this validated plan.\n",
+    "  Confirmation defaults to No; --yes skips only the confirmation prompt.\n",
 );
 
 const DECLINE_RESULT: &str = concat!(
