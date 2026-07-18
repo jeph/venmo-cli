@@ -131,19 +131,26 @@ fn direct_request_creation_dispatches_to_create() {
 }
 
 #[test]
-fn user_and_request_info_parse_exact_typed_ids() {
-    let user = Cli::try_parse_from(["venmo", "users", "info", "123456"]);
-    let user_id = match user {
-        Ok(cli) => match cli.command {
-            Command::Users(args) => match args.operation {
-                UsersOperation::Info(args) => Some(args.user_id.to_string()),
-                UsersOperation::Search(_) => None,
+fn user_and_request_info_parse_exact_typed_inputs() {
+    for (input, expected) in [
+        ("alice", "@alice"),
+        ("@alice", "@alice"),
+        ("123456", "@123456"),
+        ("@123456", "@123456"),
+    ] {
+        let user = Cli::try_parse_from(["venmo", "users", "info", input]);
+        let parsed = match user {
+            Ok(cli) => match cli.command {
+                Command::Users(args) => match args.operation {
+                    UsersOperation::Info(args) => Some(args.username.to_string()),
+                    UsersOperation::Search(_) => None,
+                },
+                _ => None,
             },
-            _ => None,
-        },
-        Err(_) => None,
-    };
-    assert_eq!(user_id.as_deref(), Some("123456"));
+            Err(_) => None,
+        };
+        assert_eq!(parsed.as_deref(), Some(expected), "input: {input}");
+    }
 
     let request = Cli::try_parse_from(["venmo", "requests", "info", "request-123"]);
     let request_id = match request {
@@ -282,21 +289,23 @@ fn top_level_accept_and_decline_have_distinct_minimal_arguments() {
 }
 
 #[test]
-fn numeric_recipient_and_global_option_placement_are_supported() {
-    let parsed = Cli::try_parse_from([
-        "venmo",
-        "request",
-        "--verbose",
-        "123456789",
-        "0.01",
-        "--note",
-        "Test",
-    ]);
-    let dispatches_to_create = match parsed {
-        Ok(cli) => cli.verbose && matches!(cli.command, Command::Request(_)),
-        Err(_) => false,
-    };
-    assert!(dispatches_to_create);
+fn optional_at_usernames_and_global_option_placement_are_supported() {
+    for username in ["alice", "@alice"] {
+        let parsed = Cli::try_parse_from([
+            "venmo",
+            "request",
+            "--verbose",
+            username,
+            "0.01",
+            "--note",
+            "Test",
+        ]);
+        let dispatches_to_create = match parsed {
+            Ok(cli) => cli.verbose && matches!(cli.command, Command::Request(_)),
+            Err(_) => false,
+        };
+        assert!(dispatches_to_create, "username: {username}");
+    }
 
     let accept = Cli::try_parse_from(["venmo", "--verbose", "accept", "request-123"]);
     assert!(accept.is_ok_and(|cli| cli.verbose));
@@ -545,7 +554,6 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
 
 #[test]
 fn argument_only_validation_errors_are_clap_errors() {
-    assert_rejected(&["venmo", "pay", "alice", "1.00", "--note", "Dinner"]);
     assert_rejected(&["venmo", "pay", "@alice", "0", "--note", "Dinner"]);
     assert_rejected(&["venmo", "pay", "@alice", "1.001", "--note", "Dinner"]);
     assert_rejected(&["venmo", "pay", "@alice", "1.00", "--note", "   "]);

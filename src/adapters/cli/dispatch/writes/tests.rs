@@ -147,7 +147,7 @@ impl UserSearchApi for FakeRequestApi {
         _page: UserSearchPageRequest,
     ) -> impl Future<Output = Result<UserSearchPage, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(RequestCall::SearchUsers);
-        ready(Err(FakeRequestApiError))
+        ready(Ok(UserSearchPage::new(vec![self.recipient.clone()], None)))
     }
 }
 
@@ -637,6 +637,7 @@ fn successful_calls_with_visibility(
     let mut calls = vec![
         RequestCall::ReadCredential,
         RequestCall::CurrentAccount,
+        RequestCall::SearchUsers,
         RequestCall::UserById {
             user_id: "456".to_owned(),
         },
@@ -672,7 +673,7 @@ fn request_args() -> Result<RequestArgs, Box<dyn Error>> {
     let cli = crate::adapters::cli::args::Cli::try_parse_from([
         "venmo",
         "request",
-        "456",
+        "recipient",
         "0.01",
         "--note",
         "Synthetic request",

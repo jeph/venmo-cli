@@ -25,20 +25,33 @@ fn invalid_money_is_rejected() {
 }
 
 #[test]
-fn recipient_requires_an_exact_username_or_positive_numeric_id() {
-    for accepted in ["@alice", "@accept", "1", "0001"] {
+fn recipient_accepts_only_normalized_username_syntax() {
+    for accepted in ["alice", "@alice", "accept", "@accept", "123"] {
         assert!(
             RecipientInput::from_str(accepted).is_ok(),
             "rejected {accepted:?}"
         );
     }
-    for rejected in ["", "alice", "@", "0", "000", "12a"] {
+    for rejected in ["", "@", "white space", "line\nbreak"] {
         assert!(
             RecipientInput::from_str(rejected).is_err(),
             "accepted {rejected:?}"
         );
     }
-    assert!(RecipientInput::from_str(&format!("@{}", "a".repeat(1024))).is_err());
+    assert!(RecipientInput::from_str(&"a".repeat(1024)).is_err());
+}
+
+#[test]
+fn all_user_inputs_normalize_optional_username_prefixes() {
+    assert_eq!(Username::from_str("alice"), Username::from_str("@alice"));
+    assert_eq!(
+        RecipientInput::from_str("alice"),
+        RecipientInput::from_str("@alice")
+    );
+    assert_eq!(
+        UserSearchQuery::from_str("alice"),
+        UserSearchQuery::from_str("@alice")
+    );
 }
 
 #[test]

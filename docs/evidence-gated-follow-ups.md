@@ -20,6 +20,8 @@ whether Venmo treats `1` and `0001` as the same identifier across lookup and wri
 The existing username grammar and exact-recipient case-insensitive comparison remain unchanged.
 A stricter grammar, Unicode normalization, or a different case-folding rule requires documented
 service behavior and sanitized fixtures for accepted usernames and ambiguous search results.
+Command inputs normalize an optional leading `@`; this frontend spelling rule does not change the
+underlying bare-username grammar.
 
 ## Note limits
 

@@ -33,25 +33,14 @@ impl UserSearchResult {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ExhaustiveSearchCompletion {
-    Exhausted,
-    SafetyBoundReached,
-}
-
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct ExhaustiveUserSearchResult {
     users: Vec<User>,
-    completion: ExhaustiveSearchCompletion,
 }
 
 impl ExhaustiveUserSearchResult {
     pub(crate) fn users(&self) -> &[User] {
         &self.users
-    }
-
-    pub(crate) const fn completion(&self) -> ExhaustiveSearchCompletion {
-        self.completion
     }
 }
 
@@ -155,10 +144,7 @@ where
                     problem: "the API returned an empty page with a continuation offset",
                 });
             }
-            return Ok(ExhaustiveUserSearchResult {
-                users,
-                completion: ExhaustiveSearchCompletion::Exhausted,
-            });
+            return Ok(ExhaustiveUserSearchResult { users });
         }
 
         let previous_len = users.len();
@@ -169,24 +155,15 @@ where
             });
         }
         let Some(next) = next_token else {
-            return Ok(ExhaustiveUserSearchResult {
-                users,
-                completion: ExhaustiveSearchCompletion::Exhausted,
-            });
+            return Ok(ExhaustiveUserSearchResult { users });
         };
         current_offset = next;
         if users.len() >= capacity {
-            return Ok(ExhaustiveUserSearchResult {
-                users,
-                completion: ExhaustiveSearchCompletion::SafetyBoundReached,
-            });
+            return Ok(ExhaustiveUserSearchResult { users });
         }
     }
 
-    Ok(ExhaustiveUserSearchResult {
-        users,
-        completion: ExhaustiveSearchCompletion::SafetyBoundReached,
-    })
+    Ok(ExhaustiveUserSearchResult { users })
 }
 
 async fn request_page<A: UserSearchApi>(

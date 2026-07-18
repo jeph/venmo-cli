@@ -15,6 +15,12 @@ impl Username {
         Ok(Self(value))
     }
 
+    pub fn from_optional_prefix(value: impl Into<String>) -> Result<Self, UsernameParseError> {
+        let value = value.into();
+        let bare = value.strip_prefix('@').unwrap_or(&value);
+        Self::from_bare(bare.to_owned())
+    }
+
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -37,10 +43,7 @@ impl FromStr for Username {
     type Err = UsernameParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        let Some(username) = value.strip_prefix('@') else {
-            return Err(UsernameParseError::MissingPrefix);
-        };
-        Self::from_bare(username)
+        Self::from_optional_prefix(value)
     }
 }
 
@@ -64,9 +67,6 @@ fn validate_bare_username(username: &str) -> Result<(), UsernameParseError> {
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum UsernameParseError {
-    #[error("username recipient must begin with @")]
-    MissingPrefix,
-
     #[error("username cannot be empty")]
     Empty,
 
@@ -115,10 +115,7 @@ mod tests {
         assert_eq!(username.to_string(), "@élise");
         assert_eq!(format!("{username:?}"), "Username([REDACTED])");
 
-        assert_eq!(
-            Username::from_str("alice"),
-            Err(UsernameParseError::MissingPrefix)
-        );
+        assert_eq!(Username::from_str("alice")?, Username::from_str("@alice")?);
         assert_eq!(Username::from_str("@"), Err(UsernameParseError::Empty));
         for value in [
             "white space",
@@ -131,6 +128,22 @@ mod tests {
                 Err(UsernameParseError::InvalidCharacter)
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn optional_prefix_normalization_produces_one_canonical_username() -> Result<(), Box<dyn Error>>
+    {
+        let bare = Username::from_optional_prefix("élise")?;
+        let prefixed = Username::from_optional_prefix("@élise")?;
+
+        assert_eq!(bare, prefixed);
+        assert_eq!(bare.as_str(), "élise");
+        assert_eq!(bare.to_string(), "@élise");
+        assert_eq!(
+            Username::from_optional_prefix("@"),
+            Err(UsernameParseError::Empty)
+        );
         Ok(())
     }
 }

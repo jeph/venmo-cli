@@ -61,7 +61,8 @@ async fn users_handler_routes_exact_page_and_continuation_streams_without_flush(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn user_info_handler_uses_only_exact_lookup_and_writes_sanitized_stdout() -> TestResult {
+async fn user_info_handler_uses_exact_username_resolution_and_writes_sanitized_stdout() -> TestResult
+{
     // Setup.
     let args = user_info_args()?;
     let response = User::new(
@@ -76,6 +77,14 @@ async fn user_info_handler_uses_only_exact_lookup_and_writes_sanitized_stdout() 
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = UserInfoFake {
         responses: ResponseQueue::successful(response),
+        search_responses: Some(ResponseQueue::successful(UserSearchPage::new(
+            vec![User::new(
+                UserId::from_str("123")?,
+                Some(Username::from_bare("alice")?),
+                Some("Alice".to_owned()),
+            )],
+            None,
+        ))),
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
@@ -87,6 +96,11 @@ async fn user_info_handler_uses_only_exact_lookup_and_writes_sanitized_stdout() 
         ReadState {
             calls: vec![
                 ReadCall::ReadCredential,
+                ReadCall::SearchUsers {
+                    session: fixture_session(),
+                    query: UserSearchQuery::from_str("alice")?,
+                    page: UserSearchPageRequest::new(Limit::try_from(50)?, Offset::default()),
+                },
                 ReadCall::UserInfo {
                     session: fixture_session(),
                     user_id: UserId::from_str("123")?,
@@ -112,6 +126,64 @@ async fn user_info_handler_uses_only_exact_lookup_and_writes_sanitized_stdout() 
     );
 
     assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn user_info_normalizes_optional_at_and_uses_shared_authoritative_lookup() -> TestResult {
+    for input in ["alice", "@alice"] {
+        let args = match Cli::try_parse_from(["venmo", "users", "info", input])?.command {
+            Command::Users(args) => match args.operation {
+                UsersOperation::Info(args) => args,
+                UsersOperation::Search(_) => {
+                    return Err(io::Error::other("info parsed as search").into());
+                }
+            },
+            _ => return Err(io::Error::other("info parsed as another command").into()),
+        };
+        let detail = User::new(
+            UserId::from_str("123")?,
+            Some(Username::from_bare("alice")?),
+            Some("Alice\nExample".to_owned()),
+        )
+        .with_financial_attributes(UserProfileKind::Personal, true);
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let reader = FakeReader::standard(Rc::clone(&transcript));
+        let api = UserInfoFake {
+            responses: ResponseQueue::successful(detail),
+            search_responses: Some(ResponseQueue::successful(UserSearchPage::new(
+                vec![User::new(
+                    UserId::from_str("123")?,
+                    Some(Username::from_bare("alice")?),
+                    Some("Alice".to_owned()),
+                )],
+                None,
+            ))),
+            transcript: Rc::clone(&transcript),
+        };
+        let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
+
+        let result = run_user_info(args, &reader, &api, &mut stdout).await;
+
+        assert!(result.is_ok(), "input: {input}");
+        assert_eq!(
+            transcript.borrow().as_slice(),
+            [
+                ReadCall::ReadCredential,
+                ReadCall::SearchUsers {
+                    session: fixture_session(),
+                    query: UserSearchQuery::from_str("alice")?,
+                    page: UserSearchPageRequest::new(Limit::try_from(50)?, Offset::default()),
+                },
+                ReadCall::UserInfo {
+                    session: fixture_session(),
+                    user_id: UserId::from_str("123")?,
+                },
+                ReadCall::StdoutWrite,
+            ]
+        );
+        assert_eq!(stdout.state, writer_state(USER_INFO_OUTPUT));
+    }
     Ok(())
 }
 

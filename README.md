@@ -64,10 +64,10 @@ Creation visibility is explicit and typed on both applicable commands:
 
 ```sh
 venmo pay @alice 0.01 --note "Dinner" --visibility friends --yes
-venmo request @alice 0.01 --note "Dinner" --visibility public
+venmo request alice 0.01 --note "Dinner" --visibility public
 ```
 
-Omitting `--visibility` preserves the private default. Venmo's participant privacy settings may make the effective audience more restrictive than requested. The flag does not apply to `accept` or `decline`; those action-only mutations preserve and validate the audience of the existing request.
+User-taking commands accept exact usernames with or without a leading `@`; they do not expose user-ID arguments. Each command resolves the normalized username through the shared bounded username search, requires a case-insensitive exact match, and verifies the resulting user through authoritative detail-by-ID before continuing. Omitting `--visibility` preserves the private default. Venmo's participant privacy settings may make the effective audience more restrictive than requested. The flag does not apply to `accept` or `decline`; those action-only mutations preserve and validate the audience of the existing request.
 
 Direct request creation writes immediately after its account and recipient validation; it has no confirmation prompt and does not accept `--yes`. Decline follows the same no-prompt rule because it sends no money, but remains protected as an ambiguous state mutation after possible transmission. If any mutation exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
 
@@ -82,11 +82,13 @@ venmo activity list [--limit N] [--before-id TOKEN]
 venmo requests list [--direction all|incoming|outgoing] [--limit N] [--before TOKEN]
 ```
 
-Each of these four invocations requests exactly one source API page, validates and buffers that complete page, and then renders its records. `--limit` is the server request page size; it defaults to 10 and cannot exceed 50. Friend listing and user search use a typed nonnegative `--offset` that defaults to 0. Activity uses its opaque `--before-id`, while pending requests use their opaque `--before`. There is no universal continuation input, universal offset, page number, or public multi-page collector.
+Each of these four invocations requests exactly one source API page, validates and buffers that complete page, and then renders its records. `--limit` is the server request page size; it defaults to 10 and cannot exceed 50. Friend listing and user search use a typed nonnegative `--offset` that defaults to 0. Activity uses its opaque `--before-id`, while pending requests use their opaque `--before`. There is no universal continuation input, universal offset, page number, or public multi-page collector. A single-token user search is normalized as a username search, so `users search alice` and `users search @alice` are equivalent; multi-word input remains a general fuzzy search.
 
-The non-paginated `users info <USER_ID>`, `activity info <ACTIVITY_ID>`, and
-`requests info <REQUEST_ID>` commands inspect one known canonical user, activity, or open-request ID. User
-detail requires the API response to preserve the exact requested user ID. Request detail uses the
+The non-paginated `users info <USERNAME>`, `activity info <ACTIVITY_ID>`, and
+`requests info <REQUEST_ID>` commands inspect one user, activity, or open request. User info accepts a
+username with an optional leading `@` and uses the same shared, fail-closed exact search and authoritative
+detail verification as financial recipient resolution; `users info alice` and `users info @alice` are
+equivalent. It never accepts a user ID as a distinct argument type. Request detail uses the
 broad payment/request lookup internally but exposes only `action=charge` records whose status is
 exactly `pending` or `held`, in either direction. Payment (`action=pay`) and terminal request
 records are rejected as usage errors rather than displayed as open requests.

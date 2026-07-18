@@ -29,8 +29,8 @@ impl From<VisibilityArg> for Visibility {
     after_long_help = "Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app."
 )]
 pub struct PayArgs {
-    /// Exact @username or positive numeric Venmo user ID.
-    #[arg(value_name = "RECIPIENT")]
+    /// Exact username with an optional leading @.
+    #[arg(value_name = "USERNAME")]
     pub recipient: RecipientInput,
 
     /// Positive USD amount with at most two fractional digits.
@@ -55,8 +55,8 @@ pub struct PayArgs {
     after_long_help = "Direct request creation writes immediately after validation. It does not prompt and has no `--yes` option. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app."
 )]
 pub struct RequestArgs {
-    /// Exact @username or positive numeric Venmo user ID.
-    #[arg(value_name = "RECIPIENT")]
+    /// Exact username with an optional leading @.
+    #[arg(value_name = "USERNAME")]
     pub recipient: RecipientInput,
 
     /// Positive USD amount with at most two fractional digits.

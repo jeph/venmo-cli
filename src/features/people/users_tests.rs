@@ -588,7 +588,6 @@ async fn exhaustive_search_uses_exact_native_pages_until_exhausted() -> TestResu
     let expected = Snapshot {
         outcome: ExhaustiveOutcome::Success(ExhaustiveUserSearchResult {
             users: expected_users,
-            completion: ExhaustiveSearchCompletion::Exhausted,
         }),
         state: FakeState {
             reader: None,
@@ -644,7 +643,6 @@ async fn exhaustive_search_stops_at_four_pages_and_two_hundred_records() -> Test
     let expected = Snapshot {
         outcome: ExhaustiveOutcome::Success(ExhaustiveUserSearchResult {
             users: expected_users,
-            completion: ExhaustiveSearchCompletion::SafetyBoundReached,
         }),
         state: FakeState {
             reader: None,
@@ -672,10 +670,7 @@ async fn exhaustive_empty_page_continuation_contract_is_explicit() -> TestResult
     let cases = [
         (
             UserSearchPage::new(Vec::new(), None),
-            ExhaustiveOutcome::Success(ExhaustiveUserSearchResult {
-                users: Vec::new(),
-                completion: ExhaustiveSearchCompletion::Exhausted,
-            }),
+            ExhaustiveOutcome::Success(ExhaustiveUserSearchResult { users: Vec::new() }),
         ),
         (
             UserSearchPage::new(Vec::new(), Some(Offset::new(50))),

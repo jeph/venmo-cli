@@ -364,7 +364,11 @@ impl UserSearchApi for FakePayApi {
         _page: UserSearchPageRequest,
     ) -> impl Future<Output = Result<UserSearchPage, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(PayCall::SearchUsers);
-        ready(Err(FakeApiError))
+        ready(
+            recipient()
+                .map(|user| UserSearchPage::new(vec![user], None))
+                .map_err(|_| FakeApiError),
+        )
     }
 }
 

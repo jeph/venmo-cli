@@ -35,13 +35,13 @@ async fn confirmation_required_declined_cancelled_failed_and_confirmed_are_disti
         // Complete expected final outcome and state.
         let mut expected_calls = successful_calls(amount, note.clone())?
             .into_iter()
-            .take(7)
+            .take(8)
             .collect::<Vec<_>>();
         expected_calls.extend(prompt_calls);
         if matches!(case, ConfirmationCase::Confirmed) {
             let create = successful_calls(amount, note.clone())?
                 .into_iter()
-                .nth(7)
+                .nth(8)
                 .ok_or_else(|| io::Error::other("missing synthetic create call"))?;
             expected_calls.push(create);
         }

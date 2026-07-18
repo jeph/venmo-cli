@@ -223,7 +223,7 @@ impl AppError {
                 UserSearchFailureKind::ResponseContract => ErrorCategory::ApiContract,
                 UserSearchFailureKind::Internal => ErrorCategory::Internal,
             },
-            Self::UserInfo { source } => read_failure_category(source.failure_kind()),
+            Self::UserInfo { source } => application_failure_category(source.failure_kind()),
             Self::Friends { source } => read_failure_category(source.failure_kind()),
             Self::Balance { source } => read_failure_category(source.failure_kind()),
             Self::Activity { source } => read_failure_category(source.failure_kind()),

@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-use crate::shared::{UserId, Username};
+use crate::shared::{UserId, Username, UsernameParseError};
 
 const MAX_QUERY_BYTES: usize = 1024;
 const REDACTED: &str = "[REDACTED]";
@@ -102,18 +102,27 @@ impl fmt::Debug for User {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UserSearchKind {
+    General,
+    Username,
+}
+
 #[derive(Clone, Eq, PartialEq)]
-pub struct UserSearchQuery(String);
+pub struct UserSearchQuery {
+    value: String,
+    kind: UserSearchKind,
+}
 
 impl UserSearchQuery {
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.value
     }
 
     #[must_use]
     pub fn username_query(&self) -> Option<&str> {
-        self.0.strip_prefix('@')
+        (self.kind == UserSearchKind::Username).then_some(self.value.as_str())
     }
 }
 
@@ -138,10 +147,21 @@ impl FromStr for UserSearchQuery {
         if value.chars().any(char::is_control) {
             return Err(UserSearchQueryParseError::ControlCharacter);
         }
-        if value == "@" {
-            return Err(UserSearchQueryParseError::EmptyUsername);
+        if value.starts_with('@') || !value.chars().any(char::is_whitespace) {
+            let username =
+                Username::from_optional_prefix(value).map_err(|source| match source {
+                    UsernameParseError::Empty => UserSearchQueryParseError::EmptyUsername,
+                    source => UserSearchQueryParseError::InvalidUsername { source },
+                })?;
+            return Ok(Self {
+                value: username.as_str().to_owned(),
+                kind: UserSearchKind::Username,
+            });
         }
-        Ok(Self(value.to_owned()))
+        Ok(Self {
+            value: value.to_owned(),
+            kind: UserSearchKind::General,
+        })
     }
 }
 
@@ -158,6 +178,9 @@ pub enum UserSearchQueryParseError {
 
     #[error("username search must include text after `@`")]
     EmptyUsername,
+
+    #[error("invalid username search: {source}")]
+    InvalidUsername { source: UsernameParseError },
 }
 
 #[cfg(test)]
@@ -196,7 +219,10 @@ mod tests {
     #[test]
     fn user_search_query_limit_counts_bytes_and_handles_unicode_and_controls()
     -> Result<(), Box<dyn Error>> {
-        for value in ["x".repeat(MAX_QUERY_BYTES), "é".repeat(MAX_QUERY_BYTES / 2)] {
+        for value in [
+            format!("{} y", "x".repeat(MAX_QUERY_BYTES - 2)),
+            format!("{} y", "é".repeat((MAX_QUERY_BYTES - 2) / 2)),
+        ] {
             assert_eq!(value.len(), MAX_QUERY_BYTES);
             assert_eq!(UserSearchQuery::from_str(&value)?.as_str(), value);
         }
@@ -230,6 +256,11 @@ mod tests {
             UserSearchQuery::from_str("Élise Smith")?.as_str(),
             "Élise Smith"
         );
+        let bare = UserSearchQuery::from_str("élise")?;
+        let prefixed = UserSearchQuery::from_str("@élise")?;
+        assert_eq!(bare, prefixed);
+        assert_eq!(bare.as_str(), "élise");
+        assert_eq!(bare.username_query(), Some("élise"));
         assert_eq!(
             UserSearchQuery::from_str("@élise")?.username_query(),
             Some("élise")

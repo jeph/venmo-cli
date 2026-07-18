@@ -154,6 +154,7 @@ impl ApiFailure for FakeApiError {
 
 pub(super) struct PayScript {
     account: Result<Account, FakeApiError>,
+    search_user: User,
     user: Result<User, FakeApiError>,
     balance: Result<Balance, FakeApiError>,
     methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
@@ -163,9 +164,11 @@ pub(super) struct PayScript {
 
 impl PayScript {
     pub(super) fn successful() -> Result<Self, Box<dyn Error>> {
+        let user = financial_user()?;
         Ok(Self {
             account: Ok(test_account()?),
-            user: Ok(financial_user()?),
+            search_user: user.clone(),
+            user: Ok(user),
             balance: Ok(test_balance()),
             methods: Ok(vec![peer_method(
                 "bank-1",
@@ -213,6 +216,7 @@ impl PayScript {
 
 pub(super) struct FakeApi {
     account: Result<Account, FakeApiError>,
+    search_user: User,
     user: Result<User, FakeApiError>,
     balance: Result<Balance, FakeApiError>,
     methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
@@ -225,6 +229,7 @@ impl FakeApi {
     pub(super) fn new(script: PayScript, transcript: Transcript) -> Self {
         Self {
             account: script.account,
+            search_user: script.search_user,
             user: script.user,
             balance: script.balance,
             methods: script.methods,
@@ -282,7 +287,10 @@ impl UserSearchApi for FakeApi {
             query: query.clone(),
             page,
         });
-        ready(Err(FakeApiError(ApiFailureKind::Internal)))
+        ready(Ok(UserSearchPage::new(
+            vec![self.search_user.clone()],
+            None,
+        )))
     }
 }
 
@@ -460,7 +468,7 @@ pub(super) async fn run_pay_with_visibility(
     visibility: Visibility,
     assume_yes: bool,
 ) -> Result<PayResult, PayError> {
-    let recipient = RecipientInput::from_str("456").map_err(|_| {
+    let recipient = RecipientInput::from_str("bob").map_err(|_| {
         PayError::Preflight(PeerPreflightError::Recipient(
             crate::features::people::recipients::RecipientResolutionError::Internal {
                 problem: "synthetic recipient input was invalid",
@@ -492,6 +500,7 @@ pub(super) fn successful_calls_with_fee(
     Ok(vec![
         Call::ReadCredential,
         current_account_call(),
+        user_search_call()?,
         user_lookup_call("456")?,
         balance_call(),
         funding_methods_call(),
@@ -532,6 +541,14 @@ pub(super) fn user_lookup_call(user_id: &str) -> Result<Call, Box<dyn Error>> {
     Ok(Call::UserLookup {
         session: RedactedSecret::Redacted,
         user_id: UserId::from_str(user_id)?,
+    })
+}
+
+pub(super) fn user_search_call() -> Result<Call, Box<dyn Error>> {
+    Ok(Call::UserSearch {
+        session: RedactedSecret::Redacted,
+        query: UserSearchQuery::from_str("bob")?,
+        page: UserSearchPageRequest::new(Limit::try_from(50)?, Offset::default()),
     })
 }
 

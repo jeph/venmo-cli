@@ -113,7 +113,7 @@ pub(super) fn users_args() -> TestResult<UserSearchArgs> {
 }
 
 pub(super) fn user_info_args() -> TestResult<UserInfoArgs> {
-    match Cli::try_parse_from(["venmo", "users", "info", "123"])?.command {
+    match Cli::try_parse_from(["venmo", "users", "info", "alice"])?.command {
         Command::Users(args) => match args.operation {
             UsersOperation::Info(args) => Ok(args),
             UsersOperation::Search(_) => {

@@ -102,7 +102,6 @@ enum Outcome {
     },
     UsernameNotFound,
     AmbiguousUsername,
-    IncompleteUsernameSearch,
     Internal(&'static str),
 }
 
@@ -122,9 +121,6 @@ impl From<Result<ResolvedRecipient, RecipientResolutionError>> for Outcome {
             }
             Err(RecipientResolutionError::UsernameNotFound) => Self::UsernameNotFound,
             Err(RecipientResolutionError::AmbiguousUsername) => Self::AmbiguousUsername,
-            Err(RecipientResolutionError::IncompleteUsernameSearch) => {
-                Self::IncompleteUsernameSearch
-            }
             Err(RecipientResolutionError::Internal { problem }) => Self::Internal(problem),
         }
     }
@@ -310,84 +306,6 @@ fn expected_lookup_call(user_id: &str) -> Result<Call, Box<dyn Error>> {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn numeric_id_uses_the_exact_direct_lookup_only() -> TestResult {
-    // Setup.
-    let returned = user("123", Some("alice"))?;
-    let expected_recipient = ResolvedRecipient::new(returned.clone());
-    let input = RecipientInput::from_str("123")?;
-    let loaded = credential()?;
-
-    // Immutable initial state.
-    let transcript = Rc::new(RefCell::new(Vec::new()));
-    let api = FakeApi::new(
-        vec![search_response(
-            ResponseId::Unexpected,
-            Err(FakeApiError(ApiFailureKind::Internal)),
-        )],
-        vec![
-            lookup_response(ResponseId::First, Ok(returned)),
-            lookup_response(
-                ResponseId::Unexpected,
-                Err(FakeApiError(ApiFailureKind::Internal)),
-            ),
-        ],
-        Rc::clone(&transcript),
-    );
-
-    // Complete expected outcome and final fake state.
-    let expected = Snapshot {
-        outcome: Outcome::Success(expected_recipient),
-        state: FakeState {
-            remaining_search_responses: vec![ResponseId::Unexpected],
-            remaining_lookup_responses: vec![ResponseId::Unexpected],
-            transcript: vec![expected_lookup_call("123")?],
-        },
-    };
-
-    // Execute once.
-    let result = resolve_with_credential(&loaded.envelope, &api, &input).await;
-    let observed = snapshot(result, &api, &transcript);
-
-    assert_eq!(observed, expected);
-    Ok(())
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn numeric_lookup_requires_the_requested_id() -> TestResult {
-    // Setup.
-    let input = RecipientInput::from_str("123")?;
-    let loaded = credential()?;
-
-    // Immutable initial state.
-    let transcript = Rc::new(RefCell::new(Vec::new()));
-    let api = FakeApi::new(
-        Vec::new(),
-        vec![lookup_response(
-            ResponseId::First,
-            Ok(user("999", Some("alice"))?),
-        )],
-        Rc::clone(&transcript),
-    );
-
-    // Complete expected outcome and final fake state.
-    let expected = Snapshot {
-        outcome: Outcome::LookupContract("the API returned a different user ID"),
-        state: FakeState {
-            remaining_search_responses: Vec::new(),
-            remaining_lookup_responses: Vec::new(),
-            transcript: vec![expected_lookup_call("123")?],
-        },
-    };
-
-    // Execute once.
-    let result = resolve_with_credential(&loaded.envelope, &api, &input).await;
-    let observed = snapshot(result, &api, &transcript);
-
-    assert_eq!(observed, expected);
-    Ok(())
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn username_uses_one_case_insensitive_exact_match_then_authoritative_detail() -> TestResult {
     // Setup.
     let detail = user("123", Some("ALICE"))?;
@@ -437,15 +355,15 @@ async fn username_requires_matching_authoritative_detail() -> TestResult {
     let cases = [
         (
             user("999", Some("alice"))?,
-            "the recipient detail response returned a different user ID",
+            "the user detail response returned a different user ID",
         ),
         (
             user("123", Some("other"))?,
-            "the recipient detail response returned a different username",
+            "the user detail response returned a different username",
         ),
         (
             user("123", None)?,
-            "the recipient detail response returned a different username",
+            "the user detail response returned a different username",
         ),
     ];
 
@@ -579,7 +497,7 @@ async fn exact_match_at_the_search_bound_is_verified_by_detail() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn no_match_at_the_search_bound_is_incomplete_not_not_found() -> TestResult {
+async fn no_exact_match_at_the_search_bound_is_not_found() -> TestResult {
     // Setup.
     let input = RecipientInput::from_str("@alice")?;
     let query = UserSearchQuery::from_str("@alice")?;
@@ -598,7 +516,7 @@ async fn no_match_at_the_search_bound_is_incomplete_not_not_found() -> TestResul
 
     // Complete expected outcome and final fake state.
     let expected = Snapshot {
-        outcome: Outcome::IncompleteUsernameSearch,
+        outcome: Outcome::UsernameNotFound,
         state: FakeState {
             remaining_search_responses: Vec::new(),
             remaining_lookup_responses: vec![ResponseId::Unexpected],
@@ -704,40 +622,6 @@ async fn username_pagination_contract_failures_are_preserved() -> TestResult {
                 remaining_search_responses: Vec::new(),
                 remaining_lookup_responses: Vec::new(),
                 transcript: expected_calls,
-            },
-        };
-
-        // Execute once.
-        let result = resolve_with_credential(&loaded.envelope, &api, &input).await;
-        let observed = snapshot(result, &api, &transcript);
-
-        assert_eq!(observed, expected);
-    }
-    Ok(())
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn direct_lookup_api_failure_kind_matrix_is_preserved() -> TestResult {
-    // Setup.
-    let input = RecipientInput::from_str("123")?;
-    let loaded = credential()?;
-
-    for kind in API_FAILURE_KINDS {
-        // Immutable initial state.
-        let transcript = Rc::new(RefCell::new(Vec::new()));
-        let api = FakeApi::new(
-            Vec::new(),
-            vec![lookup_response(ResponseId::First, Err(FakeApiError(kind)))],
-            Rc::clone(&transcript),
-        );
-
-        // Complete expected outcome and final fake state.
-        let expected = Snapshot {
-            outcome: Outcome::ApiFailure(kind),
-            state: FakeState {
-                remaining_search_responses: Vec::new(),
-                remaining_lookup_responses: Vec::new(),
-                transcript: vec![expected_lookup_call("123")?],
             },
         };
 

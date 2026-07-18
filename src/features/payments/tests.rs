@@ -21,7 +21,7 @@ use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsd
 use crate::shared::{
     AccessToken, Account, ApiFailureKind, ClientRequestId, CredentialAccessError,
     CredentialCapability, CredentialFailureKind, CredentialFormat, CredentialStoreFailure,
-    DeviceId, LoadedCredential, UserId, Username,
+    DeviceId, Limit, LoadedCredential, Offset, UserId, Username,
 };
 
 #[path = "tests/outcomes.rs"]

@@ -142,10 +142,10 @@ pub(super) async fn run_user_info<R, A, W>(
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
-    A: UserLookupApi,
+    A: UserLookupApi + UserSearchApi,
     W: Write,
 {
-    let result = people::info(store, api, &args.user_id).await?;
+    let result = people::info(store, api, &args.username).await?;
     output::write_user_info(stdout, &result)?;
     Ok(())
 }

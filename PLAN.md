@@ -111,14 +111,14 @@ venmo auth reauthenticate
 venmo auth logout [--revoke]
 venmo auth status
 
-venmo pay <RECIPIENT> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--yes]
-venmo request <RECIPIENT> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>]
+venmo pay <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--yes]
+venmo request <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>]
 venmo accept <REQUEST_ID> [--yes]
 venmo decline <REQUEST_ID>
 
 venmo friends list [--limit <N>] [--offset <N>]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
-venmo users info <USER_ID>
+venmo users info <USERNAME>
 venmo payment-methods list
 venmo balance
 
@@ -209,13 +209,14 @@ Proposed stable exit codes:
 
 ```text
 venmo pay @alice 12.50 --note "Dinner"
-venmo pay @alice 12.50 --note "Dinner" --visibility friends --yes
+venmo pay alice 12.50 --note "Dinner" --visibility friends --yes
 ```
 
 Contract:
 
 - Exactly one recipient.
-- Recipient is an exact `@username` or positive numeric Venmo user ID.
+- Recipient is an exact username with an optional leading `@`; user IDs are never accepted as a
+  separate input type.
 - Amount is a positive decimal with at most two fractional digits.
 - `--note` is required and must contain non-whitespace text.
 - `--visibility` accepts exactly `private`, `friends`, or `public` and defaults to `private`.
@@ -328,25 +329,34 @@ The `deny` action is strongly documented by archived official Venmo material for
 #### `venmo users search <QUERY> [--limit <N>] [--offset <N>]`
 
 - Searches for users who may not be friends.
+- Normalizes a single token as a username search, with or without a leading `@`; `alice` and
+  `@alice` therefore send the same `query=alice&type=username` request. Multi-word input remains a
+  general fuzzy search.
 - Returns the same copyable identity fields as `friends list`.
 - Uses an exact username match when resolving a payment recipient; search ordering alone never selects a recipient.
 - Fetches exactly one API page and treats `--limit` as its server page size, with default 10 and maximum 50. `--offset` is a typed nonnegative `u32` with default 0.
 - When a full page is returned, provisionally reports the checked synthesized `Next offset: <N>` value; an empty page at that offset can be required to prove exhaustion.
 
-#### `venmo users info <USER_ID>`
+#### `venmo users info <USERNAME>`
 
 - Fetches one user through the canonical user-detail endpoint and displays every understood safe
   identity and profile field.
-- Requires the returned immutable user ID to equal the exact requested ID; a mismatch is an API
-  contract failure and is never displayed as the requested user.
-- Accepts only a canonical typed user ID and performs exactly one lookup with no search fallback or
-  retry.
+- Accepts only an exact username with an optional leading `@`; `users info alice` and
+  `users info @alice` are equivalent. Digit-only input is still treated as a username, never as a
+  user ID.
+- Uses the shared bounded exact-user resolver: case-insensitive exact search, ambiguity rejection,
+  then authoritative detail-by-ID verification of both immutable ID and username.
+- Shares this resolution implementation and input grammar with `pay` and `request`.
 
-Financial recipient resolution is fail-closed around the live-verified mobile behavior:
+All command-level username resolution is shared and fail-closed around the live-verified mobile behavior:
 
-- Numeric recipients use the inherited `GET /users/{user-id}` hypothesis and require the response's immutable user ID to equal the requested ID.
-- Username recipients use bounded `type=username` search and compare returned usernames case-insensitively. Search ordering alone never authorizes a recipient. One exact match is followed by detail-by-ID, which must return the same immutable ID and exact username before the recipient is usable; multiple exact IDs remain ambiguous.
-- A missing exact match after verified exhaustion is not found. A missing match when the 200-record/four-page bound is reached remains incomplete and tells the user to use a numeric Venmo user ID. The bound may stop without exhaustion only when it has already found one exact match whose authoritative detail passes both identity checks.
+- Commands accept usernames only, normalize an optional leading `@`, and never expose a user-ID
+  argument.
+- Resolution uses bounded `type=username` search and compares returned usernames
+  case-insensitively. Search ordering alone never authorizes a user. One exact match is followed by
+  detail-by-ID, which must return the same immutable ID and exact username before the command can
+  continue; multiple exact IDs remain ambiguous.
+- No exact match within the bounded traversal is reported as username not found.
 - Username input is locally bounded to 1,023 bytes so the leading `@` plus username fits the 1,024-byte search-query bound.
 
 ### 3.6 Payment methods and balance
@@ -739,7 +749,7 @@ The raw capture was kept only in a mode-0700 temporary directory with mode-0600 
 
 Immediately afterward, separate processes successfully used the mobile-issued token for `auth status`, `balance`, bounded `friends list`, bounded `users search`, `payment-methods list`, bounded `activity list`, bounded `requests list`, and `doctor`, with sensitive stdout discarded. This proves authentication compatibility across every currently implemented read-only adapter and native keychain reload. It does not establish token lifetime or authorize any financial-write contract; no financial mutation was attempted.
 
-The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `payment-methods list` all succeeded. User search confirmed the inherited endpoint is fuzzy even when the query begins with `@` and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. The implementation preserves that exact query distinction in every public page request and in the separate internal exhaustive traversal. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
+The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `payment-methods list` all succeeded. User search confirmed the inherited endpoint is fuzzy even for username-specific requests and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. Public single-token searches now intentionally normalize optional `@` spelling to the same `type=username` request, while multi-word searches remain general; the separate internal exhaustive traversal retains its fail-closed exact-match checks. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
 
 The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, `requests list`, and `doctor` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
 
@@ -993,7 +1003,7 @@ reusable behavior must live in the library.
 - `AccessToken`: secret value with redacted formatting.
 - `CredentialEnvelope`: versioned stored session.
 - `Account`, `User`, `UserId`, and `Username`.
-- `RecipientInput`: exact username or numeric user ID.
+- `RecipientInput`: exact username with an optional leading `@`.
 - `Money`: positive checked integer cents.
 - `PaymentMethod` and `PaymentMethodId`.
 - `Balance`: available amount and optional verified held amount.
@@ -1173,11 +1183,13 @@ Public page and server-continuation contract:
 - Missing `pagination.next` is treated as the end of the current friends, activity, or pending-request page chain. API continuation failures are API-contract errors; invalid user-supplied native values are argument-parsing errors with exit code 2.
 - The transport reconstructs every request locally from validated path segments and query pairs. It never follows a response URL directly or forwards credentials to an arbitrary origin.
 
-Internal exact-recipient traversal:
+Internal exact-username traversal:
 
 - Exact username resolution uses a separate, non-public user-search traversal with no user-supplied continuation.
 - It requests at most four source pages of at most 50 records, buffers at most 200 unique users, validates increasing offsets and per-page bounds, deduplicates identical IDs, rejects conflicts and no-progress pages, and preserves source order.
-- Verified exhaustion authorizes normal not-found handling. If the traversal reaches its record/page bound, it may authorize only one already-found exact username match and only after detail-by-ID returns the same immutable ID and exact username; no exact match remains incomplete with guidance to use a numeric user ID, and multiple exact matches remain ambiguous.
+- If the traversal reaches its record/page bound, it may authorize only one already-found exact
+  username match and only after detail-by-ID returns the same immutable ID and exact username. No
+  exact match is username not found, and multiple exact matches remain ambiguous.
 - No public list command calls this exhaustive traversal.
 
 For any future paginated endpoint, exact defaults, per-page sizes, hard maxima, ordering, token/offset mapping, and reliable end signaling remain Phase 0 decisions. The selected contracts above remain release-gated where explicitly noted; a missing or unreliable pagination contract blocks claims of completeness.

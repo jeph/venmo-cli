@@ -120,6 +120,10 @@ Clap schema:
 - Handle the new `UsersOperation::Info(UserInfoArgs)` and
   `RequestsOperation::Info(RequestInfoArgs)` variants in exhaustive matches.
 - `UserInfoResult` and `RequestInfoResult` are now available from `venmo_cli::model`.
+- `UserInfoArgs` exposes `username: Username` rather than a user-ID field. `Username` and
+  `RecipientInput` normalize usernames with or without `@`; no command argument exposes `UserId` as
+  an alternate user selector. `UserSearchQuery` likewise normalizes single-token optional-`@`
+  inputs as username searches; multi-word values remain general searches.
 
 `PayArgs` and `RequestArgs` also gained a public `visibility: VisibilityArg` field. Callers
 constructing either argument struct directly must select a value, normally

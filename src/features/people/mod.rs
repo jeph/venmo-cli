@@ -1,5 +1,6 @@
 pub(crate) mod friends;
 pub(crate) mod info;
+pub(crate) mod lookup;
 mod ports;
 pub(crate) mod recipient;
 pub(crate) mod recipients;

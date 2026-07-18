@@ -8,7 +8,7 @@ Usage: search [OPTIONS] <QUERY>
 
 Arguments:
   <QUERY>
-          Search text
+          Username (with optional @) or multi-word search text
 
 Options:
       --limit <N>

@@ -4,6 +4,7 @@ pub(super) fn preparation_calls() -> Vec<PayCall> {
     vec![
         PayCall::ReadCredential,
         PayCall::CurrentAccount,
+        PayCall::SearchUsers,
         PayCall::UserById {
             user_id: "456".to_owned(),
         },

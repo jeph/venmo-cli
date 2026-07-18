@@ -133,7 +133,7 @@ _arguments "${_arguments_options[@]}" : \
 '--verbose[Write redacted diagnostics to stderr]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
-':recipient -- Exact @username or positive numeric Venmo user ID:_default' \
+':recipient -- Exact username with an optional leading @:_default' \
 ':amount -- Positive USD amount with at most two fractional digits:_default' \
 && ret=0
 ;;
@@ -145,7 +145,7 @@ _arguments "${_arguments_options[@]}" : \
 '--verbose[Write redacted diagnostics to stderr]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
-':recipient -- Exact @username or positive numeric Venmo user ID:_default' \
+':recipient -- Exact username with an optional leading @:_default' \
 ':amount -- Positive USD amount with at most two fractional digits:_default' \
 && ret=0
 ;;
@@ -246,7 +246,7 @@ _arguments "${_arguments_options[@]}" : \
 '--verbose[Write redacted diagnostics to stderr]' \
 '-h[Print help]' \
 '--help[Print help]' \
-':query -- Search text:_default' \
+':query -- Username (with optional @) or multi-word search text:_default' \
 && ret=0
 ;;
 (info)
@@ -255,7 +255,7 @@ _arguments "${_arguments_options[@]}" : \
 '--verbose[Write redacted diagnostics to stderr]' \
 '-h[Print help]' \
 '--help[Print help]' \
-':user_id -- Canonical user ID:_default' \
+':username -- Username with an optional leading @:_default' \
 && ret=0
 ;;
 (help)

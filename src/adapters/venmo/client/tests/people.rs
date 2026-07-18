@@ -19,26 +19,28 @@ async fn user_search_maps_users_and_uses_bounded_offset_queries() -> TestResult 
         .await;
     let client = test_client(&server)?;
     let (token, device_id) = test_session()?;
-    let query = UserSearchQuery::from_str("@alice")?;
     let page_size = Limit::try_from(2)?;
 
-    let page = client
-        .search_users(
-            &token,
-            &device_id,
-            &query,
-            UserSearchPageRequest::new(page_size, Offset::new(50)),
-        )
-        .await?;
-    let (users, next) = page.into_parts();
-    assert_eq!(users.len(), 2);
-    assert_eq!(
-        users.first().and_then(User::username).map(Username::as_str),
-        Some("alice")
-    );
-    assert_eq!(users.last().and_then(User::display_name), Some("Alice Two"));
-    assert_eq!(next.map(Offset::get), Some(52));
-    assert_request_count(&server, 1).await;
+    for input in ["alice", "@alice"] {
+        let query = UserSearchQuery::from_str(input)?;
+        let page = client
+            .search_users(
+                &token,
+                &device_id,
+                &query,
+                UserSearchPageRequest::new(page_size, Offset::new(50)),
+            )
+            .await?;
+        let (users, next) = page.into_parts();
+        assert_eq!(users.len(), 2);
+        assert_eq!(
+            users.first().and_then(User::username).map(Username::as_str),
+            Some("alice")
+        );
+        assert_eq!(users.last().and_then(User::display_name), Some("Alice Two"));
+        assert_eq!(next.map(Offset::get), Some(52));
+    }
+    assert_request_count(&server, 2).await;
     Ok(())
 }
 
@@ -51,7 +53,7 @@ async fn user_search_rejects_invalid_records_and_oversized_pages() -> TestResult
         // Setup.
         let response = scripted_response(200, body.as_bytes().to_vec())?;
         let (token, device_id) = test_session()?;
-        let query = UserSearchQuery::from_str("alice")?;
+        let query = UserSearchQuery::from_str("Alice Example")?;
         let page_size = Limit::MIN;
 
         // Immutable initial script/state.
@@ -64,7 +66,7 @@ async fn user_search_rejects_invalid_records_and_oversized_pages() -> TestResult
             vec![authenticated_read_request(
                 "/users",
                 &["users"],
-                &[("query", "alice"), ("limit", "1"), ("offset", "0")],
+                &[("query", "Alice Example"), ("limit", "1"), ("offset", "0")],
             )],
         );
 

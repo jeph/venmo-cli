@@ -4,11 +4,11 @@ expression: help
 ---
 Create a request immediately
 
-Usage: request [OPTIONS] --note <NOTE> <RECIPIENT> <AMOUNT>
+Usage: request [OPTIONS] --note <NOTE> <USERNAME> <AMOUNT>
 
 Arguments:
-  <RECIPIENT>
-          Exact @username or positive numeric Venmo user ID
+  <USERNAME>
+          Exact username with an optional leading @
 
   <AMOUNT>
           Positive USD amount with at most two fractional digits

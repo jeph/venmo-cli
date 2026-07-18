@@ -292,6 +292,7 @@ impl UserSearchApi for UserSearchFake {
 
 struct UserInfoFake {
     responses: ResponseQueue<User>,
+    search_responses: Option<ResponseQueue<UserSearchPage>>,
     transcript: Transcript,
 }
 
@@ -309,6 +310,29 @@ impl UserLookupApi for UserInfoFake {
             user_id: user_id.clone(),
         });
         ready(self.responses.take())
+    }
+}
+
+impl UserSearchApi for UserInfoFake {
+    type Error = FakeApiError;
+
+    fn search_users<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        query: &'a UserSearchQuery,
+        page: UserSearchPageRequest,
+    ) -> impl Future<Output = Result<UserSearchPage, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(ReadCall::SearchUsers {
+            session: session_call(access_token, device_id),
+            query: query.clone(),
+            page,
+        });
+        ready(
+            self.search_responses
+                .as_ref()
+                .map_or(Err(FakeApiError), ResponseQueue::take),
+        )
     }
 }
 

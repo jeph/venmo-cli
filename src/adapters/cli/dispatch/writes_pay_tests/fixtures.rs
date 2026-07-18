@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn pay_args() -> TestResult<PayArgs> {
-    let cli = Cli::try_parse_from(["venmo", "pay", "456", "0.01", "--note", "Synthetic payment"])?;
+    let cli = Cli::try_parse_from(["venmo", "pay", "bob", "0.01", "--note", "Synthetic payment"])?;
     match cli.command {
         Command::Pay(args) => Ok(args),
         _ => Err(io::Error::other("pay arguments parsed as another command").into()),

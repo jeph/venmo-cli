@@ -15,7 +15,7 @@ use crate::features::requests::{RequestId, RequestStatus};
 use crate::shared::{
     AccessToken, Account, ApiFailureKind, ClientRequestId, CredentialAccessError,
     CredentialCapability, CredentialFailureKind, CredentialFormat, CredentialStoreFailure,
-    DeviceId, LoadedCredential, UserId, Username, Visibility,
+    DeviceId, Limit, LoadedCredential, Offset, UserId, Username, Visibility,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -172,15 +172,18 @@ impl ApiFailure for FakeApiError {
 
 struct CreateScript {
     account: Result<Account, FakeApiError>,
+    search_user: User,
     user: Result<User, FakeApiError>,
     creation: Result<CreatedRequest, FakeApiError>,
 }
 
 impl CreateScript {
     fn successful() -> Result<Self, Box<dyn Error>> {
+        let user = financial_user("456", UserProfileKind::Personal)?;
         Ok(Self {
             account: Ok(account("123")?),
-            user: Ok(financial_user("456", UserProfileKind::Personal)?),
+            search_user: user.clone(),
+            user: Ok(user),
             creation: Ok(created_request()?),
         })
     }
@@ -200,6 +203,7 @@ impl CreateScript {
 
 struct FakeApi {
     account: Result<Account, FakeApiError>,
+    search_user: User,
     user: Result<User, FakeApiError>,
     creation: Result<CreatedRequest, FakeApiError>,
     transcript: Transcript,
@@ -209,6 +213,7 @@ impl FakeApi {
     fn new(script: CreateScript, transcript: Transcript) -> Self {
         Self {
             account: script.account,
+            search_user: script.search_user,
             user: script.user,
             creation: script.creation,
             transcript,
@@ -263,7 +268,10 @@ impl UserSearchApi for FakeApi {
             query: query.clone(),
             page,
         });
-        ready(Err(FakeApiError(ApiFailureKind::Internal)))
+        ready(Ok(UserSearchPage::new(
+            vec![self.search_user.clone()],
+            None,
+        )))
     }
 }
 
@@ -306,7 +314,7 @@ async fn run_create(
     note: Note,
     visibility: Visibility,
 ) -> Result<RequestCreateResult, RequestCreateError> {
-    let recipient = RecipientInput::from_str("456").map_err(|_| {
+    let recipient = RecipientInput::from_str("bob").map_err(|_| {
         RequestCreateError::Preflight(PeerPreflightError::Recipient(
             crate::features::people::recipients::RecipientResolutionError::Internal {
                 problem: "synthetic recipient input was invalid",
@@ -351,6 +359,7 @@ async fn create_uses_complete_arguments_and_exactly_one_ordered_write() -> TestR
         transcript: vec![
             Call::ReadCredential,
             current_account_call(),
+            user_search_call()?,
             user_lookup_call()?,
             Call::GenerateClientRequestId {
                 request_id: fixed_request_id(),
@@ -476,7 +485,7 @@ async fn returned_recipient_id_mismatch_and_financial_rejection_never_generate_o
             outcome: CreateOutcome::Failure(expected_failure),
             transcript: successful_calls(amount, note.clone())?
                 .into_iter()
-                .take(3)
+                .take(4)
                 .collect(),
         };
 
@@ -523,19 +532,19 @@ fn failure_case(
                     ApiFailureKind::Timeout,
                 ),
             ),
-            3,
+            4,
         ),
         FailureStage::ContractWrite => (
             ReaderScript::Present,
             script.with_creation(Err(FakeApiError(ApiFailureKind::Contract))),
             CreateFailure::Create(ApiFailureKind::Contract),
-            5,
+            6,
         ),
         FailureStage::AmbiguousWrite => (
             ReaderScript::Present,
             script.with_creation(Err(FakeApiError(ApiFailureKind::AmbiguousWrite))),
             CreateFailure::Create(ApiFailureKind::AmbiguousWrite),
-            5,
+            6,
         ),
     })
 }
@@ -544,6 +553,7 @@ fn successful_calls(amount: Money, note: Note) -> Result<Vec<Call>, Box<dyn Erro
     Ok(vec![
         Call::ReadCredential,
         current_account_call(),
+        user_search_call()?,
         user_lookup_call()?,
         Call::GenerateClientRequestId {
             request_id: fixed_request_id(),
@@ -572,6 +582,14 @@ fn user_lookup_call() -> Result<Call, Box<dyn Error>> {
     Ok(Call::UserLookup {
         session: RedactedSecret::Redacted,
         user_id: UserId::from_str("456")?,
+    })
+}
+
+fn user_search_call() -> Result<Call, Box<dyn Error>> {
+    Ok(Call::UserSearch {
+        session: RedactedSecret::Redacted,
+        query: UserSearchQuery::from_str("bob")?,
+        page: UserSearchPageRequest::new(Limit::try_from(50)?, Offset::default()),
     })
 }
 

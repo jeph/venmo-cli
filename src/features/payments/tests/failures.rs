@@ -104,9 +104,9 @@ async fn recipient_and_funding_contract_failures_never_reach_eligibility_or_writ
         let amount = Money::from_cents(1)?;
         let note = Note::from_str("Synthetic note")?;
         let prefix_len = if matches!(expected_failure, PayFailure::Recipient(_)) {
-            3
+            4
         } else {
-            5
+            6
         };
 
         // Immutable initial state.
@@ -207,31 +207,31 @@ fn failure_case(
             ReaderScript::Present,
             script.with_user(Err(FakeApiError(ApiFailureKind::Timeout))),
             PayFailure::Recipient(RecipientResolutionFailureKind::Api(ApiFailureKind::Timeout)),
-            3,
+            4,
         ),
         FailureStage::Balance => (
             ReaderScript::Present,
             script.with_balance(Err(FakeApiError(ApiFailureKind::Network))),
             PayFailure::Balance(ApiFailureKind::Network),
-            4,
+            5,
         ),
         FailureStage::FundingMethods => (
             ReaderScript::Present,
             script.with_methods(Err(FakeApiError(ApiFailureKind::Contract))),
             PayFailure::FundingMethods(ApiFailureKind::Contract),
-            5,
+            6,
         ),
         FailureStage::Eligibility => (
             ReaderScript::Present,
             script.with_eligibility(Err(FakeApiError(ApiFailureKind::Contract))),
             PayFailure::Eligibility(ApiFailureKind::Contract),
-            6,
+            7,
         ),
         FailureStage::Create => (
             ReaderScript::Present,
             script.with_creation(Err(FakeApiError(ApiFailureKind::AmbiguousWrite))),
             PayFailure::Create(ApiFailureKind::AmbiguousWrite),
-            8,
+            9,
         ),
     })
 }

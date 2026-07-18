@@ -42,6 +42,7 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
         vec![
             Call::ReadCredential,
             current_account_call(),
+            user_search_call()?,
             user_lookup_call("456")?,
             balance_call(),
             funding_methods_call(),

@@ -4,11 +4,11 @@ expression: help
 ---
 Show information about one Venmo user
 
-Usage: info <USER_ID>
+Usage: info <USERNAME>
 
 Arguments:
-  <USER_ID>
-          Canonical user ID
+  <USERNAME>
+          Username with an optional leading @
 
 Options:
   -h, --help

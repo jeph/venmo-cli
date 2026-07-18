@@ -3,7 +3,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use crate::features::activity::{ActivityBeforeId, ActivityId};
 use crate::features::people::UserSearchQuery;
 use crate::features::requests::{RequestDirectionFilter, RequestId, RequestsBefore};
-use crate::shared::{Limit, Offset, UserId};
+use crate::shared::{Limit, Offset, Username};
 
 use super::parsers::{RedactedActivityBeforeIdParser, RedactedRequestsBeforeParser};
 
@@ -47,14 +47,14 @@ pub enum UsersOperation {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 pub struct UserInfoArgs {
-    /// Canonical user ID.
-    #[arg(value_name = "USER_ID")]
-    pub user_id: UserId,
+    /// Username with an optional leading @.
+    #[arg(value_name = "USERNAME")]
+    pub username: Username,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 pub struct UserSearchArgs {
-    /// Search text.
+    /// Username (with optional @) or multi-word search text.
     #[arg(value_name = "QUERY")]
     pub query: UserSearchQuery,
 

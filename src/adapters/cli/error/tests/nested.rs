@@ -3,6 +3,7 @@ use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::payments::FinancialValidationError;
 use crate::features::payments::funding::FundingSelectionError;
 use crate::features::people::info::UserInfoError;
+use crate::features::people::lookup::UserLookupError;
 use crate::features::people::recipients::{
     RecipientResolutionError, RecipientResolutionFailureKind,
 };
@@ -35,6 +36,12 @@ fn user_and_request_info_error_variants_have_exhaustive_cli_classifications() {
                 problem: "synthetic contract failure",
             },
             ErrorCategory::ApiContract,
+        ),
+        (
+            UserInfoError::Lookup {
+                source: UserLookupError::UsernameNotFound,
+            },
+            ErrorCategory::Usage,
         ),
     ];
     for (error, expected_category) in user_cases {
@@ -203,10 +210,6 @@ fn recipient_resolution_variants_have_deliberate_classes() {
         ),
         (
             RecipientResolutionError::AmbiguousUsername,
-            ApplicationFailureKind::Usage,
-        ),
-        (
-            RecipientResolutionError::IncompleteUsernameSearch,
             ApplicationFailureKind::Usage,
         ),
         (
