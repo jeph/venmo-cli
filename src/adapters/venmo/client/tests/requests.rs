@@ -319,6 +319,7 @@ async fn request_update_mismatches_and_unverified_errors_are_ambiguous() -> Test
             serde_json::json!({"data":{"id":"request-1","status":"settled"}}),
         ),
         (400, serde_json::json!({"error":{"code":2901}})),
+        (401, serde_json::json!({"error":{"code":"unauthorized"}})),
     ] {
         let server = MockServer::start().await;
         Mock::given(method("PUT"))

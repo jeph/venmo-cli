@@ -39,9 +39,9 @@ The command interface is intentionally not backward-compatible:
 
 | Removed TypeScript form | Rust form |
 | --- | --- |
-| `venmo init` | `venmo auth login --token` or `venmo auth login` |
+| `venmo init` | `venmo auth login` |
 | `venmo status` | `venmo auth status` |
-| `venmo deinit [--revoke]` | `venmo auth logout [--revoke]` |
+| `venmo deinit [--revoke]` | `venmo auth logout` (local credential removal only) |
 | `venmo search <QUERY>` | `venmo users search <QUERY>` |
 | `venmo payment-methods list` | `venmo payment-methods list` |
 
@@ -102,7 +102,7 @@ When the validated source response has another page, the CLI writes only the end
 
 Pending-request direction remains a local filter over that one source page. A filtered invocation can therefore emit fewer than `--limit` records, including none, while still reporting the source page's `before` continuation. Continuation tokens are bounded, reject whitespace and control characters, and are redacted from parsing errors and diagnostic formatting. The transport still validates every server next link against the fixed origin, route, and endpoint query allowlist and reconstructs subsequent requests locally. Internal exact-recipient resolution remains a separate exhaustive user-search traversal with its existing 200-record/four-page fail-closed bounds and no user-supplied continuation.
 
-### Trusted-device mobile login and reauthentication
+### Trusted-device mobile login
 
 `venmo auth login` uses Venmo's unsupported legacy mobile-private password/SMS-OTP flow. Before running it, sign in through Venmo's normal browser interface and manually obtain the `v_id`/device ID for that already trusted browser session. The CLI does not automate the browser, import cookies, or generate a replacement device ID.
 
@@ -114,29 +114,15 @@ Run the login only in your own interactive terminal:
 cargo run -- auth login
 ```
 
-The CLI prompts for the account identifier, password, trusted device ID, and—only if Venmo returns the recognized challenge—SMS OTP, in that order. Password, device ID, and OTP input are hidden with terminal echo disabled. It sends one non-retried authentication attempt, validates any issued token with the current-account endpoint, then stores only the validated bearer token, device ID, and account metadata in the native OS credential store. Direct password success requires no redundant device-trust update; after OTP, device trust is attempted once after the validated credential is safely stored. Password and OTP material are never stored.
+The CLI always prompts for the account identifier, password, and a newly supplied trusted device ID, followed—only if Venmo returns the recognized challenge—by SMS OTP. Password, device ID, and OTP input are hidden with terminal echo disabled. Login never reuses a stored device ID because Venmo may have invalidated it. It sends one non-retried authentication attempt, validates any issued token with the current-account endpoint, then stores only the validated bearer token, newly supplied device ID, and account metadata in the native OS credential store. Direct password success requires no redundant device-trust update; after OTP, device trust is attempted once after the validated credential is safely stored. Account identifiers, passwords, OTPs, and OTP secrets are never stored.
 
-After a credential has been stored, renew an expired token without finding or entering the device ID again:
+Login does not require logout first. A successful login may replace any readable existing credential, including one for a different account, but only after the new token validates and the replacement reads back exactly. Any failure before storage leaves the previous entry untouched. Replacing a credential does not revoke the previous bearer token, so the CLI warns that it may remain remotely valid and points to official Venmo session controls.
 
-```sh
-cargo run -- auth reauthenticate
-```
+The CLI does not import bearer tokens, store reusable passwords, refresh sessions automatically, retry authentication, or expose a separate reauthentication command. A definitive HTTP 401 from an authenticated request preserves the keyring entry and directs the user to run `venmo auth login` explicitly. Arbitrary non-401 API rejections retain their general classification, and uncertain financial writes remain ambiguous and must not be retried.
 
-`venmo auth reauthenticate` requires one readable stored credential and an interactive terminal. It reuses that credential's stored trusted device ID without prompting for or printing it, then prompts only for the account identifier, hidden password, and—only for the exact recognized challenge—hidden SMS OTP. The old bearer token is not validated or required to remain valid. This is a complete, single-attempt password/optional-OTP token issuance, **not** a refresh-token operation; no refresh mechanism is known.
+Never put a device ID, password, OTP, bearer token, or browser cookie in a command argument, environment variable, file, chat, screenshot, or log. Login exposes no secret, environment, or stdin-file flags. If Venmo rejects an attempt, stop rather than repeatedly retrying.
 
-The replacement token is validated through current-account with the stored device ID. Its returned user ID must match the stored credential's user ID before the CLI replaces and reads back the credential. A validation failure or different account leaves the old credential untouched; because a mismatched token was still issued remotely, the CLI warns that it may remain active. Direct password success skips the redundant device-trust request. After OTP, the CLI saves and verifies the replacement first and then makes one best-effort trust request; if only that request fails, it truthfully reports incomplete success while keeping the validated replacement.
-
-This stored-device flow has been live-verified across separate processes: direct password reauthentication issued and saved a same-account replacement token without OTP, and a subsequent `auth status` successfully reloaded and validated it. That proves the no-device-prompt renewal path, not fresh-device bootstrap, headerless authentication, automatic refresh, or any guaranteed token lifetime. Reauthentication does not automatically revoke the previous bearer because the scope of private-API revocation is undocumented; the command warns that the previous token's remote validity is unknown.
-
-Never put a device ID, password, OTP, bearer token, or browser cookie in a command argument, environment variable, file, chat, screenshot, or log. Neither authentication command exposes secret, environment, or stdin-file flags. If Venmo rejects an attempt, stop rather than repeatedly retrying. Password, OTP, and OTP-secret material are never stored.
-
-An existing bearer token can instead be imported through hidden prompts:
-
-```sh
-cargo run -- auth login --token
-```
-
-Initial password login refuses to replace a readable stored credential. Use `auth reauthenticate` to renew the same account while retaining its device identity. Run `cargo run -- auth logout` first only when intentionally switching accounts; omit `--revoke` unless remote revocation is also intended.
+`venmo auth status` validates the stored session and account. `venmo auth logout` removes only the local keyring entry; it does not contact Venmo or revoke the remote bearer token, and it reports that consequence truthfully.
 
 ## Contributor documentation
 

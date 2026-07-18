@@ -5,6 +5,7 @@ use std::fmt;
 pub enum ApiFailureKind {
     Network,
     Timeout,
+    Authentication,
     Rejected,
     Contract,
     AmbiguousWrite,

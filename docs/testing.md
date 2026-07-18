@@ -148,7 +148,7 @@ test.
 
 Verbose precondition coverage injects a recording/failing logging initializer into the private
 dispatch seam. Complete state equality proves completion generation and
-noninteractive login/reauthentication make zero initializer and executor calls. Delegated fake
+noninteractive login make zero initializer and executor calls. Delegated fake
 commands, including `accept` and `decline`, prove initialization occurs first and that an
 initialization error prevents execution.
 These tests never install the real process-global subscriber.

@@ -52,15 +52,6 @@ _arguments "${_arguments_options[@]}" : \
         case $line[1] in
             (login)
 _arguments "${_arguments_options[@]}" : \
-'--token[Import a bearer token and prompt for its matching device ID when needed]' \
-'-v[Write redacted diagnostics to stderr]' \
-'--verbose[Write redacted diagnostics to stderr]' \
-'-h[Print help (see more with '\''--help'\'')]' \
-'--help[Print help (see more with '\''--help'\'')]' \
-&& ret=0
-;;
-(reauthenticate)
-_arguments "${_arguments_options[@]}" : \
 '-v[Write redacted diagnostics to stderr]' \
 '--verbose[Write redacted diagnostics to stderr]' \
 '-h[Print help (see more with '\''--help'\'')]' \
@@ -69,11 +60,10 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (logout)
 _arguments "${_arguments_options[@]}" : \
-'--revoke[Attempt to revoke the bearer token before deleting it locally]' \
 '-v[Write redacted diagnostics to stderr]' \
 '--verbose[Write redacted diagnostics to stderr]' \
-'-h[Print help]' \
-'--help[Print help]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 && ret=0
 ;;
 (status)
@@ -97,10 +87,6 @@ _arguments "${_arguments_options[@]}" : \
         curcontext="${curcontext%:*:*}:venmo-auth-help-command-$line[1]:"
         case $line[1] in
             (login)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(reauthenticate)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -531,10 +517,6 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(reauthenticate)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
 (logout)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -771,9 +753,8 @@ _venmo__subcmd__activity__subcmd__list_commands() {
 (( $+functions[_venmo__subcmd__auth_commands] )) ||
 _venmo__subcmd__auth_commands() {
     local commands; commands=(
-'login:Authenticate with a trusted device and password/SMS OTP, or import a bearer token' \
-'reauthenticate:Replace an expired token using the stored trusted device and password/SMS OTP' \
-'logout:Remove the locally stored credential' \
+'login:Authenticate with a newly supplied trusted device and password/SMS OTP' \
+'logout:Remove the local credential without revoking the remote token' \
 'status:Validate the credential and show the active account' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -782,9 +763,8 @@ _venmo__subcmd__auth_commands() {
 (( $+functions[_venmo__subcmd__auth__subcmd__help_commands] )) ||
 _venmo__subcmd__auth__subcmd__help_commands() {
     local commands; commands=(
-'login:Authenticate with a trusted device and password/SMS OTP, or import a bearer token' \
-'reauthenticate:Replace an expired token using the stored trusted device and password/SMS OTP' \
-'logout:Remove the locally stored credential' \
+'login:Authenticate with a newly supplied trusted device and password/SMS OTP' \
+'logout:Remove the local credential without revoking the remote token' \
 'status:Validate the credential and show the active account' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -805,11 +785,6 @@ _venmo__subcmd__auth__subcmd__help__subcmd__logout_commands() {
     local commands; commands=()
     _describe -t commands 'venmo auth help logout commands' commands "$@"
 }
-(( $+functions[_venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate_commands] )) ||
-_venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate_commands() {
-    local commands; commands=()
-    _describe -t commands 'venmo auth help reauthenticate commands' commands "$@"
-}
 (( $+functions[_venmo__subcmd__auth__subcmd__help__subcmd__status_commands] )) ||
 _venmo__subcmd__auth__subcmd__help__subcmd__status_commands() {
     local commands; commands=()
@@ -824,11 +799,6 @@ _venmo__subcmd__auth__subcmd__login_commands() {
 _venmo__subcmd__auth__subcmd__logout_commands() {
     local commands; commands=()
     _describe -t commands 'venmo auth logout commands' commands "$@"
-}
-(( $+functions[_venmo__subcmd__auth__subcmd__reauthenticate_commands] )) ||
-_venmo__subcmd__auth__subcmd__reauthenticate_commands() {
-    local commands; commands=()
-    _describe -t commands 'venmo auth reauthenticate commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__auth__subcmd__status_commands] )) ||
 _venmo__subcmd__auth__subcmd__status_commands() {
@@ -932,9 +902,8 @@ _venmo__subcmd__help__subcmd__activity__subcmd__list_commands() {
 (( $+functions[_venmo__subcmd__help__subcmd__auth_commands] )) ||
 _venmo__subcmd__help__subcmd__auth_commands() {
     local commands; commands=(
-'login:Authenticate with a trusted device and password/SMS OTP, or import a bearer token' \
-'reauthenticate:Replace an expired token using the stored trusted device and password/SMS OTP' \
-'logout:Remove the locally stored credential' \
+'login:Authenticate with a newly supplied trusted device and password/SMS OTP' \
+'logout:Remove the local credential without revoking the remote token' \
 'status:Validate the credential and show the active account' \
     )
     _describe -t commands 'venmo help auth commands' commands "$@"
@@ -948,11 +917,6 @@ _venmo__subcmd__help__subcmd__auth__subcmd__login_commands() {
 _venmo__subcmd__help__subcmd__auth__subcmd__logout_commands() {
     local commands; commands=()
     _describe -t commands 'venmo help auth logout commands' commands "$@"
-}
-(( $+functions[_venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate_commands] )) ||
-_venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate_commands() {
-    local commands; commands=()
-    _describe -t commands 'venmo help auth reauthenticate commands' commands "$@"
 }
 (( $+functions[_venmo__subcmd__help__subcmd__auth__subcmd__status_commands] )) ||
 _venmo__subcmd__help__subcmd__auth__subcmd__status_commands() {

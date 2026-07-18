@@ -2,13 +2,12 @@
 source: tests/cli.rs
 expression: help
 ---
-Remove the locally stored credential
+Remove the local credential without revoking the remote token
 
-Usage: logout [OPTIONS]
+Usage: logout
 
 Options:
-      --revoke
-          Attempt to revoke the bearer token before deleting it locally
-
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
+
+Deletes only the local keyring entry. It does not contact Venmo or revoke the remote bearer token.

@@ -52,22 +52,13 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('login', 'login', [CompletionResultType]::ParameterValue, 'Authenticate with a trusted device and password/SMS OTP, or import a bearer token')
-            [CompletionResult]::new('reauthenticate', 'reauthenticate', [CompletionResultType]::ParameterValue, 'Replace an expired token using the stored trusted device and password/SMS OTP')
-            [CompletionResult]::new('logout', 'logout', [CompletionResultType]::ParameterValue, 'Remove the locally stored credential')
+            [CompletionResult]::new('login', 'login', [CompletionResultType]::ParameterValue, 'Authenticate with a newly supplied trusted device and password/SMS OTP')
+            [CompletionResult]::new('logout', 'logout', [CompletionResultType]::ParameterValue, 'Remove the local credential without revoking the remote token')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Validate the credential and show the active account')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'venmo;auth;login' {
-            [CompletionResult]::new('--token', '--token', [CompletionResultType]::ParameterName, 'Import a bearer token and prompt for its matching device ID when needed')
-            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
-            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            break
-        }
-        'venmo;auth;reauthenticate' {
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
@@ -75,11 +66,10 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             break
         }
         'venmo;auth;logout' {
-            [CompletionResult]::new('--revoke', '--revoke', [CompletionResultType]::ParameterName, 'Attempt to revoke the bearer token before deleting it locally')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
             [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Write redacted diagnostics to stderr')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
         'venmo;auth;status' {
@@ -90,17 +80,13 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             break
         }
         'venmo;auth;help' {
-            [CompletionResult]::new('login', 'login', [CompletionResultType]::ParameterValue, 'Authenticate with a trusted device and password/SMS OTP, or import a bearer token')
-            [CompletionResult]::new('reauthenticate', 'reauthenticate', [CompletionResultType]::ParameterValue, 'Replace an expired token using the stored trusted device and password/SMS OTP')
-            [CompletionResult]::new('logout', 'logout', [CompletionResultType]::ParameterValue, 'Remove the locally stored credential')
+            [CompletionResult]::new('login', 'login', [CompletionResultType]::ParameterValue, 'Authenticate with a newly supplied trusted device and password/SMS OTP')
+            [CompletionResult]::new('logout', 'logout', [CompletionResultType]::ParameterValue, 'Remove the local credential without revoking the remote token')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Validate the credential and show the active account')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'venmo;auth;help;login' {
-            break
-        }
-        'venmo;auth;help;reauthenticate' {
             break
         }
         'venmo;auth;help;logout' {
@@ -366,16 +352,12 @@ Register-ArgumentCompleter -Native -CommandName 'venmo' -ScriptBlock {
             break
         }
         'venmo;help;auth' {
-            [CompletionResult]::new('login', 'login', [CompletionResultType]::ParameterValue, 'Authenticate with a trusted device and password/SMS OTP, or import a bearer token')
-            [CompletionResult]::new('reauthenticate', 'reauthenticate', [CompletionResultType]::ParameterValue, 'Replace an expired token using the stored trusted device and password/SMS OTP')
-            [CompletionResult]::new('logout', 'logout', [CompletionResultType]::ParameterValue, 'Remove the locally stored credential')
+            [CompletionResult]::new('login', 'login', [CompletionResultType]::ParameterValue, 'Authenticate with a newly supplied trusted device and password/SMS OTP')
+            [CompletionResult]::new('logout', 'logout', [CompletionResultType]::ParameterValue, 'Remove the local credential without revoking the remote token')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Validate the credential and show the active account')
             break
         }
         'venmo;help;auth;login' {
-            break
-        }
-        'venmo;help;auth;reauthenticate' {
             break
         }
         'venmo;help;auth;logout' {

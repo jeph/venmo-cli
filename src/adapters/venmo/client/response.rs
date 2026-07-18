@@ -10,10 +10,11 @@ pub(super) fn decode_success<T: DeserializeOwned>(
     response: HttpResponse,
     problem: &'static str,
 ) -> Result<T, VenmoApiError> {
-    let value = require_success_value(operation, response)?.ok_or(VenmoApiError::Contract {
-        operation,
-        problem: "the response body was empty",
-    })?;
+    let value =
+        require_success_value(operation, response, true)?.ok_or(VenmoApiError::Contract {
+            operation,
+            problem: "the response body was empty",
+        })?;
     serde_json::from_value(value).map_err(|_| VenmoApiError::Contract { operation, problem })
 }
 
@@ -75,16 +76,24 @@ pub(super) fn require_success(
     operation: &'static str,
     response: HttpResponse,
 ) -> Result<(), VenmoApiError> {
-    require_success_value(operation, response).map(|_| ())
+    require_success_value(operation, response, false).map(|_| ())
 }
 
 fn require_success_value(
     operation: &'static str,
     response: HttpResponse,
+    authenticated: bool,
 ) -> Result<Option<Value>, VenmoApiError> {
     let status = response.status();
     let value = parse_response_value(operation, status, response.body())?;
-    require_success_parsed(operation, status, value)
+    require_success_parsed_with_authentication(operation, status, value, authenticated)
+}
+
+pub(super) fn require_authenticated_success(
+    operation: &'static str,
+    response: HttpResponse,
+) -> Result<(), VenmoApiError> {
+    require_success_value(operation, response, true).map(|_| ())
 }
 
 pub(super) fn parse_response_value(
@@ -107,13 +116,30 @@ pub(super) fn require_success_parsed(
     status: reqwest::StatusCode,
     value: Option<Value>,
 ) -> Result<Option<Value>, VenmoApiError> {
+    require_success_parsed_with_authentication(operation, status, value, false)
+}
+
+fn require_success_parsed_with_authentication(
+    operation: &'static str,
+    status: reqwest::StatusCode,
+    value: Option<Value>,
+    authenticated: bool,
+) -> Result<Option<Value>, VenmoApiError> {
     let error_code = value.as_ref().and_then(extract_error_code);
     let code_suffix = ApiCodeSuffix::from_remote(error_code.as_deref());
     if !status.is_success() {
-        return Err(VenmoApiError::Http {
-            operation,
-            status: status.as_u16(),
-            code_suffix,
+        return Err(if authenticated {
+            VenmoApiError::AuthenticatedHttp {
+                operation,
+                status: status.as_u16(),
+                code_suffix,
+            }
+        } else {
+            VenmoApiError::Http {
+                operation,
+                status: status.as_u16(),
+                code_suffix,
+            }
         });
     }
     if error_code.as_deref().is_some_and(is_failure_error_code) {

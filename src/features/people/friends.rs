@@ -147,9 +147,10 @@ mod tests {
     const FIXTURE_TOKEN: &str = "synthetic-token";
     const FIXTURE_DEVICE_ID: &str = "synthetic-device";
     const FIXTURE_USER_ID: &str = "1000";
-    const API_FAILURE_KINDS: [ApiFailureKind; 6] = [
+    const API_FAILURE_KINDS: [ApiFailureKind; 7] = [
         ApiFailureKind::Network,
         ApiFailureKind::Timeout,
+        ApiFailureKind::Authentication,
         ApiFailureKind::Rejected,
         ApiFailureKind::Contract,
         ApiFailureKind::AmbiguousWrite,

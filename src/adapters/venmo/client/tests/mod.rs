@@ -26,7 +26,7 @@ use crate::features::activity::{
 };
 use crate::features::auth::{
     AccountPassword, CurrentAccountApi, LoginIdentifier, OtpCode, OtpSecret, PasswordLoginApi,
-    PasswordLoginStart, TokenRevocationApi,
+    PasswordLoginStart,
 };
 use crate::features::doctor::DoctorApi;
 use crate::features::payments::{
@@ -191,6 +191,9 @@ impl ApiErrorSnapshot {
             VenmoApiError::Transport(error) => ApiErrorDetail::Transport(error),
             VenmoApiError::Http {
                 operation, status, ..
+            }
+            | VenmoApiError::AuthenticatedHttp {
+                operation, status, ..
             } => ApiErrorDetail::Http {
                 operation,
                 status,
@@ -255,13 +258,18 @@ impl ApiErrorSnapshot {
 
     fn http(operation: &'static str, status: u16, code: Option<&str>) -> Self {
         let code_suffix = code.map_or_else(String::new, |code| format!(" (error code {code})"));
+        let authenticated = if status == 401 { "authenticated " } else { "" };
         Self {
-            kind: ApiFailureKind::Rejected,
+            kind: if status == 401 {
+                ApiFailureKind::Authentication
+            } else {
+                ApiFailureKind::Rejected
+            },
             detail: ApiErrorDetail::Http {
                 operation,
                 status,
                 rendered: format!(
-                    "Venmo rejected the {operation} request with HTTP {status}{code_suffix}"
+                    "Venmo rejected the {authenticated}{operation} request with HTTP {status}{code_suffix}"
                 ),
             },
         }

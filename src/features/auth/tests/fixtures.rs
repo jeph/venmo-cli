@@ -6,7 +6,6 @@ pub(super) const SECONDARY_USER_ID: &str = "200";
 pub(super) const USERNAME: &str = "alice";
 pub(super) const DISPLAY_NAME: &str = "Alice";
 pub(super) const STORED_TOKEN: &str = "synthetic-stored-access-token";
-pub(super) const IMPORTED_TOKEN: &str = "synthetic-imported-access-token";
 pub(super) const ISSUED_TOKEN: &str = "synthetic-issued-access-token";
 pub(super) const MISMATCHED_TOKEN: &str = "synthetic-mismatched-access-token";
 pub(super) const STORED_DEVICE: &str = "synthetic-stored-device";
@@ -80,7 +79,6 @@ impl fmt::Debug for AccountSnapshot {
 #[derive(Clone, Copy)]
 pub(super) enum TokenMaterial {
     Stored,
-    Imported,
     Issued,
     Mismatched,
 }
@@ -89,7 +87,6 @@ impl TokenMaterial {
     pub(super) const fn value(self) -> &'static str {
         match self {
             Self::Stored => STORED_TOKEN,
-            Self::Imported => IMPORTED_TOKEN,
             Self::Issued => ISSUED_TOKEN,
             Self::Mismatched => MISMATCHED_TOKEN,
         }
@@ -98,7 +95,6 @@ impl TokenMaterial {
     pub(super) const fn snapshot(self) -> SecretSnapshot {
         match self {
             Self::Stored => SecretSnapshot::Stored,
-            Self::Imported => SecretSnapshot::Imported,
             Self::Issued => SecretSnapshot::Issued,
             Self::Mismatched => SecretSnapshot::Mismatched,
         }
@@ -130,7 +126,6 @@ impl DeviceMaterial {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum SecretSnapshot {
     Stored,
-    Imported,
     Issued,
     Prompted,
     Mismatched,
@@ -146,7 +141,6 @@ impl fmt::Debug for SecretSnapshot {
 pub(super) fn token_snapshot(value: &str) -> SecretSnapshot {
     match value {
         STORED_TOKEN => SecretSnapshot::Stored,
-        IMPORTED_TOKEN => SecretSnapshot::Imported,
         ISSUED_TOKEN => SecretSnapshot::Issued,
         MISMATCHED_TOKEN => SecretSnapshot::Mismatched,
         _ => SecretSnapshot::Unknown,

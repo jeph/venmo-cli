@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::io::{self, Write};
 
-use super::args::{AuthArgs, AuthOperation, Cli, Command, LogoutArgs};
+use super::args::{AuthArgs, AuthOperation, Cli, Command};
 use super::completions;
 use super::error::AppError;
 use super::logging::InitializationError;
@@ -119,14 +119,11 @@ where
 }
 
 fn auth_requires_interactive_terminal(args: &AuthArgs) -> bool {
-    matches!(
-        args.operation,
-        AuthOperation::Login(_) | AuthOperation::Reauthenticate
-    )
+    matches!(args.operation, AuthOperation::Login)
 }
 
 /// Preserves synchronous/service-free behavior if the one process runtime cannot be built.
-/// Revoking logout still deletes locally and reports that remote revocation was not attempted.
+/// Local-only logout still deletes the keyring entry without constructing a runtime.
 pub fn handle_runtime_initialization_failure<W, E>(
     cli: Cli,
     stdout: &mut W,
@@ -177,16 +174,10 @@ where
     let failure = AppError::RuntimeInitialization { source };
     match command {
         Command::Auth(AuthArgs {
-            operation: AuthOperation::Logout(LogoutArgs { revoke: false }),
+            operation: AuthOperation::Logout,
         }) => {
             let store = NativeCredentialStore::new();
             auth::run_logout_local_with(&store, stdout, stderr)
-        }
-        Command::Auth(AuthArgs {
-            operation: AuthOperation::Logout(LogoutArgs { revoke: true }),
-        }) => {
-            let store = NativeCredentialStore::new();
-            auth::finish_logout_after_remote_initialization_failure(&store, stdout, stderr, failure)
         }
         _ => Err(failure),
     }

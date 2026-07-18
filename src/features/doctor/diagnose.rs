@@ -141,9 +141,7 @@ fn authentication_check(authentication: AuthenticationDiagnostic) -> DoctorCheck
             "Current-account authentication",
             DoctorCheckStatus::Fail,
             api_failure_detail(kind),
-            Some(
-                "Run `venmo auth reauthenticate`; use `venmo auth login --token` only to import a replacement bearer.",
-            ),
+            Some("Run `venmo auth login` to perform the complete authentication flow again."),
         ),
         AuthenticationDiagnostic::AccountMismatch => DoctorCheck::new(
             "Current-account authentication",
@@ -255,6 +253,7 @@ fn api_failure_detail(kind: ApiFailureKind) -> &'static str {
     match kind {
         ApiFailureKind::Network => "the network request failed",
         ApiFailureKind::Timeout => "the network request timed out",
+        ApiFailureKind::Authentication => "the stored Venmo session was rejected",
         ApiFailureKind::Rejected => "Venmo rejected the request",
         ApiFailureKind::Contract => "the private API response shape was not recognized",
         ApiFailureKind::AmbiguousWrite => "an unexpected ambiguous-write classification occurred",

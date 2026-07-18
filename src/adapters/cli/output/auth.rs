@@ -3,8 +3,8 @@ use std::io::{self, Write};
 use time::format_description::well_known::Rfc3339;
 
 use crate::features::auth::{
-    AuthStatus, DeviceTrustOutcome, LocalDeletionOutcome, LoginResult, LogoutReport,
-    PasswordLoginReport, RemoteRevocationOutcome,
+    AuthStatus, DeviceTrustOutcome, LocalDeletionOutcome, LoginDisposition, LoginResult,
+    LogoutReport, PasswordLoginReport,
 };
 use crate::shared::CredentialFormat;
 
@@ -24,6 +24,12 @@ pub(crate) fn write_password_login_report<W: Write, E: Write>(
     report: &PasswordLoginReport,
 ) -> io::Result<()> {
     write_login_result(stdout, report.login())?;
+    if report.login().disposition() == LoginDisposition::ReplacedExistingCredential {
+        writeln!(
+            stderr,
+            "warning: the previous bearer token was not revoked; use official Venmo session controls if it must be invalidated."
+        )?;
+    }
     match report.device_trust() {
         DeviceTrustOutcome::NotNeeded => {
             writeln!(stdout, "Venmo accepted the existing trusted login device.")
@@ -35,18 +41,6 @@ pub(crate) fn write_password_login_report<W: Write, E: Write>(
             sanitize_terminal_text(&source.to_string())
         ),
     }
-}
-
-pub(crate) fn write_reauthentication_report<W: Write, E: Write>(
-    stdout: &mut W,
-    stderr: &mut E,
-    report: &PasswordLoginReport,
-) -> io::Result<()> {
-    write_password_login_report(stdout, stderr, report)?;
-    writeln!(
-        stderr,
-        "warning: reauthentication does not revoke the previous bearer token; its remote validity is unknown, so use official Venmo session controls if it must be invalidated."
-    )
 }
 
 pub(crate) fn write_auth_status<W: Write>(writer: &mut W, status: &AuthStatus) -> io::Result<()> {
@@ -80,30 +74,13 @@ pub(crate) fn write_logout_report<W: Write, E: Write>(
     stderr: &mut E,
     report: &LogoutReport,
 ) -> io::Result<()> {
-    match report.remote() {
-        RemoteRevocationOutcome::NotRequested | RemoteRevocationOutcome::NotNeeded => {}
-        RemoteRevocationOutcome::Revoked => {
-            writeln!(stdout, "Revoked the remote Venmo token.")?;
-        }
-        RemoteRevocationOutcome::Failed(source) => {
-            writeln!(
-                stderr,
-                "warning: remote token revocation failed: {}; the token may still be valid.",
-                sanitize_terminal_text(&source.to_string())
-            )?;
-        }
-        RemoteRevocationOutcome::NotAttempted { source, .. } => {
-            writeln!(
-                stderr,
-                "warning: remote token revocation was not attempted: {}; remote token state is unknown.",
-                sanitize_terminal_text(&source.to_string())
-            )?;
-        }
-    }
-
     match report.local() {
         LocalDeletionOutcome::Deleted => {
             writeln!(stdout, "Removed the local Venmo credential.")?;
+            writeln!(
+                stderr,
+                "warning: local logout does not revoke the remote bearer token; use official Venmo session controls if it must be invalidated."
+            )?;
         }
         LocalDeletionOutcome::Missing => {
             writeln!(stdout, "No local Venmo credential was stored.")?;

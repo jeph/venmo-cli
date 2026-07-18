@@ -136,23 +136,6 @@ impl<'a> HttpRequest<'a> {
     }
 
     #[must_use]
-    pub(in crate::adapters::venmo) const fn non_financial_delete(
-        route_template: &'static str,
-        path_segments: &'a [&'a str],
-        query: &'a [(&'a str, &'a str)],
-    ) -> Self {
-        Self::new(
-            Method::DELETE,
-            route_template,
-            path_segments,
-            query,
-            None,
-            OperationClass::NonFinancialWrite,
-            ResponseCapture::None,
-        )
-    }
-
-    #[must_use]
     pub(in crate::adapters::venmo) fn financial_json_post(
         route_template: &'static str,
         path_segments: &'a [&'a str],

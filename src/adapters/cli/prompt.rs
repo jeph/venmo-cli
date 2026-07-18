@@ -9,7 +9,7 @@ use crate::features::auth::{
     AccountPassword, AuthenticationInput, LoginIdentifier, OtpCode, PromptAvailability, PromptError,
 };
 use crate::features::payments::DefaultNoConfirmation;
-use crate::shared::{AccessToken, DeviceId};
+use crate::shared::DeviceId;
 
 /// Immutable snapshot of the process streams relevant to safe prompting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,11 +90,6 @@ impl AuthenticationInput for DialoguerPrompt {
     fn read_otp_code(&self, prompt: &str) -> Result<OtpCode, PromptError> {
         let raw = read_hidden(&self.term, prompt)?;
         OtpCode::parse_owned(raw).map_err(|source| PromptError::InvalidOtpCode { source })
-    }
-
-    fn read_access_token(&self, prompt: &str) -> Result<AccessToken, PromptError> {
-        let raw = read_hidden(&self.term, prompt)?;
-        AccessToken::parse_owned(raw).map_err(|source| PromptError::InvalidAccessToken { source })
     }
 
     fn read_device_id(&self, prompt: &str) -> Result<DeviceId, PromptError> {

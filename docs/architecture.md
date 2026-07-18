@@ -73,8 +73,8 @@ an owner.
 
 Put a port beside its consumer, normally in `features/<name>/ports.rs`. The shared credential
 reader/writer/deleter traits are the deliberate exception because several features consume those
-independent capabilities. Authentication keeps `CurrentAccountApi`, `TokenRevocationApi`, and
-`PasswordLoginApi` separate; possessing one capability must not imply possessing the others.
+independent capabilities. Authentication keeps `CurrentAccountApi` and `PasswordLoginApi`
+separate; possessing one capability must not imply possessing the other.
 
 ## One Venmo client and transport
 
@@ -153,7 +153,7 @@ features directly. Follow the CLI pattern:
 3. Back production reads with a private read-only facade around the same `VenmoApiClient` and
    `VenmoHttpTransport`. The facade restricts capabilities; it is not another client.
 4. Give server state only `CredentialReader` and required read API capabilities. Do not expose
-   credential writing/deletion, password login, token revocation, adapter modules, or raw DTOs.
+   credential writing/deletion, password login/device trust, adapter modules, or raw DTOs.
 5. If a separate binary needs library entry points, add a small curated public `mcp` facade for
    process startup/protocol types, analogous to `cli`; do not make `features` or `adapters` public.
 6. Keep MCP-specific serialization in that frontend and return structured views mapped from the

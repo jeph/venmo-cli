@@ -93,7 +93,7 @@ fn login_result_compares_all_fields_as_one_redacted_value() -> TestResult {
     let different_disposition = LoginResult::new(
         primary.clone(),
         saved_at,
-        LoginDisposition::ReplacedForSameAccount,
+        LoginDisposition::ReplacedExistingCredential,
     );
 
     assert_eq!(actual, equal);
@@ -161,7 +161,6 @@ impl PasswordLoginSnapshot {
 pub(super) enum PromptFailureSnapshot {
     Cancelled,
     NotInteractive,
-    InvalidAccessToken,
     InvalidDeviceId,
     InvalidLoginIdentifier,
     InvalidAccountPassword,
@@ -174,7 +173,6 @@ impl PromptFailureSnapshot {
         match error {
             PromptError::Cancelled => Self::Cancelled,
             PromptError::NotInteractive => Self::NotInteractive,
-            PromptError::InvalidAccessToken { .. } => Self::InvalidAccessToken,
             PromptError::InvalidDeviceId { .. } => Self::InvalidDeviceId,
             PromptError::InvalidLoginIdentifier { .. } => Self::InvalidLoginIdentifier,
             PromptError::InvalidAccountPassword { .. } => Self::InvalidAccountPassword,
@@ -194,16 +192,10 @@ pub(super) enum StorageFailureSnapshot {
 pub(super) enum LoginFailure {
     Prompt(PromptFailureSnapshot),
     CredentialLoad,
-    CredentialAlreadyStored,
-    ReauthenticationCredentialMissing,
-    TokenValidation(ApiFailureKind),
     IssuedTokenValidation(ApiFailureKind),
     PasswordAuthentication(ApiFailureKind),
     OtpRequest(ApiFailureKind),
     OtpCompletion(ApiFailureKind),
-    DifferentAccount,
-    IssuedTokenDifferentAccount,
-    CredentialStorageStateUnknown(StorageFailureSnapshot),
     IssuedCredentialStorageStateUnknown(StorageFailureSnapshot),
 }
 
@@ -220,11 +212,6 @@ impl LoginFailureSnapshot {
                 LoginFailure::Prompt(PromptFailureSnapshot::from_error(source))
             }
             LoginError::CredentialLoad { .. } => LoginFailure::CredentialLoad,
-            LoginError::CredentialAlreadyStored => LoginFailure::CredentialAlreadyStored,
-            LoginError::ReauthenticationCredentialMissing => {
-                LoginFailure::ReauthenticationCredentialMissing
-            }
-            LoginError::TokenValidation { source } => LoginFailure::TokenValidation(source.kind()),
             LoginError::IssuedTokenValidation { source } => {
                 LoginFailure::IssuedTokenValidation(source.kind())
             }
@@ -233,15 +220,6 @@ impl LoginFailureSnapshot {
             }
             LoginError::OtpRequest { source } => LoginFailure::OtpRequest(source.kind()),
             LoginError::OtpCompletion { source } => LoginFailure::OtpCompletion(source.kind()),
-            LoginError::DifferentAccount => LoginFailure::DifferentAccount,
-            LoginError::IssuedTokenDifferentAccount => LoginFailure::IssuedTokenDifferentAccount,
-            LoginError::CredentialStorageStateUnknown { source } => {
-                LoginFailure::CredentialStorageStateUnknown(if source.is_some() {
-                    StorageFailureSnapshot::Operation
-                } else {
-                    StorageFailureSnapshot::MissingOrMismatch
-                })
-            }
             LoginError::IssuedCredentialStorageStateUnknown { source } => {
                 LoginFailure::IssuedCredentialStorageStateUnknown(if source.is_some() {
                     StorageFailureSnapshot::Operation
@@ -258,15 +236,6 @@ impl LoginFailureSnapshot {
 
     pub(super) const fn synthetic(kind: ApplicationFailureKind, failure: LoginFailure) -> Self {
         Self { kind, failure }
-    }
-}
-
-pub(super) fn login_outcome(
-    result: &Result<LoginResult, LoginError>,
-) -> Result<LoginSnapshot, LoginFailureSnapshot> {
-    match result {
-        Ok(login) => Ok(LoginSnapshot::from_result(login)),
-        Err(error) => Err(LoginFailureSnapshot::from_error(error)),
     }
 }
 
@@ -360,15 +329,6 @@ pub(super) fn status_outcome(
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum RemoteRevocationSnapshot {
-    NotRequested,
-    NotNeeded,
-    Revoked,
-    Failed(ApiFailureKind),
-    NotAttempted(ApplicationFailureKind),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum LocalDeletionSnapshot {
     Deleted,
     Missing,
@@ -377,7 +337,6 @@ pub(super) enum LocalDeletionSnapshot {
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) struct LogoutSnapshot {
-    pub(super) remote: RemoteRevocationSnapshot,
     pub(super) local: LocalDeletionSnapshot,
     pub(super) complete: bool,
     pub(super) failure_kind: Option<ApplicationFailureKind>,
@@ -385,13 +344,11 @@ pub(super) struct LogoutSnapshot {
 
 impl LogoutSnapshot {
     pub(super) const fn synthetic(
-        remote: RemoteRevocationSnapshot,
         local: LocalDeletionSnapshot,
         complete: bool,
         failure_kind: Option<ApplicationFailureKind>,
     ) -> Self {
         Self {
-            remote,
             local,
             complete,
             failure_kind,
@@ -399,44 +356,15 @@ impl LogoutSnapshot {
     }
 
     pub(super) fn from_report(report: &LogoutReport) -> Self {
-        let remote = match report.remote() {
-            RemoteRevocationOutcome::NotRequested => RemoteRevocationSnapshot::NotRequested,
-            RemoteRevocationOutcome::NotNeeded => RemoteRevocationSnapshot::NotNeeded,
-            RemoteRevocationOutcome::Revoked => RemoteRevocationSnapshot::Revoked,
-            RemoteRevocationOutcome::Failed(source) => {
-                RemoteRevocationSnapshot::Failed(source.kind())
-            }
-            RemoteRevocationOutcome::NotAttempted { kind, .. } => {
-                RemoteRevocationSnapshot::NotAttempted(*kind)
-            }
-        };
         let local = match report.local() {
             LocalDeletionOutcome::Deleted => LocalDeletionSnapshot::Deleted,
             LocalDeletionOutcome::Missing => LocalDeletionSnapshot::Missing,
             LocalDeletionOutcome::Failed(_) => LocalDeletionSnapshot::Failed,
         };
         Self {
-            remote,
             local,
             complete: report.is_complete_success(),
             failure_kind: report.failure_kind(),
         }
-    }
-}
-
-pub(super) fn assert_auth_material_not_disclosed(rendered: &str) {
-    for secret in [
-        STORED_TOKEN,
-        IMPORTED_TOKEN,
-        ISSUED_TOKEN,
-        MISMATCHED_TOKEN,
-        STORED_DEVICE,
-        PROMPTED_DEVICE,
-        LOGIN_IDENTIFIER,
-        ACCOUNT_PASSWORD,
-        OTP_CODE,
-        OTP_SECRET,
-    ] {
-        assert!(!rendered.contains(secret), "auth material was disclosed");
     }
 }

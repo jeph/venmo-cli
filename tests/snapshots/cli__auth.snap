@@ -7,11 +7,10 @@ Validate and manage the stored Venmo bearer token
 Usage: auth <COMMAND>
 
 Commands:
-  login           Authenticate with a trusted device and password/SMS OTP, or import a bearer token
-  reauthenticate  Replace an expired token using the stored trusted device and password/SMS OTP
-  logout          Remove the locally stored credential
-  status          Validate the credential and show the active account
-  help            Print this message or the help of the given subcommand(s)
+  login   Authenticate with a newly supplied trusted device and password/SMS OTP
+  logout  Remove the local credential without revoking the remote token
+  status  Validate the credential and show the active account
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help

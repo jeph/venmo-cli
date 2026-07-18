@@ -22,9 +22,10 @@ type Transcript = Rc<RefCell<Vec<Call>>>;
 const TOKEN: &str = "synthetic-request-info-token";
 const DEVICE: &str = "synthetic-request-info-device";
 const ACCOUNT_ID: &str = "1000";
-const API_FAILURE_KINDS: [ApiFailureKind; 6] = [
+const API_FAILURE_KINDS: [ApiFailureKind; 7] = [
     ApiFailureKind::Network,
     ApiFailureKind::Timeout,
+    ApiFailureKind::Authentication,
     ApiFailureKind::Rejected,
     ApiFailureKind::Contract,
     ApiFailureKind::AmbiguousWrite,

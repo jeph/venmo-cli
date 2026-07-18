@@ -38,8 +38,6 @@ pub(super) enum SaveScript {
 #[derive(Clone, Copy)]
 pub(super) enum DeleteScript {
     Normal,
-    ReportDeleted,
-    ReportMissing,
     Fail,
 }
 
@@ -184,8 +182,6 @@ fn delete_fake_credential(
     calls.borrow_mut().push(AuthCall::DeleteCredential);
     let outcome = match script {
         DeleteScript::Fail => return Err(FakeCredentialError::platform()),
-        DeleteScript::ReportDeleted => CredentialDeleteOutcome::Deleted,
-        DeleteScript::ReportMissing => CredentialDeleteOutcome::Missing,
         DeleteScript::Normal => {
             if matches!(&*state.borrow(), FakeStoreState::Missing) {
                 CredentialDeleteOutcome::Missing
@@ -261,7 +257,6 @@ pub(super) enum OtpInputScript {
 #[derive(Clone, Copy)]
 pub(super) struct PromptScript {
     pub(super) availability: PromptAvailabilityScript,
-    pub(super) token: TokenMaterial,
     pub(super) device: DeviceInputScript,
     pub(super) identifier: IdentifierInputScript,
     pub(super) password: PasswordInputScript,
@@ -269,10 +264,9 @@ pub(super) struct PromptScript {
 }
 
 impl PromptScript {
-    pub(super) const fn token_login() -> Self {
+    pub(super) const fn password_login() -> Self {
         Self {
             availability: PromptAvailabilityScript::Interactive,
-            token: TokenMaterial::Imported,
             device: DeviceInputScript::Valid(DeviceMaterial::Prompted),
             identifier: IdentifierInputScript::Valid,
             password: PasswordInputScript::Valid,
@@ -280,14 +274,10 @@ impl PromptScript {
         }
     }
 
-    pub(super) const fn password_login() -> Self {
-        Self::token_login()
-    }
-
     pub(super) const fn noninteractive() -> Self {
         Self {
             availability: PromptAvailabilityScript::NonInteractive,
-            ..Self::token_login()
+            ..Self::password_login()
         }
     }
 }
@@ -346,12 +336,6 @@ impl AuthenticationInput for FakePrompt {
             .map_err(|source| PromptError::InvalidOtpCode { source })
     }
 
-    fn read_access_token(&self, _prompt: &str) -> Result<AccessToken, PromptError> {
-        self.calls.borrow_mut().push(AuthCall::ReadAccessToken);
-        AccessToken::from_str(self.script.token.value())
-            .map_err(|source| PromptError::InvalidAccessToken { source })
-    }
-
     fn read_device_id(&self, _prompt: &str) -> Result<DeviceId, PromptError> {
         self.calls.borrow_mut().push(AuthCall::ReadDeviceId);
         let value = match self.script.device {
@@ -388,7 +372,6 @@ pub(super) enum OtpCompletionScript {
 #[derive(Clone)]
 pub(super) struct ApiScript {
     pub(super) current_account: Result<Account, ApiFailureKind>,
-    pub(super) revoke: Result<(), ApiFailureKind>,
     pub(super) password_start: PasswordStartScript,
     pub(super) otp_request: Result<(), ApiFailureKind>,
     pub(super) otp_completion: OtpCompletionScript,
@@ -399,7 +382,6 @@ impl ApiScript {
     pub(super) fn successful(account: Account) -> Self {
         Self {
             current_account: Ok(account),
-            revoke: Ok(()),
             password_start: PasswordStartScript::Authenticated(TokenMaterial::Issued),
             otp_request: Ok(()),
             otp_completion: OtpCompletionScript::Authenticated(TokenMaterial::Issued),
@@ -431,21 +413,6 @@ impl CurrentAccountApi for FakeApi {
             AuthenticationSnapshot::from_values(access_token, device_id),
         ));
         ready(self.script.current_account.clone().map_err(FakeApiError))
-    }
-}
-
-impl TokenRevocationApi for FakeApi {
-    type Error = FakeApiError;
-
-    fn revoke_access_token<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
-        self.calls.borrow_mut().push(AuthCall::RevokeAccessToken(
-            AuthenticationSnapshot::from_values(access_token, device_id),
-        ));
-        ready(self.script.revoke.map_err(FakeApiError))
     }
 }
 
@@ -559,13 +526,11 @@ pub(super) enum AuthCall {
     ReadCredential,
     SaveCredential(CredentialSnapshot),
     DeleteCredential,
-    ReadAccessToken,
     ReadDeviceId,
     ReadLoginIdentifier,
     ReadAccountPassword,
     ReadOtpCode,
     CurrentAccount(AuthenticationSnapshot),
-    RevokeAccessToken(AuthenticationSnapshot),
     BeginPasswordLogin {
         identifier: RedactedValue,
         password: RedactedValue,
@@ -589,10 +554,6 @@ pub(super) fn transcript() -> Transcript {
 
 pub(super) fn current_account_call(token: TokenMaterial, device: DeviceMaterial) -> AuthCall {
     AuthCall::CurrentAccount(AuthenticationSnapshot::synthetic(token, device))
-}
-
-pub(super) fn revoke_call(token: TokenMaterial, device: DeviceMaterial) -> AuthCall {
-    AuthCall::RevokeAccessToken(AuthenticationSnapshot::synthetic(token, device))
 }
 
 pub(super) fn begin_password_call(device: DeviceMaterial) -> AuthCall {

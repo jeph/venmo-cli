@@ -3,7 +3,7 @@ use std::fmt;
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use super::persistence::{CredentialOrigin, ExistingCredential, persist_validated_login};
+use super::persistence::{ExistingCredential, persist_validated_login};
 use super::{
     AccountPassword, AuthenticationInput, CurrentAccountApi, LoginIdentifier, PasswordLoginApi,
     PasswordLoginStart, PromptError, prompt_failure_kind,
@@ -13,8 +13,6 @@ use crate::shared::{
     CredentialReader, CredentialStoreFailure, CredentialWriter, DeviceId, OperationFailure,
 };
 
-const ACCESS_TOKEN_PROMPT: &str = "Bearer token";
-const IMPORT_DEVICE_ID_PROMPT: &str = "Matching Venmo v_id/device ID";
 pub(super) const TRUSTED_DEVICE_ID_PROMPT: &str = "Trusted Venmo v_id/device ID";
 pub(super) const ACCOUNT_IDENTIFIER_PROMPT: &str = "Venmo email, phone, or username";
 pub(super) const ACCOUNT_PASSWORD_PROMPT: &str = "Venmo password";
@@ -23,7 +21,7 @@ const OTP_CODE_PROMPT: &str = "SMS verification code";
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LoginDisposition {
     Created,
-    ReplacedForSameAccount,
+    ReplacedExistingCredential,
     RecoveredUnusableEntry,
 }
 
@@ -150,22 +148,6 @@ pub enum LoginError {
     },
 
     #[error(
-        "a readable Venmo credential is already stored; run `venmo auth logout` before password login"
-    )]
-    CredentialAlreadyStored,
-
-    #[error(
-        "no readable Venmo credential is stored; run `venmo auth login` before reauthenticating"
-    )]
-    ReauthenticationCredentialMissing,
-
-    #[error("the bearer token could not be validated: {source}")]
-    TokenValidation {
-        #[source]
-        source: ApiOperationFailure,
-    },
-
-    #[error(
         "Venmo issued a token, but it could not be validated and was not stored; the remote token may remain active, so review official Venmo session controls: {source}"
     )]
     IssuedTokenValidation {
@@ -192,24 +174,6 @@ pub enum LoginError {
     },
 
     #[error(
-        "the bearer token belongs to a different account; run `venmo auth logout` before switching accounts"
-    )]
-    DifferentAccount,
-
-    #[error(
-        "Venmo issued a token for a different account, so the stored credential was left unchanged; the remote token may remain active, so review official Venmo session controls"
-    )]
-    IssuedTokenDifferentAccount,
-
-    #[error(
-        "the OS credential update could not be verified; credential storage state is unknown, so run `venmo auth status`"
-    )]
-    CredentialStorageStateUnknown {
-        #[source]
-        source: Option<OperationFailure>,
-    },
-
-    #[error(
         "the issued token's OS credential update could not be verified; credential storage state is unknown and the remote token may remain active, so run `venmo auth status` and review official Venmo session controls"
     )]
     IssuedCredentialStorageStateUnknown {
@@ -223,84 +187,15 @@ impl LoginError {
     pub const fn failure_kind(&self) -> ApplicationFailureKind {
         match self {
             Self::Prompt(source) => prompt_failure_kind(source),
-            Self::CredentialLoad { .. }
-            | Self::CredentialAlreadyStored
-            | Self::ReauthenticationCredentialMissing
-            | Self::DifferentAccount
-            | Self::IssuedTokenDifferentAccount
-            | Self::CredentialStorageStateUnknown { .. }
-            | Self::IssuedCredentialStorageStateUnknown { .. } => {
+            Self::CredentialLoad { .. } | Self::IssuedCredentialStorageStateUnknown { .. } => {
                 ApplicationFailureKind::Credential
             }
-            Self::TokenValidation { source }
-            | Self::IssuedTokenValidation { source }
+            Self::IssuedTokenValidation { source }
             | Self::PasswordAuthentication { source }
             | Self::OtpRequest { source }
             | Self::OtpCompletion { source } => ApplicationFailureKind::Api(source.kind()),
         }
     }
-}
-
-pub async fn login_with_token<S, P, A, C>(
-    store: &S,
-    prompt: &P,
-    api: &A,
-    clock: &C,
-) -> Result<LoginResult, LoginError>
-where
-    S: CredentialReader + CredentialWriter,
-    P: AuthenticationInput,
-    A: CurrentAccountApi,
-    C: Clock,
-{
-    if !prompt.can_prompt() {
-        return Err(LoginError::Prompt(PromptError::NotInteractive));
-    }
-
-    let existing = match store.read_credential() {
-        Ok(Some(loaded)) => ExistingCredential::Loaded(loaded),
-        Ok(None) => ExistingCredential::Missing,
-        Err(source) if source.kind().permits_validated_replacement() => {
-            ExistingCredential::Replaceable
-        }
-        Err(source) => {
-            return Err(LoginError::CredentialLoad {
-                source: OperationFailure::new(source),
-            });
-        }
-    };
-
-    let access_token = prompt.read_access_token(ACCESS_TOKEN_PROMPT)?;
-    let device_id = match &existing {
-        ExistingCredential::Loaded(loaded) => loaded.envelope.device_id().clone(),
-        ExistingCredential::Missing | ExistingCredential::Replaceable => {
-            prompt.read_device_id(IMPORT_DEVICE_ID_PROMPT)?
-        }
-    };
-
-    let account = api
-        .current_account(&access_token, &device_id)
-        .await
-        .map_err(|source| LoginError::TokenValidation {
-            source: ApiOperationFailure::new(source),
-        })?;
-
-    if let ExistingCredential::Loaded(loaded) = &existing
-        && loaded.envelope.user_id() != account.user_id()
-    {
-        return Err(LoginError::DifferentAccount);
-    }
-
-    let (result, _credential) = persist_validated_login(
-        store,
-        clock,
-        existing,
-        account,
-        access_token,
-        device_id,
-        CredentialOrigin::Imported,
-    )?;
-    Ok(result)
 }
 
 pub async fn login_with_password<S, P, A, C>(
@@ -320,7 +215,7 @@ where
     }
 
     let existing = match store.read_credential() {
-        Ok(Some(_)) => return Err(LoginError::CredentialAlreadyStored),
+        Ok(Some(_)) => ExistingCredential::Present,
         Ok(None) => ExistingCredential::Missing,
         Err(source) if source.kind().permits_validated_replacement() => {
             ExistingCredential::Replaceable
@@ -457,13 +352,5 @@ where
     S: CredentialReader + CredentialWriter,
     C: Clock,
 {
-    persist_validated_login(
-        store,
-        clock,
-        existing,
-        account,
-        access_token,
-        device_id,
-        CredentialOrigin::Issued,
-    )
+    persist_validated_login(store, clock, existing, account, access_token, device_id)
 }

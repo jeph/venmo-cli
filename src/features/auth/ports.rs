@@ -8,8 +8,7 @@ use super::{
     OtpCode, OtpCodeParseError, OtpSecret, PasswordLoginStart,
 };
 use crate::shared::{
-    AccessToken, AccessTokenParseError, Account, ApiFailure, ApplicationFailureKind, DeviceId,
-    DeviceIdParseError,
+    AccessToken, Account, ApiFailure, ApplicationFailureKind, DeviceId, DeviceIdParseError,
 };
 
 pub trait PromptAvailability {
@@ -21,7 +20,6 @@ pub trait AuthenticationInput: PromptAvailability {
     fn read_login_identifier(&self, prompt: &str) -> Result<LoginIdentifier, PromptError>;
     fn read_account_password(&self, prompt: &str) -> Result<AccountPassword, PromptError>;
     fn read_otp_code(&self, prompt: &str) -> Result<OtpCode, PromptError>;
-    fn read_access_token(&self, prompt: &str) -> Result<AccessToken, PromptError>;
     fn read_device_id(&self, prompt: &str) -> Result<DeviceId, PromptError>;
 }
 
@@ -33,16 +31,6 @@ pub trait CurrentAccountApi {
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
     ) -> impl Future<Output = Result<Account, Self::Error>> + Send + 'a;
-}
-
-pub trait TokenRevocationApi {
-    type Error: ApiFailure;
-
-    fn revoke_access_token<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a;
 }
 
 pub trait PasswordLoginApi {
@@ -83,12 +71,6 @@ pub enum PromptError {
     #[error("an interactive terminal is required")]
     NotInteractive,
 
-    #[error("the bearer token is invalid: {source}")]
-    InvalidAccessToken {
-        #[source]
-        source: AccessTokenParseError,
-    },
-
     #[error("the Venmo device ID is invalid: {source}")]
     InvalidDeviceId {
         #[source]
@@ -124,7 +106,6 @@ pub(crate) const fn prompt_failure_kind(error: &PromptError) -> ApplicationFailu
     match error {
         PromptError::Cancelled => ApplicationFailureKind::Cancelled,
         PromptError::NotInteractive
-        | PromptError::InvalidAccessToken { .. }
         | PromptError::InvalidDeviceId { .. }
         | PromptError::InvalidLoginIdentifier { .. }
         | PromptError::InvalidAccountPassword { .. }

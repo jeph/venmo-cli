@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::features::auth::{
     AccountPassword, CurrentAccountApi, LoginIdentifier, OtpCode, OtpSecret, PasswordLoginApi,
-    PasswordLoginStart, TokenRevocationApi,
+    PasswordLoginStart,
 };
 use crate::shared::{AccessToken, Account, DeviceId, UserId, Username};
 
@@ -13,12 +13,12 @@ use super::super::dto::{AccountEnvelope, PasswordLoginRequest, SmsOtpRequest};
 use super::super::transport::{ApiSession, ApiTransport, HttpRequest, HttpResponse, JsonBody};
 use super::error::VenmoApiError;
 use super::response::{
-    decode_success, extract_error_code, parse_response_value, require_success,
-    require_success_parsed,
+    decode_success, extract_error_code, parse_response_value, require_authenticated_success,
+    require_success, require_success_parsed,
 };
 use super::{
     CURRENT_ACCOUNT_OPERATION, DEVICE_TRUST_OPERATION, OTP_COMPLETION_OPERATION,
-    OTP_REQUEST_OPERATION, PASSWORD_LOGIN_OPERATION, REVOKE_TOKEN_OPERATION, VenmoApiClient,
+    OTP_REQUEST_OPERATION, PASSWORD_LOGIN_OPERATION, VenmoApiClient,
 };
 
 impl<T: ApiTransport> VenmoApiClient<T> {
@@ -112,7 +112,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 HttpRequest::non_financial_post("/users/devices", &["users", "devices"], &[]),
             )
             .await?;
-        require_success(DEVICE_TRUST_OPERATION, response)
+        require_authenticated_success(DEVICE_TRUST_OPERATION, response)
     }
 
     pub(super) async fn fetch_current_account(
@@ -152,25 +152,6 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         })?;
         Ok(Account::new(user_id, username, user.display_name))
     }
-
-    async fn revoke_token(
-        &self,
-        access_token: &AccessToken,
-        device_id: &DeviceId,
-    ) -> Result<(), VenmoApiError> {
-        let response = self
-            .transport
-            .send_authenticated(
-                ApiSession::new(access_token, device_id),
-                HttpRequest::non_financial_delete(
-                    "/oauth/access_token",
-                    &["oauth", "access_token"],
-                    &[],
-                ),
-            )
-            .await?;
-        require_success(REVOKE_TOKEN_OPERATION, response)
-    }
 }
 
 impl<T: ApiTransport> CurrentAccountApi for VenmoApiClient<T> {
@@ -182,18 +163,6 @@ impl<T: ApiTransport> CurrentAccountApi for VenmoApiClient<T> {
         device_id: &'a DeviceId,
     ) -> impl Future<Output = Result<Account, Self::Error>> + Send + 'a {
         self.fetch_current_account(access_token, device_id)
-    }
-}
-
-impl<T: ApiTransport> TokenRevocationApi for VenmoApiClient<T> {
-    type Error = VenmoApiError;
-
-    fn revoke_access_token<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
-        self.revoke_token(access_token, device_id)
     }
 }
 

@@ -19,8 +19,7 @@ impl From<&PromptError> for PromptFailure {
         match error {
             PromptError::Cancelled => Self::Cancelled,
             PromptError::NotInteractive => Self::NotInteractive,
-            PromptError::InvalidAccessToken { .. }
-            | PromptError::InvalidDeviceId { .. }
+            PromptError::InvalidDeviceId { .. }
             | PromptError::InvalidLoginIdentifier { .. }
             | PromptError::InvalidAccountPassword { .. }
             | PromptError::InvalidOtpCode { .. } => Self::InvalidInput,

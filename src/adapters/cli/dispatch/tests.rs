@@ -131,23 +131,11 @@ async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
 
     assert_eq!(observed, expected);
 
-    for (arguments, variant, message) in [
-        (
-            &["venmo", "auth", "login"][..],
-            ErrorVariant::AuthLogin,
-            "an interactive terminal is required",
-        ),
-        (
-            &["venmo", "auth", "login", "--token"][..],
-            ErrorVariant::AuthLogin,
-            "an interactive terminal is required",
-        ),
-        (
-            &["venmo", "auth", "reauthenticate"][..],
-            ErrorVariant::AuthLogin,
-            "an interactive terminal is required",
-        ),
-    ] {
+    for (arguments, variant, message) in [(
+        &["venmo", "auth", "login"][..],
+        ErrorVariant::AuthLogin,
+        "an interactive terminal is required",
+    )] {
         let setup = DispatchSetup::parse(arguments, terminals)?;
         let initial_state = DispatchState::default();
         let expected = Observed::new(
@@ -194,23 +182,11 @@ async fn production_preconditions_do_not_call_the_logging_initializer() -> TestR
 
     assert_eq!(observed, expected);
 
-    for (arguments, variant, message) in [
-        (
-            &["venmo", "--verbose", "auth", "login"][..],
-            ErrorVariant::AuthLogin,
-            "an interactive terminal is required",
-        ),
-        (
-            &["venmo", "--verbose", "auth", "login", "--token"][..],
-            ErrorVariant::AuthLogin,
-            "an interactive terminal is required",
-        ),
-        (
-            &["venmo", "--verbose", "auth", "reauthenticate"][..],
-            ErrorVariant::AuthLogin,
-            "an interactive terminal is required",
-        ),
-    ] {
+    for (arguments, variant, message) in [(
+        &["venmo", "--verbose", "auth", "login"][..],
+        ErrorVariant::AuthLogin,
+        "an interactive terminal is required",
+    )] {
         let setup = DispatchSetup::parse(arguments, terminals)?
             .with_logging_behavior(LoggingBehavior::Fail);
         let initial_state = DispatchState::default();
@@ -306,23 +282,11 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
             TerminalCapabilities::new(true, true),
         ),
         (
-            &["venmo", "auth", "login", "--token"][..],
-            TerminalCapabilities::new(true, true),
-        ),
-        (
-            &["venmo", "auth", "reauthenticate"][..],
-            TerminalCapabilities::new(true, true),
-        ),
-        (
             &["venmo", "auth", "status"][..],
             TerminalCapabilities::new(false, false),
         ),
         (
             &["venmo", "auth", "logout"][..],
-            TerminalCapabilities::new(false, false),
-        ),
-        (
-            &["venmo", "auth", "logout", "--revoke"][..],
             TerminalCapabilities::new(false, false),
         ),
         (
@@ -450,20 +414,6 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
     for (arguments, variant, category, exit_code, message) in [
         (
             &["venmo", "--verbose", "auth", "login"][..],
-            ErrorVariant::AuthLogin,
-            ErrorCategory::Usage,
-            2,
-            "an interactive terminal is required",
-        ),
-        (
-            &["venmo", "--verbose", "auth", "login", "--token"][..],
-            ErrorVariant::AuthLogin,
-            ErrorCategory::Usage,
-            2,
-            "an interactive terminal is required",
-        ),
-        (
-            &["venmo", "--verbose", "auth", "reauthenticate"][..],
             ErrorVariant::AuthLogin,
             ErrorCategory::Usage,
             2,

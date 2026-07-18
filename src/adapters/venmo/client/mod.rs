@@ -43,7 +43,6 @@ pub(super) const PAYMENT_CREATION_OPERATION: &str = "payment creation";
 pub(super) const BLANK_SOURCE_ELIGIBILITY_OPERATION: &str = "payment eligibility";
 pub(super) const PAYMENT_METHODS_OPERATION: &str = "payment-method listing";
 pub(super) const PEER_FUNDING_OPERATION: &str = "peer funding-method listing";
-pub(super) const REVOKE_TOKEN_OPERATION: &str = "token revocation";
 pub(super) const REQUEST_CREATION_OPERATION: &str = "request creation";
 pub(super) const REQUEST_ACCEPTANCE_OPERATION: &str = "request acceptance";
 pub(super) const REQUEST_DECLINE_OPERATION: &str = "request decline";

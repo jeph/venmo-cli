@@ -38,8 +38,7 @@ output writers, but cannot supply synthetic terminal state.
 `handle_runtime_initialization_failure(cli, stdout, stderr, source)` is the synchronous fallback
 used when the process runtime cannot be built. It owns the same process terminal check. Completion
 generation and noninteractive authentication return
-before logging initialization; local-only logout still deletes locally, and revoking logout still
-attempts local deletion while reporting that remote revocation was not attempted.
+before logging initialization; local-only logout still deletes the keyring entry without a runtime.
 
 The concrete CLI adapter, production provider, prompts, renderers, and dispatch helpers remain
 private even though selected items are re-exported through this facade.

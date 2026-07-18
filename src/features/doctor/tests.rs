@@ -21,9 +21,10 @@ const TEST_BUILD_INFO: BuildInfo = BuildInfo::new("1.2.3-test", "test-os", "test
 const FIXTURE_TOKEN: &str = "synthetic-token";
 const FIXTURE_DEVICE_ID: &str = "synthetic-device";
 const FIXTURE_USER_ID: &str = "1000";
-const API_FAILURE_KINDS: [ApiFailureKind; 6] = [
+const API_FAILURE_KINDS: [ApiFailureKind; 7] = [
     ApiFailureKind::Network,
     ApiFailureKind::Timeout,
+    ApiFailureKind::Authentication,
     ApiFailureKind::Rejected,
     ApiFailureKind::Contract,
     ApiFailureKind::AmbiguousWrite,
@@ -692,7 +693,7 @@ async fn current_account_api_failure_kind_matrix_skips_shapes() -> TestResult {
                     fail(
                         "Current-account authentication",
                         api_failure_detail(kind),
-                        "Run `venmo auth reauthenticate`; use `venmo auth login --token` only to import a replacement bearer.",
+                        "Run `venmo auth login` to perform the complete authentication flow again.",
                     ),
                     shapes_skipped(),
                 ),
@@ -975,6 +976,7 @@ const fn api_failure_detail(kind: ApiFailureKind) -> &'static str {
     match kind {
         ApiFailureKind::Network => "the network request failed",
         ApiFailureKind::Timeout => "the network request timed out",
+        ApiFailureKind::Authentication => "the stored Venmo session was rejected",
         ApiFailureKind::Rejected => "Venmo rejected the request",
         ApiFailureKind::Contract => "the private API response shape was not recognized",
         ApiFailureKind::AmbiguousWrite => "an unexpected ambiguous-write classification occurred",

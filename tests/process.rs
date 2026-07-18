@@ -114,42 +114,33 @@ fn completion_generation_is_a_service_free_success_path() -> TestResult {
 
 #[test]
 fn noninteractive_login_fails_before_keychain_or_network_access() -> TestResult {
+    Command::cargo_bin("venmo")?
+        .args(["auth", "login"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::eq(
+            "error: an interactive terminal is required\n",
+        ));
+
+    Ok(())
+}
+
+#[test]
+fn removed_auth_surfaces_and_secret_arguments_are_rejected() -> TestResult {
     for arguments in [
-        &["auth", "login"][..],
-        &["auth", "login", "--token"][..],
         &["auth", "reauthenticate"][..],
+        &["auth", "login", "--token", "synthetic-secret-value"][..],
+        &["auth", "logout", "--revoke"][..],
+        &["auth", "login", "--password", "synthetic-secret-value"][..],
     ] {
         Command::cargo_bin("venmo")?
             .args(arguments)
             .assert()
             .code(2)
             .stdout(predicate::str::is_empty())
-            .stderr(predicate::eq(
-                "error: an interactive terminal is required\n",
-            ));
-    }
-
-    Ok(())
-}
-
-#[test]
-fn reauthenticate_rejects_secret_and_alternate_input_options() -> TestResult {
-    for option in [
-        "--username",
-        "--password",
-        "--otp",
-        "--token",
-        "--device-id",
-        "--env",
-        "--stdin-file",
-    ] {
-        Command::cargo_bin("venmo")?
-            .args(["auth", "reauthenticate", option, "synthetic-secret-value"])
-            .assert()
-            .code(2)
-            .stdout(predicate::str::is_empty())
             .stderr(
-                predicate::str::contains("unexpected argument")
+                predicate::str::contains("error:")
                     .and(predicate::str::contains("synthetic-secret-value").not()),
             );
     }

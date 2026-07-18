@@ -16,6 +16,13 @@ pub(crate) enum VenmoApiError {
         code_suffix: ApiCodeSuffix,
     },
 
+    #[error("Venmo rejected the authenticated {operation} request with HTTP {status}{code_suffix}")]
+    AuthenticatedHttp {
+        operation: &'static str,
+        status: u16,
+        code_suffix: ApiCodeSuffix,
+    },
+
     #[error("Venmo reported that the {operation} request failed{code_suffix}")]
     ApiFailure {
         operation: &'static str,
@@ -84,9 +91,11 @@ impl ApiFailure for VenmoApiError {
             )
             | Self::RequestEncoding { .. }
             | Self::AuthenticationOutcomeUnknown { .. } => ApiFailureKind::Internal,
-            Self::Http { .. } | Self::ApiFailure { .. } | Self::EligibilityDenied => {
-                ApiFailureKind::Rejected
-            }
+            Self::AuthenticatedHttp { status: 401, .. } => ApiFailureKind::Authentication,
+            Self::Http { .. }
+            | Self::AuthenticatedHttp { .. }
+            | Self::ApiFailure { .. }
+            | Self::EligibilityDenied => ApiFailureKind::Rejected,
         }
     }
 }

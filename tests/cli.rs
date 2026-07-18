@@ -65,27 +65,14 @@ fn public_runtime_fallback_keeps_completions_service_free() {
 }
 
 #[test]
-fn auth_login_modes_expose_no_secret_arguments() {
-    for (arguments, expected_token_mode) in [
-        (&["venmo", "auth", "login"][..], false),
-        (&["venmo", "auth", "login", "--token"][..], true),
-    ] {
-        let parsed = Cli::try_parse_from(arguments);
-        let token_mode = match parsed {
-            Ok(cli) => match cli.command {
-                Command::Auth(args) => match args.operation {
-                    AuthOperation::Login(login) => Some(login.token),
-                    AuthOperation::Reauthenticate
-                    | AuthOperation::Logout(_)
-                    | AuthOperation::Status => None,
-                },
-                _ => None,
-            },
-            Err(_) => None,
-        };
-        assert_eq!(token_mode, Some(expected_token_mode));
-    }
+fn auth_login_exposes_no_secret_or_import_arguments() {
+    let parsed = Cli::try_parse_from(["venmo", "auth", "login"]);
+    assert!(parsed.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Auth(args) if matches!(args.operation, AuthOperation::Login)
+    )));
 
+    assert_rejected(&["venmo", "auth", "login", "--token"]);
     assert_rejected(&["venmo", "auth", "login", "--token", "secret"]);
     assert_rejected(&["venmo", "auth", "login", "--password", "secret"]);
     assert_rejected(&["venmo", "auth", "login", "--device-id", "secret"]);
@@ -94,33 +81,9 @@ fn auth_login_modes_expose_no_secret_arguments() {
 }
 
 #[test]
-fn auth_reauthenticate_exposes_no_secret_or_alternate_input_arguments() {
-    let parsed = Cli::try_parse_from(["venmo", "auth", "reauthenticate"]);
-    assert!(parsed.is_ok_and(|cli| matches!(
-        cli.command,
-        Command::Auth(args) if matches!(args.operation, AuthOperation::Reauthenticate)
-    )));
-
-    for option in [
-        "--username",
-        "--email",
-        "--account",
-        "--identifier",
-        "--password",
-        "--otp",
-        "--otp-secret",
-        "--token",
-        "--access-token",
-        "--device-id",
-        "--v-id",
-        "--env",
-        "--stdin",
-        "--stdin-file",
-        "--file",
-    ] {
-        assert_rejected(&["venmo", "auth", "reauthenticate", option, "secret"]);
-    }
-    assert_rejected(&["venmo", "auth", "reauthenticate", "alice@example.com"]);
+fn removed_auth_surfaces_are_rejected() {
+    assert_rejected(&["venmo", "auth", "reauthenticate"]);
+    assert_rejected(&["venmo", "auth", "logout", "--revoke"]);
 }
 
 #[test]
@@ -571,7 +534,6 @@ fn every_command_has_a_help_snapshot() {
         ("top_level", &[]),
         ("auth", &["auth"]),
         ("auth_login", &["auth", "login"]),
-        ("auth_reauthenticate", &["auth", "reauthenticate"]),
         ("auth_logout", &["auth", "logout"]),
         ("auth_status", &["auth", "status"]),
         ("pay", &["pay"]),

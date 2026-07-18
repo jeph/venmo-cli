@@ -283,18 +283,27 @@ async fn current_account_maps_wrapped_and_direct_envelopes() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn revocation_uses_delete_and_accepts_an_empty_success() -> TestResult {
-    let server = MockServer::start().await;
-    Mock::given(method("DELETE"))
-        .and(path("/v1/oauth/access_token"))
-        .and(header("authorization", "Bearer synthetic-token"))
-        .and(header("device-id", "synthetic-device"))
-        .respond_with(ResponseTemplate::new(204))
-        .mount(&server)
-        .await;
-    let client = test_client(&server)?;
+async fn current_account_http_401_is_a_definitive_authenticated_session_failure() -> TestResult {
+    let response = scripted_response(401, Vec::new())?;
     let (token, device_id) = test_session()?;
-    client.revoke_access_token(&token, &device_id).await?;
-    assert_request_count(&server, 1).await;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let expected = ScriptedObservation::expected(
+        Err(ApiErrorSnapshot {
+            kind: ApiFailureKind::Authentication,
+            detail: ApiErrorDetail::Http {
+                operation: CURRENT_ACCOUNT_OPERATION,
+                status: 401,
+                rendered: "Venmo rejected the authenticated current account request with HTTP 401"
+                    .to_owned(),
+            },
+        }),
+        vec![authenticated_read_request("/account", &["account"], &[])],
+    );
+
+    let result = client.current_account(&token, &device_id).await;
+    let observed =
+        ScriptedObservation::observed(project_result(result, AccountSnapshot::from), &transport);
+
+    assert_eq!(observed, expected);
     Ok(())
 }

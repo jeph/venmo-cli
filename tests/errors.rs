@@ -5,6 +5,7 @@ fn error_categories_have_stable_exit_codes() {
     let operational = [
         ErrorCategory::Cancelled,
         ErrorCategory::Credential,
+        ErrorCategory::Authentication,
         ErrorCategory::Network,
         ErrorCategory::Timeout,
         ErrorCategory::Api,

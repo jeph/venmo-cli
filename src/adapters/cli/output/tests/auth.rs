@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::str::FromStr;
 
-use super::super::{write_password_login_report, write_reauthentication_report};
+use super::super::write_password_login_report;
 use crate::features::auth::{
     DeviceTrustOutcome, LoginDisposition, LoginResult, PasswordLoginReport,
 };
@@ -61,7 +61,7 @@ fn password_login_output_reports_device_trust_truthfully() -> TestResult {
 }
 
 #[test]
-fn reauthentication_report_output_exposes_no_authentication_material() -> TestResult {
+fn replacement_login_warning_exposes_no_authentication_material() -> TestResult {
     let report = PasswordLoginReport::new(
         LoginResult::new(
             Account::new(
@@ -70,14 +70,14 @@ fn reauthentication_report_output_exposes_no_authentication_material() -> TestRe
                 Some("Alice".to_owned()),
             ),
             time::OffsetDateTime::UNIX_EPOCH,
-            LoginDisposition::ReplacedForSameAccount,
+            LoginDisposition::ReplacedExistingCredential,
         ),
         DeviceTrustOutcome::NotNeeded,
     );
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
 
-    write_reauthentication_report(&mut stdout, &mut stderr, &report)?;
+    write_password_login_report(&mut stdout, &mut stderr, &report)?;
 
     let rendered = String::from_utf8(stdout)?;
     let warning = String::from_utf8(stderr)?;
@@ -87,7 +87,7 @@ fn reauthentication_report_output_exposes_no_authentication_material() -> TestRe
     );
     assert_eq!(
         warning,
-        "warning: reauthentication does not revoke the previous bearer token; its remote validity is unknown, so use official Venmo session controls if it must be invalidated.\n"
+        "warning: the previous bearer token was not revoked; use official Venmo session controls if it must be invalidated.\n"
     );
     for secret in [
         "synthetic-password",

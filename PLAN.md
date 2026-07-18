@@ -26,7 +26,7 @@ The first release should make the common workflow obvious:
 
 This remains an unofficial client for unsupported/private Venmo endpoints. Endpoint discovery and contract testing are release gates, not assumptions.
 
-The initial MCP release provides structured, read-only access to the already implemented public read operations. It is not a wrapper around terminal commands or table output, and “roughly the same API” does not mean exposing terminal-only credential management, package commands, internal helper functions, or unverified financial mutations. Users authenticate and reauthenticate with `venmo`, then configure a trusted local MCP host to launch `venmo-mcp`.
+The initial MCP release provides structured, read-only access to the already implemented public read operations. It is not a wrapper around terminal commands or table output, and “roughly the same API” does not mean exposing terminal-only credential management, package commands, internal helper functions, or unverified financial mutations. Users authenticate with `venmo`, then configure a trusted local MCP host to launch `venmo-mcp`.
 
 ## 2. Confirmed product decisions
 
@@ -37,16 +37,16 @@ The initial MCP release provides structured, read-only access to the already imp
 - Prefer mature, popular, actively community-maintained off-the-shelf crates for common functionality instead of rolling project-owned replacements; keep custom code focused on Venmo-specific model behavior, feature orchestration, and safety policy.
 - Use a hybrid command hierarchy: frequent actions are top-level; related management operations are grouped.
 - Use [`keyring`](https://docs.rs/keyring/) as the only persistent credential backend.
-- `venmo auth login` uses the legacy mobile-private trusted-device-ID plus username/password and SMS-OTP flow by default; `venmo auth login --token` preserves hidden import of an existing bearer token. `venmo auth reauthenticate` explicitly repeats full password/optional-OTP issuance for the stored account while reusing its stored trusted device ID; it is not a refresh operation.
+- `venmo auth login` always uses the legacy mobile-private account-identifier/password, newly supplied trusted-device-ID, and optional SMS-OTP flow. There is no token-import, stored-device reauthentication, password storage, automatic renewal, or authentication retry surface.
 - Typed login credentials and OTP material are zeroized on drop and never stored. Serialization, HTTP, and platform libraries may create bounded transient request/header copies that Rust cannot guarantee are overwritten; the CLI never logs or persists those copies and drops them promptly. Only a validated bearer token, persistent device ID, account identity, and local saved-at time enter the OS credential store.
 - Target Venmo's bearer-token/device-ID mobile private `/v1` API rather than emulating the browser session API. Web-app traffic is discovery evidence only; do not adopt cookie/CSRF authentication, browser backend routes, or a browser User-Agent merely because the web client exposes an operation.
-- A validated token for a different account never replaces a valid stored credential; `auth login` fails without mutation and requires an explicit `auth logout` first.
+- A successful explicit login may replace any readable existing credential, including another account, only after the new token validates and the replacement reads back exactly. A failed login leaves the existing entry untouched.
 - Do not ship browser automation, browser-cookie import, or web-session authentication as CLI features. Development-time browser observation under Section 7.4 is permitted solely to establish sanitized API contracts.
-- Document the unsupported password/SMS-OTP login risk and the optional existing-token import path in the README.
+- Document the unsupported password/SMS-OTP login risk and local-only logout semantics in the README.
 - Support one recipient per new `pay` or `request` invocation and one request ID per `accept` or `decline` invocation.
 - Ship `pay`, request creation, request acceptance, and request decline as independently validated operations. `pay` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation requirements on 2026-07-12. Acceptance and decline passed their operation-specific synthetic and reconciled live validation on 2026-07-14; acceptance retains the disclosed funding-source/fee evidence gap.
 - Keep terminal-capability policy inside private CLI production composition. The public facade exposes no terminal-capability value, and neither normal dispatch nor runtime-initialization fallback accepts caller-supplied terminal state. Prompt capability comes from the actual process; crate-private unit tests may inject synthetic terminal snapshots only while delegating to fake handlers.
-- Initialize verbose CLI logging only after service-free dispatch preconditions. Completion generation and noninteractive login/reauthentication do not install the global subscriber. `accept` and `decline` follow normal delegated-command logging and runtime behavior. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
+- Initialize verbose CLI logging only after service-free dispatch preconditions. Completion generation and noninteractive login do not install the global subscriber. `accept` and `decline` follow normal delegated-command logging and runtime behavior. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
 - Normally limit controlled live mutations to $0.01 and reconcile each mutation before authorizing another. On 2026-07-14 the owner made a narrow exception for one existing legitimate $25 incoming request that the owner already owes: one `approve` attempt, no retries or field variation, full authoritative preflight and default-No confirmation, followed by immediate CLI and official-app reconciliation. This exception does not prove the final funding source or fee and does not authorize any other elevated-value test.
 - Keep direct request creation as `venmo request ...`. Make the frequent request-state actions top-level `venmo accept ...` and `venmo decline ...`; reject nested `venmo request accept ...` and add no compatibility alias.
 - Call transaction history `activity`.
@@ -64,7 +64,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Keep one Cargo package and shared library, add `venmo-mcp` as a second thin binary, and set Cargo `default-run = "venmo"` so existing `cargo run -- ...` behavior remains unambiguous.
 - Use local stdio as the only initial MCP transport. Do not enable Streamable HTTP, SSE, remote authentication, or network listening in the first MCP release.
 - Register only the nine read tools in Section 3.11 initially. Do not expose resources or prompts until a concrete use case requires them.
-- Keep the entire credential lifecycle terminal-CLI-only. MCP may report authenticated status but must never offer login, token import, password/OTP collection, reauthentication, logout, revocation, credential overrides, or secret-bearing tool inputs.
+- Keep the entire credential lifecycle terminal-CLI-only. MCP may report authenticated status but must never offer login, password/OTP collection, logout, credential overrides, remote session mutation, or secret-bearing tool inputs.
 - Give MCP its own explicit input/output DTO and JSON Schema boundary. Do not serialize secret-bearing feature/shared types, stored credential envelopes, raw private-API DTOs, headers, bodies, or keychain errors.
 - Reload the native credential for every MCP tool invocation and drop it afterward. Never cache a bearer token or device ID in long-lived server state; MCP startup and `tools/list` must touch neither the keychain nor Venmo.
 - Serialize MCP Venmo operations through one asynchronous operation permit, preserve zero retries and one-page endpoint-native pagination, and never add hidden fetch-all behavior.
@@ -106,9 +106,8 @@ Do not silently discard the error, convert it to an empty/default value, log and
 ## 3. CLI and MCP public surfaces
 
 ```text
-venmo auth login [--token]
-venmo auth reauthenticate
-venmo auth logout [--revoke]
+venmo auth login
+venmo auth logout
 venmo auth status
 
 venmo pay <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--yes]
@@ -160,42 +159,28 @@ Proposed stable exit codes:
 
 ### 3.2 Authentication
 
-#### `venmo auth login [--token]`
+#### `venmo auth login`
 
 - Requires an interactive terminal.
-- Default mode prompts for the Venmo email/phone/username, then a hidden password, then hidden-prompts for a browser `v_id`/device ID that Venmo already trusts. Hidden inputs use terminal echo suppression rather than rendering masking characters. It sends the values only to the fixed Venmo mobile-private HTTPS origin through the narrow legacy authentication adapter.
-- Default mode handles the verified SMS-OTP challenge by requesting the text message and prompting for a hidden six-digit code. It never prints or stores the password, OTP, or OTP secret.
-- `--token` instead prompts for an existing bearer token using hidden input. It accepts raw token, `Bearer ...`, or `Authorization: Bearer ...` forms and stores only the normalized token value. On first-time or unusable-entry recovery it also prompts, using hidden input, for the matching `v_id`/device ID; it never invents a replacement device ID for imported browser session material. A readable existing credential keeps its stored device ID.
+- Prompts for the Venmo email/phone/username, then a hidden password, then a newly supplied trusted browser `v_id`/device ID. Hidden inputs use terminal echo suppression rather than rendering masking characters. It never reuses a stored device ID because that device may have been invalidated.
+- Handles the verified SMS-OTP challenge by requesting the text message and prompting for a hidden six-digit code. It never prints or stores the account identifier, password, OTP, or OTP secret.
 - Exposes no username, password, OTP, token, device-ID, stdin, environment-variable, or browser-cookie argument.
-- Password login is blocked before prompting or network access when any readable credential already exists; the user must run `auth logout` first. A targetable unusable entry may be recovered after the new token validates.
-- Preserves the manually supplied trusted device ID across the password/OTP sequence and any post-OTP trust request, and stores it only after an issued token validates. It never generates or substitutes a device ID. Token-import mode reuses a readable existing device ID or requires the matching device ID through a second hidden prompt.
-- Validates every issued or imported token with the current-account endpoint before storage.
+- Login may run with a missing, readable, or targetably unusable entry. A successful explicit login may switch accounts, but it does not mutate storage until the new token validates.
+- Preserves the newly supplied trusted device ID across the password/OTP sequence and any post-OTP trust request, and stores it only after an issued token validates. It never generates, reuses, or substitutes a device ID.
+- Validates every issued token with the current-account endpoint before storage.
 - Never automatically retries token issuance. If timeout, disconnect, redirect, cancellation, or a malformed successful response occurs after issuance may have begun, return exit `1`, state that authentication outcome is unknown and a remote token may have been issued, and direct the user to official Venmo session controls.
 - If password/OTP authentication returns a token but current-account validation fails, do not store, trust, automatically revoke, or retry that token. Return exit `1` and warn that the remote token may remain active until the user reviews official Venmo session controls.
 - Direct password success proves that Venmo accepted the supplied existing trusted device, so it performs no redundant `/users/devices` mutation and reports complete success. After OTP login, it attempts to trust the supplied device. If token issuance and account validation succeed but that post-OTP trust request fails, save and verify the credential, return exit `1`, and warn that future login may require OTP; never discard an issued token silently.
 - After validation, can replace any single targetable unusable entry, including corrupt, invalid, oversized, legacy, or unknown-schema data. Unavailable stores, ambiguous/multiple matches, and untargetable platform failures remain blocking errors.
-- Token-import mode sends no storage mutation when a readable credential belongs to a different account and requires `auth logout` before switching accounts. Password login requires `auth logout` before it prompts whenever any readable credential exists.
+- Any failure before storage leaves the previous readable credential untouched. Successful cross-account replacement is allowed after validation. Because replacement does not revoke the previous remote bearer, output warns the user to use official Venmo session controls if invalidation is required.
 - Reads the saved entry back and requires an exact versioned-envelope match before reporting success. A save error, missing read-back, read-back error, or mismatch returns exit `1`, reports credential storage state as unknown, performs no automatic retry or rollback, and directs the user to `auth status`.
 - Prints only the authenticated username and safe trust-device status; never echoes credential, token, OTP, OTP-secret, or device-ID material.
 
-#### `venmo auth reauthenticate`
-
-- Requires an interactive terminal and exactly one readable stored credential. Missing and unreadable entries are typed login failures; unlike token import, this command never treats corrupt or otherwise unusable stored data as replaceable because it must recover the existing trusted device and account identity.
-- Exposes no arguments or options for username, email, password, OTP, OTP secret, token, device ID, environment input, stdin, stdin files, or similar alternate secret sources. It prompts for the account identifier and hidden password only after the terminal and stored credential checks pass, and prompts for a hidden SMS code only after the exact recognized `81109` challenge.
-- Reuses the stored device ID for the one legacy password-login initiation, optional OTP request/completion, current-account validation, and any post-OTP trust request. It never prompts for, prints, generates, or substitutes a device ID.
-- Performs full password/optional-OTP token issuance with zero automatic retries and the same unknown-issuance handling as initial password login. Typed password, OTP, and OTP-secret values are zeroized on drop and never stored; bounded transient copies inside serialization/HTTP libraries are dropped promptly but cannot be guaranteed overwritten.
-- Does not validate or otherwise require the old bearer token to remain usable. The purpose is renewal after token expiration while retaining the established device identity; there is no implemented or evidenced token-refresh endpoint.
-- Validates the newly issued token through current-account using the stored device ID and requires the returned user ID to equal the stored credential's user ID. Validation failure or a different account performs no credential save, trust call, rollback, revocation, or retry, leaving the old credential untouched. A mismatch truthfully warns that the newly issued remote token may remain active and directs the user to official session controls.
-- Only after successful same-account validation, replaces the credential through the existing single-entry save, reads it back, and requires the exact versioned envelope. Save/read-back uncertainty preserves the issued-token ambiguity warning and performs no trust request.
-- Direct password success performs no redundant `/users/devices` call. An OTP-completed flow best-effort trusts the device only after the validated replacement has been saved and verified; trust failure retains the credential, reports incomplete success, and warns that future login may require SMS verification.
-- Uses the existing password-login report and prints only safe account/trust status. It never reveals the stored device ID or any authentication material.
-
-#### `venmo auth logout [--revoke]`
+#### `venmo auth logout`
 
 - Deletes the local keychain entry without requiring it to deserialize first.
-- With `--revoke`, attempts remote token revocation before local deletion.
-- If revocation fails, still honors the explicit request to remove the local credential, returns exit code `1`, confirms the local deletion, and warns that the remote token may remain valid.
-- Every partial outcome is reported truthfully and exits `1`: if revocation succeeds but deletion fails, report that the remote token was revoked but the local entry remains; if both fail, report that local deletion failed and remote state is unknown. Do not let either result hide the other.
+- Never contacts Venmo or attempts remote token revocation. Successful local deletion warns that the remote bearer may remain valid and points to official session controls.
+- Reports local deletion failure truthfully and returns exit code `1`.
 - Is idempotent when no local credential exists.
 
 #### `venmo auth status`
@@ -204,6 +189,7 @@ Proposed stable exit codes:
 - Calls the current-account endpoint to validate the token.
 - Displays the active username, display name, user ID, and local credential saved-at time; never presents that local timestamp as the token's server-issued creation time.
 - Distinguishes missing, corrupt, locked, unavailable, and rejected credentials.
+- A definitive HTTP 401 from this or another authenticated request is classified as an authentication failure, preserves the credential, and directs the user to run `venmo auth login`. It is never retried automatically.
 
 ### 3.3 Paying one person
 
@@ -502,7 +488,7 @@ Every tool declares strict `inputSchema` and `outputSchema`. Input DTOs use runt
 
 Do not register tools for:
 
-- `auth login`, token import, `auth reauthenticate`, `auth logout`, or remote revocation.
+- `auth login`, `auth logout`, or any remote session mutation.
 - Passwords, OTPs, OTP secrets, bearer tokens, device IDs, cookies, CSRF values, or alternate credential sources.
 - Help, version, shell completion generation, or package management.
 - `pay`, request creation, request acceptance, or request decline until their CLI contracts and the later MCP write phase are complete.
@@ -614,11 +600,11 @@ Requirements:
 
 This section defines only the `venmo` terminal adapter. `venmo-mcp` must not invoke the `clap` command dispatcher, parse terminal table output, or reuse human output writers. Its stdio stream is the protocol transport, so even a normal CLI banner or success message would corrupt framing. If a future startup policy flag such as `--allow-financial-writes` is added, parse only that server-composition setting before stdio service starts; it must never accept a secret or stand in for per-call human approval.
 
-Interactive mutation confirmation applies to `pay`, `accept`, and `decline`. On a TTY, each command shows its complete plan and asks for default-No confirmation unless `--yes` is present. Off a TTY, each command fails before writing unless `--yes` is present. Direct request creation never prompts and does not accept `--yes`. `auth login` and `auth reauthenticate` remain intentional non-financial exceptions because credentials, OTP, and token import are interactive-only; neither has a `--yes` option.
+Interactive mutation confirmation applies to `pay`, `accept`, and `decline`. On a TTY, each command shows its complete plan and asks for default-No confirmation unless `--yes` is present. Off a TTY, each command fails before writing unless `--yes` is present. Direct request creation never prompts and does not accept `--yes`. `auth login` remains an intentional non-financial exception because credential and OTP input is interactive-only; it has no `--yes` option.
 
 Prompt adapter rules:
 
-- Use `dialoguer::Input` for the account identifier, `dialoguer::Password` with result reporting disabled for password/OTP/bearer-token secrets, and `dialoguer::Confirm` with `default(false)` for mutation confirmation.
+- Use `dialoguer::Input` for the account identifier, `dialoguer::Password` with result reporting disabled for password/OTP/device-ID secrets, and `dialoguer::Confirm` with `default(false)` for mutation confirmation.
 - Render through `dialoguer::console::Term::stderr()` so prompts never contaminate stdout data.
 - Use `interact_opt` for confirmation so Escape or `q` maps to `Cancelled`. Map password interruption, Ctrl-C, EOF, and terminal failures into typed cancellation or terminal errors rather than panics; ordinary token text such as `q` remains valid password input.
 - Use `SimpleTheme` by default. Any later color theme must follow the CLI's TTY and `NO_COLOR` policy.
@@ -681,24 +667,24 @@ Popularity does not replace review. Recheck release status, advisories, licenses
 - Match typed `keyring` errors such as `NoEntry`, `NoStorageAccess`, `BadEncoding`, `TooLong`, and `Ambiguous`; never match error strings.
 - Distinguish missing, locked/unavailable, corrupt, invalid, oversized, and ambiguous entries.
 - `auth logout` deletes the entry directly without parsing it first.
-- `auth login` replaces a single targetable old entry only after the new token validates, then reads it back and verifies exact versioned content before reporting success. `auth reauthenticate` instead requires a readable entry and replaces it only after the new token validates as the same stored user while using the stored device ID.
-- A valid different-account entry is never replaced implicitly. An unusable but targetable entry may be replaced by this explicit login operation; ambiguous or inaccessible entries may not.
+- `auth login` replaces a readable or single targetable unusable old entry only after the newly issued token validates, then reads it back and verifies exact versioned content before reporting success. Failed login leaves a readable old entry untouched.
+- Explicit successful login may replace a valid different-account entry. Ambiguous or inaccessible entries may not be replaced.
 - Decode the legacy TypeScript camelCase envelope for one-time migration.
 - Prove on each supported platform whether Rust `keyring` can access the item written by `@napi-rs/keyring` under the same service/account.
-- If transparent migration fails, do not delete the old item silently; document reauthentication or provide a narrowly scoped migration helper.
+- If transparent migration fails, do not delete the old item silently; document a new explicit login or provide a narrowly scoped migration helper.
 
 ### 6.5 MCP credential capability boundary
 
 `venmo-mcp` uses the same fixed service/account entry but receives only a read capability:
 
-- Feature paths that only load credentials, including auth status, require only `CredentialReader`. Login and reauthentication require reader plus writer for verified persistence; local logout requires only `CredentialDeleter`; revoking logout adds reader solely for revocation.
+- Feature paths that only load credentials, including auth status, require only `CredentialReader`. Login requires reader plus writer for verified persistence; local logout requires only `CredentialDeleter`.
 - Add a private production read-only credential façade, or equivalent concrete composition, that implements only `read_credential`; MCP server state must not have save/delete methods available by type.
-- Keep `CurrentAccountApi`, `TokenRevocationApi`, and `PasswordLoginApi` as independent capabilities; terminal login composes only the capabilities it needs, while MCP receives neither revocation nor password/device-trust capability.
+- Keep `CurrentAccountApi` and `PasswordLoginApi` as independent capabilities; terminal login composes only the capabilities it needs, while MCP receives no password/device-trust capability.
 - Load and decode the credential separately for every tool call, use it only for that call, and drop it afterward. Never cache the bearer token, device ID, or whole `CredentialEnvelope` in the server.
 - Constructing the server and handling `initialize` or `tools/list` must not instantiate a keyring entry, trigger an OS approval prompt, or make a network request.
 - No MCP tool input, server flag, environment variable, config file, stdin payload, or alternate backend may supply or override authentication material.
 - Missing, corrupt, locked, unavailable, ambiguous, or rejected credentials map to stable sanitized tool errors that direct the operator to the terminal `venmo` authentication commands without exposing platform source chains.
-- Per-call loading lets an already-running MCP process observe a successful `venmo auth reauthenticate` on its next invocation without restart.
+- Per-call loading lets an already-running MCP process observe a successful `venmo auth login` replacement on its next invocation without restart.
 
 The second executable can have a distinct native-code identity from `venmo`. Validate macOS Keychain ACL/approval behavior manually with an isolated test service/account before claiming support. On Linux, an MCP host launched outside the desktop login session may lack Secret Service or user-session D-Bus even when the terminal CLI works. Fail closed with actionable setup guidance; never introduce a plaintext or environment-secret fallback. Automated validation must not access any native production credential entry.
 
@@ -739,7 +725,7 @@ That single trusted-device mobile-login experiment succeeded on 2026-07-11. The 
 
 On 2026-07-11, one separately authorized attempt to enroll a generated CLI device through `/users/devices` using the valid mobile token was definitively rejected with HTTP 400 and error code `81124`. There was no retry, no token was issued by that enrollment attempt, and the pending local experimental keychain entry was deleted. Together with the earlier generated-device password-login rejection with code `240`, this does not establish any fresh-device bootstrap path. The temporary ignored enrollment test and its direct development-only UUID dependency were removed; production authentication continues to require and preserve a device identity Venmo already trusts.
 
-An authorized one-shot stored-device reauthentication experiment then consumed only the `USERNAME` and `PASSWORD` fields from the owner's local 1Password `Venmo` item in bounded process memory. No field value, 1Password session token, device ID, bearer token, request body, response body, or account identity entered arguments, environment variables, files, logs, chat, or tool output. The experiment reused the existing Keychain device ID internally; Venmo issued a replacement token directly without OTP, same-account current-account validation passed, and the replacement credential was saved and read-back verified. A separate normal `auth status` process then reloaded and validated it successfully with stdout suppressed. The temporary 1Password probe was removed; production `auth reauthenticate` uses only interactive hidden prompts and does not invoke `op`. This proves an email/password-only user experience after trusted-device bootstrap, not headerless authentication, a fresh-install bootstrap, a refresh grant, unattended renewal, or guaranteed lifetime. The prior bearer's remote state was not established, and automatic revocation is unsafe while the private endpoint's scope is undocumented; successful reauthentication therefore warns that the previous token may remain valid and points to official session controls.
+An authorized historical stored-device replacement experiment consumed only the `USERNAME` and `PASSWORD` fields from the owner's local 1Password `Venmo` item in bounded process memory. No field value, 1Password session token, device ID, bearer token, request body, response body, or account identity entered arguments, environment variables, files, logs, chat, or tool output. The experiment reused the existing Keychain device ID internally; Venmo issued a replacement token directly without OTP, same-account current-account validation passed, and the replacement credential was saved and read-back verified. A separate normal `auth status` process then reloaded and validated it successfully with stdout suppressed. The temporary 1Password probe was removed. This proved a wire behavior but the product no longer exposes stored-device replacement: every explicit login now requires a newly supplied trusted device ID. It does not establish headerless authentication, fresh-device bootstrap, a refresh grant, unattended renewal, or guaranteed lifetime.
 
 A subsequent authorized fresh-device experiment established why browser-derived IDs work. A normal Chrome process with an isolated temporary profile received a new secure `v_id` before authentication. After the owner completed Venmo's official login and security challenge, that exact ID was captured only in local bounded process memory and supplied to one mobile password-login initiation. Venmo issued a mobile bearer directly without OTP; same-account current-account validation, Keychain replacement/readback, and a separate rebuilt `auth status` process all succeeded. This proves that completing the current web identity flow can make a newly minted web `v_id` acceptable to the mobile-private password endpoint. It does not establish a standalone device-registration request or make browser-assisted bootstrap an acceptable product design.
 
@@ -882,7 +868,7 @@ Feature interfaces express product operations rather than arbitrary HTTP paths. 
 the narrow ports it consumes under `src/features/<feature>/ports.rs`; there is no monolithic
 service or shared ports module:
 
-- Authentication owns `CurrentAccountApi`, `TokenRevocationApi`, and `PasswordLoginApi`.
+- Authentication owns `CurrentAccountApi` and `PasswordLoginApi`.
 - Wallet, people, activity, requests, payments, and doctor own their endpoint-specific read or
   write capabilities.
 - Page requests store `Limit` plus their endpoint-specific validated continuation (`Offset`,
@@ -1386,10 +1372,10 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 ### 13.3 Feature tests with fakes
 
 - Login is interactive and hidden-prompt only.
-- Reauthentication fails before credential/network access when noninteractive, requires one readable stored credential, reuses its exact device ID without prompting, and never requires the old token to validate.
-- Direct reauthentication performs exactly one password-login initiation and no device-trust call; the exact recognized challenge alone enables the one SMS-OTP path and its post-save best-effort trust call.
-- Reauthentication account mismatch, current-account validation failure, and invalid prompt input leave the old credential untouched; every save/read-back uncertainty is reported as unknown and prevents device trust.
-- Invalid token is never saved.
+- Login fails before credential/network access when noninteractive and always prompts for a newly supplied trusted device ID rather than reusing stored device identity.
+- Direct password success performs exactly one password-login initiation and no device-trust call; the exact recognized challenge alone enables the one SMS-OTP path and its post-save best-effort trust call.
+- Password/OTP failure, current-account validation failure, and invalid prompt input leave the old credential untouched; every save/read-back uncertainty is reported as unknown and prevents device trust.
+- An issued token that fails validation is never saved.
 - A valid replacement preserves the old credential until validation succeeds.
 - Corrupt credentials can be replaced and deleted.
 - Auth status identifies the active account.
@@ -1477,7 +1463,7 @@ MCP tests must be service-free unless a separately ignored native test explicitl
 - Unit-test every input DTO conversion and output view, including exact decimal money, string IDs, RFC 3339 timestamps, explicit nulls, tagged activity/counterparty forms, request direction, and endpoint-specific continuation field names.
 - Snapshot the exact nine-tool allowlist, titles, descriptions, JSON Schema 2020-12 input/output schemas, defaults, required/nullable fields, and annotations. Every input schema must set `additionalProperties: false`, and runtime deserialization must reject unknown fields. No auth mutation, secret, financial, internal-helper, resource, or prompt surface may appear.
 - Exercise `initialize`, `tools/list`, and representative `tools/call` requests through the SDK's in-process or duplex transport using fake services. Initialization and listing must prove zero credential-reader and API calls.
-- Build handler tests around a fake that implements only `CredentialReader`, `CurrentAccountApi`, and the required read API traits—not `CredentialWriter`, `CredentialDeleter`, `TokenRevocationApi`, or `PasswordLoginApi`—so MCP code cannot compile if it attempts local or remote authentication mutation. Verify production state holds only the read-only façade.
+- Build handler tests around a fake that implements only `CredentialReader`, `CurrentAccountApi`, and the required read API traits—not `CredentialWriter`, `CredentialDeleter`, or `PasswordLoginApi`—so MCP code cannot compile if it attempts authentication mutation. Verify production state holds only the read-only façade.
 - Prove each invocation reloads the credential and that a changed fake credential is observed on the next call; no credential material remains cached in server state.
 - Prove non-waiting one-permit admission returns `server_busy` for overlap, creates no pending queue, does not hold a standard mutex across await, and retains the permit until any cancelled `spawn_blocking` credential operation actually finishes.
 - Prove the capacity-one/two-second-refill limiter returns `rate_limited` without sleep, queue, retry, credential access, or network access, and that initialization/tool discovery do not consume its budget.
@@ -1524,9 +1510,9 @@ Required sections:
 1. Unofficial/private API warning.
 2. Installation and supported platforms.
 3. OS credential-store behavior and Linux Secret Service requirements.
-4. The unsupported legacy password/SMS-OTP login flow, including exactly what is sent to Venmo, what is never stored, how `--token` imports an existing bearer token without exposing it as an argument, and how explicit stored-device `auth reauthenticate` performs full issuance rather than a nonexistent refresh.
+4. The unsupported legacy password/SMS-OTP login flow, including exactly what is sent to Venmo, what is never stored, why every login requires a newly supplied trusted device ID, and the absence of token import or automatic refresh.
 5. Explicit warnings that account credentials and the resulting token are equivalent to powerful secrets and must never be shared, logged, committed, or passed as shell arguments.
-6. `venmo auth login`, stored-device `venmo auth reauthenticate`, trust-device warnings, status, logout, and revocation behavior.
+6. `venmo auth login`, trust-device warnings, status, and local-only logout behavior.
 7. Friends and user-search examples, including server-page `--limit`, typed `--offset`, copyable next offsets, one-page behavior, and changing-dataset/no-snapshot semantics.
 8. Payment-method and balance examples.
 9. Pay, request-creation, top-level acceptance, and top-level decline examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for `pay`, `accept`, and `decline`; the acceptance funding limitation; and immediate no-prompt behavior only for request creation.
@@ -1538,9 +1524,9 @@ Required sections:
 15. The exact read-only MCP tool catalog, structured result and one-page pagination behavior, standard annotations, and the fact that annotations are hints rather than permissions.
 16. Prominent MCP transcript/privacy and prompt-injection warnings: hosts may retain private financial/social output, and remote notes/names are untrusted data.
 17. The absence of MCP credential mutation and initial financial tools, plus the requirements for any later startup-gated/human-approved write phase.
-18. Upgrade, uninstall, credential removal, and how a running MCP server observes CLI reauthentication on the next call.
+18. Upgrade, uninstall, credential removal, and how a running MCP server observes a successful explicit CLI login replacement on the next call.
 
-Documentation must never suggest placing the password, OTP, OTP secret, device ID, or bearer token in a command argument, environment variable, file, browser automation, chat, screenshot, or log. Password/OTP entry occurs only in the CLI's interactive prompts and only after an explicit `auth login` or `auth reauthenticate` invocation.
+Documentation must never suggest placing the password, OTP, OTP secret, device ID, or bearer token in a command argument, environment variable, file, browser automation, chat, screenshot, or log. Password/OTP/device-ID entry occurs only in the CLI's interactive prompts and only after an explicit `auth login` invocation.
 
 ## 16. Distribution
 
@@ -1579,8 +1565,8 @@ Deliverables:
 
 - Freeze the terminal command surface and help text in Sections 3.1–3.10 and the MCP tool/schema/annotation surface in Section 3.11.
 - Verify token-retrieval steps for the README without automating them.
-- Validate the legacy password/SMS-OTP token issuance, device trust, and existing-token import paths without storing password or OTP material.
-- Validate current-account, search, user, payment-method, revoke, payment-creation, and request-creation contracts.
+- Validate the legacy password/SMS-OTP token issuance and device-trust paths without storing account identifier, password, or OTP material.
+- Validate current-account, search, user, payment-method, payment-creation, and request-creation contracts.
 - Discover and validate friends, balance, activity list/detail, pending-request list/detail, request acceptance, and request decline.
 - For operations exposed by the Venmo web application, use the sanitized `agent-browser` network-observation workflow in Section 7.4 to establish the proper request shape; never commit or emit raw captures.
 - Produce a dated sanitized contract dossier, typed DTO outline, fixture, and exact mock-server assertion for every retained API operation.
@@ -1639,7 +1625,7 @@ Deliverables:
 - Sole `keyring` adapter.
 - `dialoguer` prompt adapter and interactive hidden-token prompt.
 - Validation-before-save.
-- Password/SMS-OTP `auth login`, hidden `auth login --token` import, stored-device full-issuance `auth reauthenticate`, `auth status`, and `auth logout`.
+- Password/SMS-OTP `auth login`, `auth status`, and local-only `auth logout`.
 - Corrupt-entry recovery and migration behavior.
 
 Exit criteria:
@@ -1707,7 +1693,7 @@ Exit criteria:
 
 Deliverables:
 
-- Complete README, including verified password/SMS-OTP login behavior and existing-token import.
+- Complete README, including verified password/SMS-OTP login and local-only logout behavior.
 - Contributor architecture documentation for feature/shared ownership, hexagonal dependency
   direction, dependency injection, the single Venmo client/transport, and future frontend
   composition.
@@ -1737,7 +1723,7 @@ Exit criteria:
 
 Deliverables:
 
-- Keep auth status and every non-mutating feature entry point bounded by `CredentialReader`, keep credential writes and deletion behind their independent capabilities, split authentication API access into current-account and revocation capabilities, and add production read-only credential/API façades without changing CLI behavior.
+- Keep auth status and every non-mutating feature entry point bounded by `CredentialReader`, keep credential writes and deletion behind their independent capabilities, keep current-account separate from password/device-trust mutation capabilities, and add production read-only credential/API façades without changing CLI behavior.
 - Add defensive bounds for every arbitrary ID accepted through MCP before any credential or network access.
 - Review and lock the official `rmcp` stable release and minimal stdio/server/schema feature set against Rust 1.95, supported targets, and cargo-deny.
 - Add explicit MCP input/output DTOs, JSON Schema, exact money/time/ID conversions, tagged activity views, safe error mapping, and hostile-content tests.
@@ -1787,7 +1773,7 @@ Exit criteria:
 
 - All CLI commands in Sections 3.1–3.10 and the initial MCP tools in Section 3.11 are implemented and documented.
 - No old `init`, `deinit`, `charge`, split, or multi-recipient interface remains.
-- `auth login` prompts for the identifier, hidden password, and hidden trusted device ID in that order, and handles SMS OTP when required; `auth login --token` prompts for an existing bearer token and, when needed, its matching device ID. Neither mode accepts secrets through arguments, stdin flags, environment variables, or files.
+- `auth login` prompts for the identifier, hidden password, and a newly supplied hidden trusted device ID in that order, and handles SMS OTP when required. It accepts no secrets through arguments, stdin flags, environment variables, or files.
 - Interactive prompts use the tested `dialoguer` adapter and never echo token material or write prompt UI to stdout.
 - README token-retrieval steps are verified and carry prominent secret-handling warnings.
 - The token is stored only in the native OS credential store through `keyring`.
@@ -1824,7 +1810,7 @@ Exit criteria:
 - The initial MCP registry exposes exactly the nine Section 3.11 read tools, no resources/prompts, no auth mutation or secret input, and no financial/internal-helper tools.
 - Every initial MCP tool has accurate read-only/non-destructive/open-world annotations, strict input/output schemas, and structured results using exact money, time, ID, tagged activity, and native continuation representations.
 - MCP initialization and tool listing are keychain/network-free; every tool reloads credentials per call through read-only capability and leaves no credential cached.
-- Type-level MCP state exposes neither local credential mutation nor remote login/trust/revocation capabilities.
+- Type-level MCP state exposes neither local credential mutation nor remote login/device-trust capabilities.
 - Bounded frames/results, non-waiting one-operation admission, conservative rate limiting, and cancellation-safe permit ownership prevent unbounded buffering, queues, and overlapping keychain/Venmo work.
 - MCP stdout is protocol-only, diagnostics are stderr-only, and hostile remote content remains labeled JSON data rather than instructions, metadata, errors, or logs.
 - Documentation warns that annotations are hints, read-only results remain private/sensitive, and MCP hosts may retain tool data in transcripts or telemetry.
@@ -1843,7 +1829,7 @@ Exit criteria:
 | Wrong, stale, or already-settled request | Fetch authoritative record, require incoming/pending/current-account ownership, confirm all immutable fields, and handle state conflict without a retry |
 | Token exposure | Hidden prompt, keyring-only persistence, redacted token type, no body/header logs |
 | Malicious terminal text | Sanitize every human-rendered untrusted string |
-| Rust cannot read the legacy Node-created keychain item | Native migration spike, reauthentication documentation, no silent deletion |
+| Rust cannot read the legacy Node-created keychain item | Native migration spike, explicit-login replacement documentation, no silent deletion |
 | Linux has no Secret Service | Fail closed with actionable guidance; do not use insecure fallback |
 | Cross-compiled binary hides runtime failures | Native keyring and archive smoke tests before claiming support |
 | Third-party research has stale or incompatible code | Use it only as a behavioral lead; validate independently and do not copy incompatible code |
@@ -1859,7 +1845,7 @@ Exit criteria:
 | MCP cancellation occurs after a future write was transmitted | Preserve ambiguous-outcome classification, stop further work, never replay, and require independent reconciliation |
 | MCP input, output, or pending calls consume unbounded memory | Enforce 64 KiB inbound frames, 2 MiB serialized results, no pending operation queue, immediate `server_busy`, and tested SDK transport bounds |
 | A local harness polls Venmo aggressively | Capacity-one/two-second-refill process limiter, one active operation, immediate `rate_limited`, no delayed queue, and zero automatic retries |
-| Read-only MCP code can reach auth revocation/trust methods | Split current-account and mutation ports, hold only read-only credential/API façades, and compile-test fakes without mutating traits |
+| Read-only MCP code can reach auth login/trust methods | Split current-account and mutation ports, hold only read-only credential/API façades, and compile-test fakes without mutating traits |
 | Host approval covers model input but not the resolved write plan | Require a short-lived single-use prepare/execute plan, repeat exact fields in host-visible execute args, reject any drift, and keep writes blocked without a named tested host policy |
 
 ## 20. Remaining decisions
@@ -1883,10 +1869,10 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 1. Complete formatting, lint, test, rustdoc, dependency-policy, and independent safety review for every production CLI command.
 2. Retain the reconciled acceptance evidence that the response uses a distinct settled-payment ID and cannot prove the final funding source or fee; do not repeat the mutation.
 3. Retain the reconciled decline evidence: one owner-approved one-cent `deny` write returned exact terminal `cancelled` state, removed the pending request, created no payment activity, and left available balance unchanged. Do not repeat the mutation speculatively.
-4. Keep auth status and every shared read feature use case bounded by `CredentialReader`, keep current-account separate from revocation/login ports, add read-only native credential/API façades, and prove existing CLI behavior remains unchanged.
+4. Keep auth status and every shared read feature use case bounded by `CredentialReader`, keep current-account separate from password-login/device-trust ports, add read-only native credential/API façades, and prove existing CLI behavior remains unchanged.
 5. Revalidate and lock the official `rmcp` stable release, minimal stdio/server/schema features, MSRV, license, advisories, and transitive graph.
 6. Implement explicit MCP DTOs, schemas, conversions, annotations, generic read-only handlers, the exact registry, bounded framing/results, and the thin `venmo-mcp` stdio binary with protocol/process/nonleak tests.
 7. Update local/release validation, release packaging, and README with both binaries, local host configuration, transcript privacy, prompt-injection treatment, annotations, and troubleshooting.
 8. Perform isolated manual native credential access validation for the second executable on supported platforms; never use production credentials during automated validation.
-9. Continue occasional explicit read-only observation of the validated mobile-issued token's lifetime. Do not poll aggressively, infer an expiry date, store the password, automatically reauthenticate, or retry after rejection.
+9. Continue occasional explicit read-only observation of the validated mobile-issued token's lifetime. Do not poll aggressively, infer an expiry date, store the password, automatically renew, or retry after rejection.
 10. Keep the live-verified CLI pay and request-creation contracts covered by exact synthetic tests and monitor them only through normal use; do not repeat canary mutations speculatively. Keep every MCP financial command unavailable until its own request, response, ambiguity, verification, and human-approval contracts are established.

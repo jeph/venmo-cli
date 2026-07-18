@@ -89,9 +89,6 @@ _venmo() {
             venmo__subcmd__auth,logout)
                 cmd="venmo__subcmd__auth__subcmd__logout"
                 ;;
-            venmo__subcmd__auth,reauthenticate)
-                cmd="venmo__subcmd__auth__subcmd__reauthenticate"
-                ;;
             venmo__subcmd__auth,status)
                 cmd="venmo__subcmd__auth__subcmd__status"
                 ;;
@@ -103,9 +100,6 @@ _venmo() {
                 ;;
             venmo__subcmd__auth__subcmd__help,logout)
                 cmd="venmo__subcmd__auth__subcmd__help__subcmd__logout"
-                ;;
-            venmo__subcmd__auth__subcmd__help,reauthenticate)
-                cmd="venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate"
                 ;;
             venmo__subcmd__auth__subcmd__help,status)
                 cmd="venmo__subcmd__auth__subcmd__help__subcmd__status"
@@ -175,9 +169,6 @@ _venmo() {
                 ;;
             venmo__subcmd__help__subcmd__auth,logout)
                 cmd="venmo__subcmd__help__subcmd__auth__subcmd__logout"
-                ;;
-            venmo__subcmd__help__subcmd__auth,reauthenticate)
-                cmd="venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate"
                 ;;
             venmo__subcmd__help__subcmd__auth,status)
                 cmd="venmo__subcmd__help__subcmd__auth__subcmd__status"
@@ -389,7 +380,7 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__auth)
-            opts="-v -h --verbose --help login reauthenticate logout status help"
+            opts="-v -h --verbose --help login logout status help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -403,7 +394,7 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__auth__subcmd__help)
-            opts="login reauthenticate logout status help"
+            opts="login logout status help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -458,20 +449,6 @@ _venmo() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        venmo__subcmd__auth__subcmd__help__subcmd__reauthenticate)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         venmo__subcmd__auth__subcmd__help__subcmd__status)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -487,7 +464,7 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__auth__subcmd__login)
-            opts="-v -h --token --verbose --help"
+            opts="-v -h --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -501,20 +478,6 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__auth__subcmd__logout)
-            opts="-v -h --revoke --verbose --help"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        venmo__subcmd__auth__subcmd__reauthenticate)
             opts="-v -h --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -747,7 +710,7 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__help__subcmd__auth)
-            opts="login reauthenticate logout status"
+            opts="login logout status"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -775,20 +738,6 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__help__subcmd__auth__subcmd__logout)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        venmo__subcmd__help__subcmd__auth__subcmd__reauthenticate)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

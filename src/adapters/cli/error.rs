@@ -23,6 +23,7 @@ pub enum ErrorCategory {
     Usage,
     Cancelled,
     Credential,
+    Authentication,
     Network,
     Timeout,
     Api,
@@ -39,6 +40,7 @@ impl ErrorCategory {
             Self::Usage => 2,
             Self::Cancelled
             | Self::Credential
+            | Self::Authentication
             | Self::Network
             | Self::Timeout
             | Self::Api
@@ -246,6 +248,11 @@ impl AppError {
     pub const fn exit_code(&self) -> u8 {
         self.category().exit_code()
     }
+
+    #[must_use]
+    pub fn requires_login(&self) -> bool {
+        self.category() == ErrorCategory::Authentication
+    }
 }
 
 const fn application_failure_category(kind: ApplicationFailureKind) -> ErrorCategory {
@@ -263,6 +270,7 @@ const fn api_failure_category(kind: ApiFailureKind) -> ErrorCategory {
     match kind {
         ApiFailureKind::Network => ErrorCategory::Network,
         ApiFailureKind::Timeout => ErrorCategory::Timeout,
+        ApiFailureKind::Authentication => ErrorCategory::Authentication,
         ApiFailureKind::Rejected => ErrorCategory::Api,
         ApiFailureKind::Contract => ErrorCategory::ApiContract,
         ApiFailureKind::AmbiguousWrite => ErrorCategory::AmbiguousWrite,

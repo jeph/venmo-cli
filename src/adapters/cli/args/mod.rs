@@ -6,7 +6,7 @@ mod parsers;
 mod reads;
 mod writes;
 
-pub use auth::{AuthArgs, AuthOperation, LoginArgs, LogoutArgs};
+pub use auth::{AuthArgs, AuthOperation};
 pub use completions::{CompletionShell, CompletionsArgs};
 pub use reads::{
     ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, FriendsArgs,
