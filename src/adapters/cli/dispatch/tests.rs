@@ -99,7 +99,6 @@ enum ErrorVariant {
     LoggingInitialization,
     RuntimeInitialization,
     AuthLogin,
-    DoctorIncomplete,
     Unexpected,
 }
 
@@ -218,7 +217,7 @@ async fn production_preconditions_do_not_call_the_logging_initializer() -> TestR
 #[tokio::test(flavor = "current_thread")]
 async fn delegated_production_commands_initialize_logging_before_execution() -> TestResult {
     for arguments in [
-        &["venmo", "--verbose", "doctor"][..],
+        &["venmo", "--verbose", "balance"][..],
         &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
         &["venmo", "--verbose", "decline", "request-1", "--yes"][..],
     ] {
@@ -246,7 +245,7 @@ async fn delegated_production_commands_initialize_logging_before_execution() -> 
 #[tokio::test(flavor = "current_thread")]
 async fn logging_initialization_failures_prevent_production_execution() -> TestResult {
     for arguments in [
-        &["venmo", "--verbose", "doctor"][..],
+        &["venmo", "--verbose", "balance"][..],
         &["venmo", "--verbose", "accept", "request-1", "--yes"][..],
         &["venmo", "--verbose", "decline", "request-1", "--yes"][..],
     ] {
@@ -341,10 +340,6 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
             &["venmo", "requests", "list"][..],
             TerminalCapabilities::new(false, false),
         ),
-        (
-            &["venmo", "doctor"][..],
-            TerminalCapabilities::new(false, false),
-        ),
     ] {
         let setup = DispatchSetup::parse(arguments, terminals)?;
         let delegated_command = setup.cli.command.clone();
@@ -367,7 +362,7 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
 #[tokio::test(flavor = "current_thread")]
 async fn executor_failures_preserve_the_complete_result_and_state() -> TestResult {
     let setup = DispatchSetup::parse(
-        &["venmo", "doctor"],
+        &["venmo", "balance"],
         TerminalCapabilities::new(false, false),
     )?
     .with_executor_behavior(ExecutorBehavior::Fail);
@@ -375,10 +370,10 @@ async fn executor_failures_preserve_the_complete_result_and_state() -> TestResul
     let initial_state = DispatchState::default();
     let expected = Observed::new(
         ResultSnapshot::Failure {
-            variant: ErrorVariant::DoctorIncomplete,
-            category: ErrorCategory::Api,
+            variant: ErrorVariant::Unexpected,
+            category: ErrorCategory::Internal,
             exit_code: 1,
-            message: "doctor found one or more required failures; review the report".to_owned(),
+            message: "failed to write command output".to_owned(),
         },
         DispatchState {
             calls: vec![DispatchCall::Execute(delegated_command)],
@@ -531,7 +526,9 @@ async fn execute_dispatch(
             transcript.borrow_mut().push(DispatchCall::Execute(command));
             ready(match behavior {
                 ExecutorBehavior::Succeed => Ok(()),
-                ExecutorBehavior::Fail => Err(AppError::DoctorIncomplete),
+                ExecutorBehavior::Fail => Err(AppError::CommandOutput {
+                    source: io::Error::other("synthetic executor failure"),
+                }),
             })
         },
     )
@@ -577,7 +574,9 @@ async fn execute_production_dispatch(
                 .push(DispatchCall::Execute(command));
             ready(match executor_behavior {
                 ExecutorBehavior::Succeed => Ok(()),
-                ExecutorBehavior::Fail => Err(AppError::DoctorIncomplete),
+                ExecutorBehavior::Fail => Err(AppError::CommandOutput {
+                    source: io::Error::other("synthetic executor failure"),
+                }),
             })
         },
     )
@@ -635,7 +634,6 @@ fn snapshot_result(result: Result<(), AppError>) -> ResultSnapshot {
                 AppError::LoggingInitialization { .. } => ErrorVariant::LoggingInitialization,
                 AppError::RuntimeInitialization { .. } => ErrorVariant::RuntimeInitialization,
                 AppError::AuthLogin { .. } => ErrorVariant::AuthLogin,
-                AppError::DoctorIncomplete => ErrorVariant::DoctorIncomplete,
                 _ => ErrorVariant::Unexpected,
             },
             category: error.category(),

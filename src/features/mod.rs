@@ -1,6 +1,5 @@
 pub(crate) mod activity;
 pub(crate) mod auth;
-pub(crate) mod doctor;
 pub(crate) mod payments;
 pub(crate) mod people;
 pub(crate) mod requests;

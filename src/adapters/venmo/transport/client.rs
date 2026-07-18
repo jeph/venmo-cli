@@ -96,7 +96,6 @@ impl VenmoHttpTransport {
             .request(request.method.clone(), url)
             .header(ACCEPT, JSON_ACCEPT);
         match credentials {
-            RequestCredentials::None => {}
             RequestCredentials::Authenticated(session) => {
                 builder = builder
                     .header(AUTHORIZATION, authorization_header(session.access_token)?)

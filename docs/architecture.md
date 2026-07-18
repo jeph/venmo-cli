@@ -16,7 +16,6 @@ src/
   features/
     activity/
     auth/
-    doctor/
     payments/
     people/
     requests/

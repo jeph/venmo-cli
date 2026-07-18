@@ -11,7 +11,6 @@ use crate::features::auth::{LoginError, PromptError};
 
 mod auth;
 mod composition;
-mod doctor;
 mod reads;
 mod writes;
 

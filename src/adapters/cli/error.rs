@@ -187,9 +187,6 @@ pub enum AppError {
         source: RequestInfoError,
     },
 
-    #[error("doctor found one or more required failures; review the report")]
-    DoctorIncomplete,
-
     #[error("failed to write command output")]
     CommandOutput {
         #[from]
@@ -231,7 +228,6 @@ impl AppError {
             Self::Activity { source } => read_failure_category(source.failure_kind()),
             Self::Requests { source } => read_failure_category(source.failure_kind()),
             Self::RequestInfo { source } => application_failure_category(source.failure_kind()),
-            Self::DoctorIncomplete => ErrorCategory::Api,
             Self::FinancialWriteInterruptedUnknown => ErrorCategory::AmbiguousWrite,
             Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
             Self::CompletionOutput { .. }

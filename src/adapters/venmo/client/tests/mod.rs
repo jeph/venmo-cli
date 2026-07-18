@@ -28,7 +28,6 @@ use crate::features::auth::{
     AccountPassword, CurrentAccountApi, LoginIdentifier, OtpCode, OtpSecret, PasswordLoginApi,
     PasswordLoginStart,
 };
-use crate::features::doctor::DoctorApi;
 use crate::features::payments::{
     BlankSourceEligibilityApi, EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi,
     PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
@@ -95,7 +94,6 @@ const SYNTHETIC_OTP_SECRET: &str = "synthetic-otp-secret";
 
 mod activity;
 mod auth;
-mod doctor;
 mod live;
 mod payments;
 mod people;

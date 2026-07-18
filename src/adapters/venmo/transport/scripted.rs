@@ -28,7 +28,6 @@ impl fmt::Debug for ScriptedSecret {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::adapters::venmo) enum ScriptedCredentials {
-    Unauthenticated,
     Authenticated {
         access_token: ScriptedSecret,
         device_id: ScriptedSecret,
@@ -50,7 +49,6 @@ pub(in crate::adapters::venmo) enum ScriptedCredentials {
 impl ScriptedCredentials {
     fn capture(credentials: RequestCredentials<'_>) -> Self {
         match credentials {
-            RequestCredentials::None => Self::Unauthenticated,
             RequestCredentials::Authenticated(session) => Self::Authenticated {
                 access_token: ScriptedSecret::capture(session.access_token.expose_secret()),
                 device_id: ScriptedSecret::capture(session.device_id.as_str()),

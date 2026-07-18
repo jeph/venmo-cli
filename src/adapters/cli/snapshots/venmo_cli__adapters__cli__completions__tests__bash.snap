@@ -38,9 +38,6 @@ _venmo() {
             venmo,decline)
                 cmd="venmo__subcmd__decline"
                 ;;
-            venmo,doctor)
-                cmd="venmo__subcmd__doctor"
-                ;;
             venmo,friends)
                 cmd="venmo__subcmd__friends"
                 ;;
@@ -133,9 +130,6 @@ _venmo() {
                 ;;
             venmo__subcmd__help,decline)
                 cmd="venmo__subcmd__help__subcmd__decline"
-                ;;
-            venmo__subcmd__help,doctor)
-                cmd="venmo__subcmd__help__subcmd__doctor"
                 ;;
             venmo__subcmd__help,friends)
                 cmd="venmo__subcmd__help__subcmd__friends"
@@ -246,7 +240,7 @@ _venmo() {
 
     case "${cmd}" in
         venmo)
-            opts="-v -h -V --verbose --help --version auth pay request accept decline friends users payment-methods balance activity requests doctor completions help"
+            opts="-v -h -V --verbose --help --version auth pay request accept decline friends users payment-methods balance activity requests completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -547,20 +541,6 @@ _venmo() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        venmo__subcmd__doctor)
-            opts="-v -h --verbose --help"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         venmo__subcmd__friends)
             opts="-v -h --verbose --help list help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -640,7 +620,7 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__help)
-            opts="auth pay request accept decline friends users payment-methods balance activity requests doctor completions help"
+            opts="auth pay request accept decline friends users payment-methods balance activity requests completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -794,20 +774,6 @@ _venmo() {
             return 0
             ;;
         venmo__subcmd__help__subcmd__decline)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        venmo__subcmd__help__subcmd__doctor)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

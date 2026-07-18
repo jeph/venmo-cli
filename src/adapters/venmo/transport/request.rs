@@ -44,7 +44,6 @@ impl fmt::Debug for ApiSession<'_> {
 
 #[derive(Clone, Copy)]
 pub(in crate::adapters::venmo) enum RequestCredentials<'a> {
-    None,
     Authenticated(ApiSession<'a>),
     Device(&'a DeviceId),
     OtpSecret {

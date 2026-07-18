@@ -299,6 +299,7 @@ fn removed_and_deferred_forms_are_rejected() {
     for arguments in [
         &["venmo", "init"][..],
         &["venmo", "deinit"][..],
+        &["venmo", "doctor"][..],
         &["venmo", "charge", "@alice", "1.00", "note"][..],
         &[
             "venmo", "request", "create", "@alice", "1.00", "--note", "note",
@@ -554,7 +555,6 @@ fn every_command_has_a_help_snapshot() {
         ("requests", &["requests"]),
         ("requests_list", &["requests", "list"]),
         ("requests_info", &["requests", "info"]),
-        ("doctor", &["doctor"]),
         ("completions", &["completions"]),
     ];
 

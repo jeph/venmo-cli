@@ -60,13 +60,6 @@ pub(super) trait ApiTransport: Sync {
         self.execute(RequestCredentials::Authenticated(session), request)
     }
 
-    fn send_unauthenticated<'a>(
-        &'a self,
-        request: HttpRequest<'a>,
-    ) -> impl Future<Output = Result<HttpResponse, TransportError>> + Send + 'a {
-        self.execute(RequestCredentials::None, request)
-    }
-
     fn send_with_device_id<'a>(
         &'a self,
         device_id: &'a crate::shared::DeviceId,

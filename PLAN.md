@@ -63,7 +63,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Include shell completion generation in the first release.
 - Keep one Cargo package and shared library, add `venmo-mcp` as a second thin binary, and set Cargo `default-run = "venmo"` so existing `cargo run -- ...` behavior remains unambiguous.
 - Use local stdio as the only initial MCP transport. Do not enable Streamable HTTP, SSE, remote authentication, or network listening in the first MCP release.
-- Register only the nine read tools in Section 3.11 initially. Do not expose resources or prompts until a concrete use case requires them.
+- Register only the eight read tools in Section 3.10 initially. Do not expose resources or prompts until a concrete use case requires them.
 - Keep the entire credential lifecycle terminal-CLI-only. MCP may report authenticated status but must never offer login, password/OTP collection, logout, credential overrides, remote session mutation, or secret-bearing tool inputs.
 - Give MCP its own explicit input/output DTO and JSON Schema boundary. Do not serialize secret-bearing feature/shared types, stored credential envelopes, raw private-API DTOs, headers, bodies, or keychain errors.
 - Reload the native credential for every MCP tool invocation and drop it afterward. Never cache a bearer token or device ID in long-lived server state; MCP startup and `tools/list` must touch neither the keychain nor Venmo.
@@ -126,7 +126,6 @@ venmo activity info <ACTIVITY_ID>
 venmo requests list [--direction <DIRECTION>] [--limit <N>] [--before <TOKEN>]
 venmo requests info <REQUEST_ID>
 
-venmo doctor
 venmo completions <SHELL>
 ```
 
@@ -423,31 +422,7 @@ venmo requests list --direction incoming --before <TOKEN>
   exact-ID detail behavior before the corresponding command is implemented. Routine tests and
   contributor verification remain service-free.
 
-### 3.9 Diagnostics
-
-#### `venmo doctor`
-
-Runs read-only checks and reports each independently:
-
-1. Build and platform information.
-2. Native credential-store availability.
-3. Credential presence and schema validity.
-4. Current-account authentication.
-5. Connectivity and TLS.
-6. Required private-API response shapes.
-
-Rules:
-
-- Writes the complete six-check report to stdout using explicit `Pass`, `Fail`, and `Skipped` states; dependency-blocked checks are `Skipped` rather than fabricated failures.
-- Continues every independent check that can safely run. Connectivity remains independently testable without credentials; authenticated shape checks are skipped when credential/account validation fails.
-- Treats every required check as healthy only when it passes, so any failure (and its dependent skipped checks) yields exit 1 after the report is written.
-- Never creates, changes, or deletes a credential.
-- Never creates a financial operation.
-- Never prints a token, authorization header, raw response body, full device ID, or private note.
-- Returns non-zero when a required check fails.
-- Provides actionable remediation, especially for Linux Secret Service and API drift.
-
-### 3.10 Shell completions
+### 3.9 Shell completions
 
 ```text
 venmo completions bash
@@ -460,7 +435,7 @@ venmo completions powershell
 - Requires no logging-subscriber initialization, authentication, keychain, or network access.
 - Release archives should also include pre-generated completion files.
 
-### 3.11 Local MCP server
+### 3.10 Local MCP server
 
 ```text
 venmo-mcp
@@ -482,7 +457,6 @@ Initial tool catalog:
 | `venmo_activity_list` | `limit` 1–50 (default 10), nullable `before_id` (default null) | Tagged activity records and always-present nullable `next_before_id` | Same one-page activity list |
 | `venmo_activity_info` | Validated `activity_id` | One tagged activity record | Same activity detail lookup |
 | `venmo_requests_list` | `direction` (default `all`), `limit` 1–50 (default 10), nullable `before` (default null) | Pending-request records, applied direction, always-present nullable `next_before` | Same one source page and local direction filtering |
-| `venmo_doctor` | Empty object | Overall health and six structured check results | Same read-only diagnostic orchestration |
 
 Every tool declares strict `inputSchema` and `outputSchema`. Input DTOs use runtime unknown-field rejection and schemas with `additionalProperties: false`, then convert into existing feature/shared model types before any credential or network access. Output DTOs use string IDs, exact decimal money strings rather than floats, normalized RFC 3339 timestamps, explicit JSON `null` for absent values, tagged activity/counterparty variants, and always-present endpoint-native continuation fields whose values may be null. They never expose raw next URLs. Every success must conform to its declared `outputSchema` and should include the same JSON serialized as text content for clients that do not yet consume `structuredContent`.
 
@@ -494,9 +468,9 @@ Do not register tools for:
 - `pay`, request creation, request acceptance, or request decline until their CLI contracts and the later MCP write phase are complete.
 - Internal exact-recipient resolution, automatic funding policy, request detail, or any lower-level API merely because implementation code exists.
 
-“Auth-status-only” describes the MCP authentication command surface: `venmo_auth_status` is the sole auth-oriented tool. `venmo_doctor` may still report its existing read-only credential-store, credential-presence/schema, and current-account checks, but it cannot mutate credentials or disclose authentication material.
+“Auth-status-only” describes the MCP authentication command surface: `venmo_auth_status` is the sole auth-oriented tool.
 
-#### 3.11.1 Tool annotations and permission signaling
+#### 3.10.1 Tool annotations and permission signaling
 
 Every initial tool must explicitly publish standard MCP annotations equivalent to:
 
@@ -575,7 +549,6 @@ pub enum Command {
     Balance,
     Activity(ActivityArgs),
     Requests(RequestsArgs),
-    Doctor,
     Completions(CompletionsArgs),
 }
 ```
@@ -735,11 +708,11 @@ This is not a reproducible pure-HTTP CLI contract. Before credential verificatio
 
 The raw capture was kept only in a mode-0700 temporary directory with mode-0600 files, never printed through agent output, and deleted immediately after local analysis; the temporary Chrome profile and all experimental capture code were also removed. The owner elected to rotate exposed login/session material after the experiment and should review official remembered-device and session controls.
 
-Immediately afterward, separate processes successfully used the mobile-issued token for `auth status`, `balance`, bounded `friends list`, bounded `users search`, `payment-methods list`, bounded `activity list`, bounded `requests list`, and `doctor`, with sensitive stdout discarded. This proves authentication compatibility across every currently implemented read-only adapter and native keychain reload. It does not establish token lifetime or authorize any financial-write contract; no financial mutation was attempted.
+Immediately afterward, separate processes successfully used the mobile-issued token for `auth status`, `balance`, bounded `friends list`, bounded `users search`, `payment-methods list`, bounded `activity list`, and bounded `requests list`, with sensitive stdout discarded. This proves authentication compatibility across the implemented read-only adapters and native keychain reload. It does not establish token lifetime or authorize any financial-write contract; no financial mutation was attempted.
 
 The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `payment-methods list` all succeeded. User search confirmed the inherited endpoint is fuzzy even for username-specific requests and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. Public single-token searches now intentionally normalize optional `@` spelling to the same `type=username` request, while multi-word searches remain general; the separate internal exhaustive traversal retains its fail-closed exact-match checks. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
 
-The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, `requests list`, and `doctor` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
+The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, and `requests list` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed. Shell completion generation remains service-free.
 
 ### 7.2 New read capabilities required by the redesign
 
@@ -771,7 +744,7 @@ The Rust adapters encode these findings with endpoint-specific opaque tokens, ex
 
 This evidence proves immediate read compatibility only. The imported web token rotates quickly, current mobile-client header/User-Agent behavior remains unverified, final-page exhaustion should receive an additional live boundary check, and no financial write may rely on these findings without completing its separate Phase 0 contract.
 
-After implementation, read-only live smoke tests succeeded for `auth status`, `friends list`, `balance`, `activity list`, `activity info` using canonical payment/transfer/authorization story IDs selected only in process memory, `requests list` with all/incoming/outgoing filters, and `doctor`. Sensitive command output was discarded and no identifiers or account data were retained. The first activity runs safely exposed offsetless timestamps, capitalized `False` continuation booleans, and deeper transfer/authorization records. The owner selected UTC semantics for the legacy timestamp form; the parser now supports it, continuation booleans are validated case-insensitively without relaxing their value, all three observed activity classes have synthetic contract regressions, and repeat live runs succeeded. A historical bounded friends traversal reached verified exhaustion, while the larger activity dataset was not claimed complete.
+After implementation, read-only live smoke tests succeeded for `auth status`, `friends list`, `balance`, `activity list`, `activity info` using canonical payment/transfer/authorization story IDs selected only in process memory, and `requests list` with all/incoming/outgoing filters. Sensitive command output was discarded and no identifiers or account data were retained. The first activity runs safely exposed offsetless timestamps, capitalized `False` continuation booleans, and deeper transfer/authorization records. The owner selected UTC semantics for the legacy timestamp form; the parser now supports it, continuation booleans are validated case-insensitively without relaxing their value, all three observed activity classes have synthetic contract regressions, and repeat live runs succeeded. A historical bounded friends traversal reached verified exhaustion, while the larger activity dataset was not claimed complete.
 
 On 2026-07-11, the owner explicitly authorized read-only live pagination validation using the active mobile-issued credential. After the public CLI was aligned with endpoint-native pagination, a one-record first page exposed a validated continuation and a second process successfully supplied the exact native `--offset`, `--before-id`, or `--before` value for each of `friends list`, `users search`, `activity list`, and `requests list --direction all`. A separate bounded friends traversal used 50-record source pages and reached a real final page with no continuation. All record output and continuation values were suppressed and discarded; no account data, query result, identifier, note, amount, or continuation value was retained, and no mutation endpoint was called. This confirms current first-to-second endpoint continuation behavior for all four adapters and final-page signaling for friends. Natural final-page exhaustion for user search, activity, and pending requests remains a release observation rather than a reason to poll aggressively.
 
@@ -869,7 +842,7 @@ the narrow ports it consumes under `src/features/<feature>/ports.rs`; there is n
 service or shared ports module:
 
 - Authentication owns `CurrentAccountApi` and `PasswordLoginApi`.
-- Wallet, people, activity, requests, payments, and doctor own their endpoint-specific read or
+- Wallet, people, activity, requests, and payments own their endpoint-specific read or
   write capabilities.
 - Page requests store `Limit` plus their endpoint-specific validated continuation (`Offset`,
   `ActivityBeforeId`, or `RequestsBefore`) directly.
@@ -918,7 +891,6 @@ src/
   features/
     activity/
     auth/
-    doctor/
     payments/
     people/
     requests/
@@ -1127,7 +1099,7 @@ Initial feature policy:
 - Use the SDK-compatible `schemars` version for JSON Schema 2020-12 input/output contracts; avoid a second conflicting schema version.
 - Preserve `serde_json` as the explicit structured-output representation and do not introduce a second general JSON model.
 - Add no sidecar runtime, Node dependency, browser component, generated protocol binary, or network listener.
-- Audit the published stdio transport's buffering and logging before acceptance. The production adapter must enforce the 64 KiB inbound frame bound and 2 MiB serialized-result bound from Section 3.11; an SDK path with unbounded line buffering is not acceptable without a bounded wrapper.
+- Audit the published stdio transport's buffering and logging before acceptance. The production adapter must enforce the 64 KiB inbound frame bound and 2 MiB serialized-result bound from Section 3.10; an SDK path with unbounded line buffering is not acceptable without a bounded wrapper.
 - Disable SDK/transport frame and payload tracing targets in production at every verbosity. A malformed JSON-RPC line, schema failure, or protocol error must never cause raw input/output to be written to stderr.
 
 The implementation targets the [MCP specification dated 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) unless the reviewed stable SDK requires a newer compatible revision. Record any spec-version change and rerun exact schema/protocol snapshots before release.
@@ -1399,7 +1371,6 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Outgoing-request `cancel` and local-only dismissal semantics cannot satisfy decline.
 - A request-state conflict is reported as a confirmed failure; an uncertain transport outcome is classified as ambiguous and is not retried.
 - Confirmed acceptance output is tied to the requested ID and does not overstate settlement when the server reports only pending/unknown state.
-- Doctor is read-only and redacted.
 
 ### 13.4 HTTP contract tests
 
@@ -1461,7 +1432,7 @@ The literal test username in this protocol is the only approved personal identif
 MCP tests must be service-free unless a separately ignored native test explicitly says otherwise:
 
 - Unit-test every input DTO conversion and output view, including exact decimal money, string IDs, RFC 3339 timestamps, explicit nulls, tagged activity/counterparty forms, request direction, and endpoint-specific continuation field names.
-- Snapshot the exact nine-tool allowlist, titles, descriptions, JSON Schema 2020-12 input/output schemas, defaults, required/nullable fields, and annotations. Every input schema must set `additionalProperties: false`, and runtime deserialization must reject unknown fields. No auth mutation, secret, financial, internal-helper, resource, or prompt surface may appear.
+- Snapshot the exact eight-tool allowlist, titles, descriptions, JSON Schema 2020-12 input/output schemas, defaults, required/nullable fields, and annotations. Every input schema must set `additionalProperties: false`, and runtime deserialization must reject unknown fields. No auth mutation, secret, financial, internal-helper, resource, or prompt surface may appear.
 - Exercise `initialize`, `tools/list`, and representative `tools/call` requests through the SDK's in-process or duplex transport using fake services. Initialization and listing must prove zero credential-reader and API calls.
 - Build handler tests around a fake that implements only `CredentialReader`, `CurrentAccountApi`, and the required read API traits—not `CredentialWriter`, `CredentialDeleter`, or `PasswordLoginApi`—so MCP code cannot compile if it attempts authentication mutation. Verify production state holds only the read-only façade.
 - Prove each invocation reloads the credential and that a changed fake credential is observed on the next call; no credential material remains cached in server state.
@@ -1518,7 +1489,7 @@ Required sections:
 9. Pay, request-creation, top-level acceptance, and top-level decline examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for `pay`, `accept`, and `decline`; the acceptance funding limitation; and immediate no-prompt behavior only for request creation.
 10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `accept` or `decline`.
 11. Ambiguous mutation recovery steps, including checking activity, request state, and the official app before any later operation.
-12. Doctor and troubleshooting guidance.
+12. Troubleshooting guidance.
 13. Completion installation.
 14. Local MCP installation and host configuration that launches `venmo-mcp` over stdio with no secret environment variables, after authenticating through `venmo`.
 15. The exact read-only MCP tool catalog, structured result and one-page pagination behavior, standard annotations, and the fact that annotations are hints rather than permissions.
@@ -1563,7 +1534,7 @@ Evaluate `cargo-dist` after initial target builds are stable. Recommended channe
 
 Deliverables:
 
-- Freeze the terminal command surface and help text in Sections 3.1–3.10 and the MCP tool/schema/annotation surface in Section 3.11.
+- Freeze the terminal command surface and help text in Sections 3.1–3.9 and the MCP tool/schema/annotation surface in Section 3.10.
 - Verify token-retrieval steps for the README without automating them.
 - Validate the legacy password/SMS-OTP token issuance and device-trust paths without storing account identifier, password, or OTP material.
 - Validate current-account, search, user, payment-method, payment-creation, and request-creation contracts.
@@ -1651,14 +1622,13 @@ Exit criteria:
 - No command silently truncates without saying so.
 - Public `--limit` is enforced as the one-request endpoint page size, and any validated native continuation is reported without describing the page as the complete collection.
 
-### Phase 5: Activity, request reads, and diagnostics
+### Phase 5: Activity and request reads
 
 Deliverables:
 
 - `activity list` and `activity info`.
 - `requests list` with direction filtering.
 - Pending-request detail lookup used by acceptance and decline preflight.
-- `doctor`.
 - Ambiguous-outcome recovery messaging.
 
 Exit criteria:
@@ -1666,7 +1636,6 @@ Exit criteria:
 - Activity can be used to inspect a known record.
 - Pending-request output is based on complete verified records and prints IDs accepted by the planned mutation.
 - Activity and request pagination obeys the one-page endpoint-native limit, ordering, local-filtering, and continuation policy in Section 10.1.
-- Doctor is read-only and leaks no sensitive data.
 
 ### Phase 6: Pay, request creation, request acceptance, and request decline
 
@@ -1727,7 +1696,7 @@ Deliverables:
 - Add defensive bounds for every arbitrary ID accepted through MCP before any credential or network access.
 - Review and lock the official `rmcp` stable release and minimal stdio/server/schema feature set against Rust 1.95, supported targets, and cargo-deny.
 - Add explicit MCP input/output DTOs, JSON Schema, exact money/time/ID conversions, tagged activity views, safe error mapping, and hostile-content tests.
-- Add the exact nine-tool registry in Section 3.11 with accurate annotations and no resources, prompts, auth mutation, secret input, internal helper, or financial tools.
+- Add the exact eight-tool registry in Section 3.10 with accurate annotations and no resources, prompts, auth mutation, secret input, internal helper, or financial tools.
 - Add generic handlers over the existing feature/API ports, one shared production read-only API façade, per-call credential loading, and a one-permit async operation gate.
 - Add bounded 64 KiB ingress, 2 MiB serialized-result enforcement, non-waiting `server_busy` admission, capacity-one/two-second-refill rate limiting, and SDK payload-log suppression.
 - Add the `venmo-mcp` stdio binary with protocol-only stdout and stderr-only diagnostics while preserving `default-run = "venmo"`.
@@ -1737,7 +1706,7 @@ Deliverables:
 
 Exit criteria:
 
-- `initialize` and `tools/list` succeed without keychain or network access and list exactly the nine read-only tools.
+- `initialize` and `tools/list` succeed without keychain or network access and list exactly the eight read-only tools.
 - Every tool calls the same feature use case as its CLI counterpart, preserves one-page endpoint-native pagination, and returns schema-valid structured output.
 - Server state has no credential save/delete capability and caches no bearer token, device ID, or loaded credential between calls.
 - Stdout contains only valid MCP protocol frames; stderr and tool errors contain no arguments, results, account data, notes, continuations, or secrets.
@@ -1771,7 +1740,7 @@ Exit criteria:
 
 ## 18. Definition of done
 
-- All CLI commands in Sections 3.1–3.10 and the initial MCP tools in Section 3.11 are implemented and documented.
+- All CLI commands in Sections 3.1–3.9 and the initial MCP tools in Section 3.10 are implemented and documented.
 - No old `init`, `deinit`, `charge`, split, or multi-recipient interface remains.
 - `auth login` prompts for the identifier, hidden password, and a newly supplied hidden trusted device ID in that order, and handles SMS OTP when required. It accepts no secrets through arguments, stdin flags, environment variables, or files.
 - Interactive prompts use the tested `dialoguer` adapter and never echo token material or write prompt UI to stdout.
@@ -1807,7 +1776,7 @@ Exit criteria:
 - Every manually approved live payment, request, acceptance, or decline test uses exactly $0.01 and the approved test counterparty under Section 13.6, apart from the documented one-time acceptance exception.
 - No material contradiction or ambiguity discovered during implementation is resolved without clarification from the prompter/project owner and a recorded plan/test update; finished CLI users are never asked to make implementation decisions.
 - `venmo` and `venmo-mcp` are thin adapters over the same feature use cases, shared models, credential implementation, and private-API client; MCP does not parse terminal output or duplicate HTTP contracts.
-- The initial MCP registry exposes exactly the nine Section 3.11 read tools, no resources/prompts, no auth mutation or secret input, and no financial/internal-helper tools.
+- The initial MCP registry exposes exactly the eight Section 3.10 read tools, no resources/prompts, no auth mutation or secret input, and no financial/internal-helper tools.
 - Every initial MCP tool has accurate read-only/non-destructive/open-world annotations, strict input/output schemas, and structured results using exact money, time, ID, tagged activity, and native continuation representations.
 - MCP initialization and tool listing are keychain/network-free; every tool reloads credentials per call through read-only capability and leaves no credential cached.
 - Type-level MCP state exposes neither local credential mutation nor remote login/device-trust capabilities.
@@ -1820,7 +1789,7 @@ Exit criteria:
 
 | Risk | Mitigation |
 | --- | --- |
-| Private endpoints changed or disappear | Phase 0 validation, isolated DTOs, sanitized fixtures, doctor diagnostics |
+| Private endpoints changed or disappear | Phase 0 validation, isolated DTOs, sanitized fixtures, typed per-command errors, and `auth status` |
 | Pending request records are unavailable | Fail closed; never substitute counts, incomplete guesses, an ordinary payment, outgoing cancellation, or local-only dismissal |
 | Live discovery moves money | Use only the Section 13.6 protocol: exactly $0.01 with the approved test counterparty, one immediately confirmed mutation at a time, no unattended authorization, and immediate reconciliation |
 | A timed-out write actually succeeded | Never retry; classify as ambiguous; use activity detail, request state, and the official app for verification |

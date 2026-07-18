@@ -68,9 +68,6 @@ pub enum Command {
     /// Inspect pending requests.
     Requests(RequestsArgs),
 
-    /// Run read-only diagnostics.
-    Doctor,
-
     /// Generate shell completion source.
     Completions(CompletionsArgs),
 }

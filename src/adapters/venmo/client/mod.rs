@@ -2,7 +2,6 @@
 
 mod activity;
 mod auth;
-mod doctor;
 mod error;
 mod payments;
 mod people;

@@ -44,7 +44,6 @@ enum AppErrorVariant {
     Activity,
     Requests,
     RequestInfo,
-    DoctorIncomplete,
     CommandOutput,
     FinancialResultOutput,
 }
@@ -114,7 +113,6 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
             problem: "synthetic response failure",
         }),
         AppError::from(RequestInfoError::NotRequest),
-        AppError::DoctorIncomplete,
         AppError::CommandOutput {
             source: io::Error::other("synthetic command output failure"),
         },
@@ -161,7 +159,6 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         classification(AppErrorVariant::Activity, ErrorCategory::ApiContract),
         classification(AppErrorVariant::Requests, ErrorCategory::ApiContract),
         classification(AppErrorVariant::RequestInfo, ErrorCategory::Usage),
-        classification(AppErrorVariant::DoctorIncomplete, ErrorCategory::Api),
         classification(AppErrorVariant::CommandOutput, ErrorCategory::Internal),
         classification(
             AppErrorVariant::FinancialResultOutput,
@@ -213,7 +210,6 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::Activity { .. } => AppErrorVariant::Activity,
         AppError::Requests { .. } => AppErrorVariant::Requests,
         AppError::RequestInfo { .. } => AppErrorVariant::RequestInfo,
-        AppError::DoctorIncomplete => AppErrorVariant::DoctorIncomplete,
         AppError::CommandOutput { .. } => AppErrorVariant::CommandOutput,
         AppError::FinancialResultOutput { .. } => AppErrorVariant::FinancialResultOutput,
     }

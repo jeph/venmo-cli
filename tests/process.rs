@@ -129,6 +129,7 @@ fn noninteractive_login_fails_before_keychain_or_network_access() -> TestResult 
 #[test]
 fn removed_auth_surfaces_and_secret_arguments_are_rejected() -> TestResult {
     for arguments in [
+        &["doctor"][..],
         &["auth", "reauthenticate"][..],
         &["auth", "login", "--token", "synthetic-secret-value"][..],
         &["auth", "logout", "--revoke"][..],

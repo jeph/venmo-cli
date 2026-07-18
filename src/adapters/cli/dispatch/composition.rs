@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use super::{auth, doctor, reads, writes};
+use super::{auth, reads, writes};
 use crate::adapters::credentials::NativeCredentialStore;
 use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
@@ -94,7 +94,6 @@ where
                 reads::run_request_info(args, &store, &api, stdout).await
             }
         },
-        Command::Doctor => doctor::run_production(provider, stdout).await,
         Command::Pay(args) => {
             let (store, api) = provider.credential_store_and_api()?;
             let prompt = provider.prompt();
