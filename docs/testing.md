@@ -1,7 +1,7 @@
 # Testing strategy
 
 > **Routine contributor tests are service-free. Do not run ignored/manual tests, live probes, or
-> real financial commands. Do not supply a real credential to test code.** Follow
+> real financial commands, including transfers. Do not supply a real credential to test code.** Follow
 > [`CONTRIBUTING.md`](../CONTRIBUTING.md#safety-boundaries) and use only the routine verification
 > commands documented there.
 

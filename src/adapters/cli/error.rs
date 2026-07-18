@@ -14,6 +14,8 @@ use crate::features::requests::create::RequestCreateError;
 use crate::features::requests::decline::DeclineError;
 use crate::features::requests::info::RequestInfoError;
 use crate::features::requests::list::RequestsError;
+use crate::features::transfers::options::TransferOptionsError;
+use crate::features::transfers::out::TransferOutError;
 use crate::features::wallet::balance::BalanceError;
 use crate::features::wallet::payment_methods::PaymentMethodsError;
 use crate::shared::{ApiFailureKind, ApplicationFailureKind, ReadFailureKind};
@@ -181,6 +183,17 @@ pub enum AppError {
         source: RequestInfoError,
     },
 
+    #[error(transparent)]
+    TransferOptions {
+        #[from]
+        source: TransferOptionsError,
+    },
+
+    #[error(transparent)]
+    TransferOut {
+        #[from]
+        source: TransferOutError,
+    },
     #[error("failed to write command output")]
     CommandOutput {
         #[from]
@@ -222,6 +235,8 @@ impl AppError {
             Self::Activity { source } => read_failure_category(source.failure_kind()),
             Self::Requests { source } => read_failure_category(source.failure_kind()),
             Self::RequestInfo { source } => application_failure_category(source.failure_kind()),
+            Self::TransferOptions { source } => read_failure_category(source.failure_kind()),
+            Self::TransferOut { source } => application_failure_category(source.failure_kind()),
             Self::FinancialWriteInterruptedUnknown => ErrorCategory::AmbiguousWrite,
             Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
             Self::LoggingInitialization { .. }

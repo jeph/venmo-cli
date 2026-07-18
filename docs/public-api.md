@@ -22,6 +22,7 @@ and black-box tests.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
   `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `RequestDirectionArg`.
+- Transfers: `TransferArgs`, `TransferOperation`, `TransferOutArgs`, `TransferSpeedArg`.
 - Other financial command inputs: `PayArgs`, `VisibilityArg`.
 
 ### Process/runtime surface
@@ -88,6 +89,16 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 - `CreateRequestPlan`, `AcceptRequestPlan`, `DeclineRequestPlan`.
 - `RequestCreateResult`, `AcceptResult`, `DeclineResult`, `RequestsResult`, `RequestInfoResult`.
 
+### Transfers
+
+- `TransferId`, `TransferInstrumentId`, `TransferInstrumentSuffix`,
+  `TransferInstrumentSuffixParseError`, `TransferDirection`, `TransferSpeed`.
+- `TransferInstrument`, `TransferFeeMetadata`, `TransferModeOptions`, `TransferOptions`.
+- `TransferOutPlan`, `CreatedTransfer`, `TransferOptionsResult`, `TransferOutResult`.
+
+The public model types describe the frontend-neutral options and validated standard-out states.
+They do not expose the private adapter as a supported SDK or bypass CLI safety policy.
+
 ## Intentionally private
 
 The following are implementation details, even when their defining item needs Rust `pub`
@@ -132,6 +143,14 @@ constructing either argument struct directly must select a value, normally
 `VisibilityArg::Private` to preserve 0.1 behavior. `PayPlan` and `CreateRequestPlan` now expose the
 corresponding requested, frontend-neutral `Visibility` through `visibility()`; it does not claim
 the eventual audience Venmo applies after participant privacy settings.
+
+## 0.2 to 0.3 migration
+
+Version 0.3 adds `Command::Transfer(TransferArgs)` and the transfer argument/model types listed
+above. Exhaustive matches over public `Command` must handle the new variant. `TransferOperation`
+contains enabled read-only `Options` and enabled `Out`; only exact `TransferSpeedArg::Standard`
+parses for the latter. Library callers still cannot invoke private adapter internals or bypass
+preflight, confirmation, ambiguity, and no-retry policy.
 
 ## Semver expectations
 

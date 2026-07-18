@@ -1,0 +1,13 @@
+---
+source: src/adapters/cli/output/tests/transfers.rs
+expression: "String::from_utf8(completed)?"
+---
+Transfer ID: transfer-1
+Status: pending
+Direction: out
+Speed: standard
+Requested amount: $12.34
+Net amount: $12.34
+Fee: $0.00
+Requested: 1970-01-01T00:00:00Z
+Destination ID: destination-1

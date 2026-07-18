@@ -54,8 +54,8 @@ refer to that exact method.
 
 Exact-recipient resolution keeps the existing four-page/200-record exhaustive safety bound. At
 that bound, one already-found exact username match remains acceptable only after detail-by-ID
-returns the same immutable ID and case-insensitive exact username; no match remains incomplete and
-multiple matches remain ambiguous. Changing that boundary rule in either direction requires
+returns the same immutable ID and case-insensitive exact username; no match is reported as username
+not found and multiple matches remain ambiguous. Changing that boundary rule in either direction requires
 evidence about server-side username uniqueness and whether detail-by-ID independently proves the
 absence of another exact match beyond the bounded search.
 
@@ -86,3 +86,21 @@ declined/open-request exclusion, payer/payee money direction, source-page bounds
 and exact-ID detail behavior for direct and accepted PaymentIds. Routine development must not use
 the production credential or extend ignored probes to gather this evidence. List and detail are
 approved independently; failure to prove detail must not block an otherwise proven list command.
+
+## Transfer creation
+
+`transfer options` implements the controlled current `GET /v1/transfers/options` read and preserves
+direction/speed-specific source and destination branches. Enabled standard out uses only exact
+`bank` destinations, identical integer-cent `amount`/`final_amount`, fail-closed automatic
+selection, default-No confirmation, and one non-retried `POST /v1/transfers`.
+
+One separately approved $0.01 canary on 2026-07-17 returned HTTP 201 direct pending transfer data
+and reconciled to exactly one outgoing activity record with the same transfer ID. Production
+success therefore requires the pinned ID/timestamp/status/type/dollar-amount/destination shape and
+additionally enforces requested/net/fee arithmetic; empty, status-only, non-201, challenge, mismatch, and transport
+uncertainty remain ambiguous. Retain no live mutation test or raw response, and do not repeat the
+canary merely to broaden evidence.
+
+Settlement completion, confirmed rejection codes, inbound, instant, debit, T1 fee/limit units,
+step-up, cancellation, and expedition remain independent evidence gates. Routine work must not
+probe or mutate production to resolve them.

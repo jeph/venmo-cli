@@ -36,6 +36,13 @@ pub use crate::features::requests::model::{
 pub use crate::features::requests::plans::{
     AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, DeclineRequestPlan, DeclinedRequest,
 };
+pub use crate::features::transfers::model::{
+    CreatedTransfer, TransferDirection, TransferFeeMetadata, TransferId, TransferInstrument,
+    TransferInstrumentId, TransferInstrumentSuffix, TransferInstrumentSuffixParseError,
+    TransferModeOptions, TransferOptions, TransferOutPlan, TransferSpeed,
+};
+pub use crate::features::transfers::options::TransferOptionsResult;
+pub use crate::features::transfers::out::TransferOutResult;
 pub use crate::features::wallet::balance::BalanceResult;
 pub use crate::features::wallet::balance_model::{
     Balance, SignedUsdAmount, SignedUsdAmountParseError,

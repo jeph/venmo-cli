@@ -20,8 +20,8 @@ The first release should make the common workflow obvious:
 2. Verify which Venmo account is active.
 3. Find a friend or another user.
 4. Inspect the Venmo balance and available payment methods.
-5. Pay one person, request money from one person, accept one incoming request, or decline one incoming request.
-6. Inspect activity and pending requests.
+5. Pay one person, request money from one person, accept one incoming request, decline one incoming request, or transfer balance to the selected standard bank.
+6. Inspect activity, pending requests, and current transfer options.
 7. Diagnose authentication or private-API failures.
 
 This remains an unofficial client for unsupported/private Venmo endpoints. Endpoint discovery and contract testing are release gates, not assumptions.
@@ -31,7 +31,7 @@ The initial MCP release provides structured, read-only access to the already imp
 ## 2. Confirmed product decisions
 
 - Use Rust with a pinned stable toolchain and a committed `Cargo.lock`.
-- Use Rust 1.95.0 for the pinned toolchain and MSRV, package version `0.2.0`, and the MIT license.
+- Use Rust 1.95.0 for the pinned toolchain and MSRV, package version `0.3.0`, and the MIT license.
 - Use [`clap`](https://docs.rs/clap/) with its derive API.
 - Use [`dialoguer`](https://docs.rs/dialoguer/) behind a narrow prompt adapter for hidden token input and default-No confirmation.
 - Prefer mature, popular, actively community-maintained off-the-shelf crates for common functionality instead of rolling project-owned replacements; keep custom code focused on Venmo-specific model behavior, feature orchestration, and safety policy.
@@ -358,6 +358,27 @@ All command-level username resolution is shared and fail-closed around the live-
 - Does not claim to know external bank-account or card balances.
 - Never infers a wallet balance from an unrelated payment-method limit.
 
+#### `venmo transfer options`
+
+- Performs one authenticated `GET /v1/transfers/options` and never moves money.
+- Preserves preferred inbound/outbound speed plus standard/instant eligible source and destination
+  branches; bounds each branch to 100 instruments and validates every relied-on ID/text/default.
+- Renders sanitized copyable IDs and labels fee metadata as unit-unverified rather than inferring
+  dollars, cents, limits, or final fees.
+
+#### `venmo transfer out <AMOUNT> --speed standard [--yes]`
+
+- Runs current-account and balance checks plus fresh transfer options; selects only a unique default
+  or sole standard bank destination and never accepts response order or a user-supplied ID.
+- Sends one non-retried integer-cent POST after flushed default-No confirmation. Exact HTTP 201
+  pending data must prove ID, timestamp, type, requested/net/fee arithmetic, dollar amount, and
+  destination ID/type/suffix. Status alone, challenge, non-201, mismatch, or interruption is
+  ambiguous.
+- A separately approved $0.01 canary on 2026-07-17 matched exactly one pending outgoing activity
+  record with the same transfer ID. This proves accepted submission, not settlement. Inbound,
+  instant, debit, manual selection, OTP continuation, cancellation, and expedition remain
+  unavailable.
+
 ### 3.7 Activity
 
 #### `venmo activity list [--limit <N>] [--before-id <TOKEN>]`
@@ -371,7 +392,7 @@ All command-level username resolution is shared and fail-closed around the live-
 #### `venmo activity info <ACTIVITY_ID>`
 
 - Shows all understood fields for one activity record.
-- Is the primary recovery tool after an ambiguous payment, request creation, or request-acceptance outcome; request reads and the official app are also required for ambiguous decline state.
+- Is the primary recovery tool after an ambiguous payment, request creation, request-acceptance, or transfer outcome; request reads and the official app are also required for ambiguous decline state.
 - Clearly distinguishes absent, inaccessible, malformed, pending, failed, and completed records.
 
 ### 3.8 Pending requests
@@ -488,7 +509,8 @@ Annotations are hints for trusted harness UI, filtering, and approval policy. Th
 - The old `charge` alias.
 - Reminding or cancelling outgoing requests, local-only request dismissal, partial acceptance, or changing a requested amount.
 - Adding, removing, accepting, or blocking friends.
-- Transfers or cash-out to a bank.
+- Transfer-in, instant/debit cash-out, manual transfer destination selection, challenge
+  continuation, cancellation, and expedition.
 - Adding or removing payment methods.
 - Public or friends activity feeds.
 - Comments, likes, profile editing, disputes, refunds, or chargebacks.
@@ -758,7 +780,7 @@ Public-source research completed on 2026-07-12 produced the contract leads below
 - Official Venmo payment documentation archived on 2021-06-12 describes `PUT /payments/:payment` as “Complete a Payment Request.” It explicitly assigns `approve` or `deny` to a request received by the authenticated user and `cancel` to a request made by that user. Historical `deet/govenmo` commit `21492682f08bb876a9a8cabaf249733e642e9c20` independently sends form-encoded `action=approve|deny|cancel` to that route. Its success assumption is a direct `data` Payment with a nonempty ID; the archived approval example shows resulting `action=pay`, `status=settled`, and completion data. This is strong historical evidence, not current-production proof.
 - Maintained descendants support bearer-authenticated JSON `PUT /v1/payments/{id}` with `action: "cancel"` or `"remind"`, but their listing scope proves only outgoing/requester-owned requests. They do not establish incoming denial. A 2022 client contains a conflicting, weakly evidenced `action: "pay"` plus actor/funding-source lead. A current June 2026 client implements pay and request creation but no request completion. The Rust contract combines the current mobile authentication/JSON update convention with the historically explicit incoming actions `approve` and `deny`, while treating every unverified error or response mismatch as ambiguous.
 - Acceptance exposes no funding-method input and is restricted to requests whose entire amount is covered by authoritative available Venmo balance. Current official product guidance says full available balance takes priority and personal balance-funded payments have zero Venmo fee, but the `approve` request does not bind the balance snapshot or return proven actual funding/fee fields. The CLI must never claim the guard proves wallet funding or a zero fee. If balance is insufficient, acceptance fails before the write. Decline submits no funding fields and sends no money. Ordinary pay internally submits the automatically chosen peer-eligible external backup method and never claims an actual debit source without authoritative result evidence.
-- A read-only live CLI preflight resolved the exact approved test counterparty through an authoritative user-detail fetch, proved a personal/payable non-self target, excluded wallet balance from external backup selection, and received a transaction-specific eligibility result totaling exactly zero fee. The fuzzy search reached its bounded traversal limit, so the verified rule now accepts one exact username match only after detail-by-ID returns the same ID and case-insensitive exact username; no match still fails when traversal is incomplete.
+- A read-only live CLI preflight resolved the exact approved test counterparty through an authoritative user-detail fetch, proved a personal/payable non-self target, excluded wallet balance from external backup selection, and received a transaction-specific eligibility result totaling exactly zero fee. The search reached its bounded traversal limit, so the verified rule accepts one exact username match only after detail-by-ID returns the same ID and case-insensitive exact username; no match is reported as username not found.
 - After separate immediate approval, the Rust `pay` command sent exactly one private $0.01 payment with a unique generated note and zero retries. Its response matched `data.payment` and the submitted action, parties, amount, note, private audience, supported status, creation timestamp, and canonical ID. A separate CLI activity read found the matching latest one-cent pay, and the owner independently confirmed exactly one matching payment in the official Venmo mobile app.
 - After the payment was reconciled and a second immediate approval was obtained, the Rust request command sent exactly one private $0.01 request with a distinct generated note and zero retries. Its response passed the same operation-specific strict checks, a separate CLI request read found the matching pending outgoing request, and the owner independently confirmed exactly one matching request in the official mobile app. No token, device ID, user/payment/request ID, note, raw body, account identity, funding details, or mobile traffic was retained.
 
@@ -1807,6 +1829,9 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 9. Whether native MCP validation shows synchronous keychain reads need a `spawn_blocking`/loaded-credential feature seam rather than relying only on a multi-thread runtime.
 10. Which local MCP hosts, if any, can provide a trustworthy per-call human approval contract sufficient to unlock the separately gated future financial phase. Until one is selected and tested, writes remain unavailable.
 11. Whether any later release should add a remote MCP transport. The initial release is definitively local stdio only and must not accumulate HTTP/OAuth features speculatively.
+12. Whether future evidence justifies any independently gated inbound, instant, debit, transfer
+    step-up, cancellation, or expedition command. The standard-bank pending-submission scope is
+    finalized as implemented.
 
 ## 21. Immediate next steps
 
@@ -1820,3 +1845,7 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 8. Perform isolated manual native credential access validation for the second executable on supported platforms; never use production credentials during automated validation.
 9. Continue occasional explicit read-only observation of the validated mobile-issued token's lifetime. Do not poll aggressively, infer an expiry date, store the password, automatically renew, or retry after rejection.
 10. Keep the live-verified CLI pay and request-creation contracts covered by exact synthetic tests and monitor them only through normal use; do not repeat canary mutations speculatively. Keep every MCP financial command unavailable until its own request, response, ambiguity, verification, and human-approval contracts are established.
+11. Retain the reconciled standard-out evidence: one approved $0.01 HTTP-201 write returned exact
+    pending data and matched exactly one outgoing activity record by transfer ID. Do not repeat the
+    canary speculatively; preserve strict response proof, one-write/no-retry handling, and the
+    independently gated status of every other transfer variant.

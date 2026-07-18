@@ -4,6 +4,8 @@
 
 > This project uses unsupported/private Venmo API endpoints. They can change or stop working without notice.
 
+See the [implemented CLI-to-Venmo private API contract inventory](API.md) for wire-level behavior, evidence status, current web discovery leads, and unresolved transfer gates.
+
 ## Requirements and installation
 
 Building requires Rust 1.95.0. The checked-in `rust-toolchain.toml` pins the required toolchain. From the repository root:
@@ -59,7 +61,7 @@ The former top-level `request`, `accept`, and `decline` forms are not compatibil
 
 `requests accept` fetches an authoritative incoming exact-`pending` private request, requires a personal/payable requester and enough available Venmo balance to cover the full amount, submits no external funding method, shows a default-No preflight, and uses the historical incoming action `approve`. That balance check is only a snapshot: the update does not bind it or prove the final funding source/fee, so the CLI explicitly discloses the limitation and does not claim wallet funding or `$0.00` fees. Controlled live validation established that a successful response uses a distinct settled-payment ID and can retain request-style `action: charge` and party orientation even though activity exposes the resulting private outgoing `pay`; the validator supports both this live representation and the historical pay-oriented representation while requiring all operation-specific fields to match. Reconciled validations confirmed that the request disappears, exactly one matching private outgoing payment settles, and available balance decreases by the exact request amount.
 
-`requests decline` fetches an authoritative incoming exact-`pending` private request, displays and flushes the validated plan, and asks for default-No confirmation before writing. When either stdin or stderr is not a terminal, `--yes` is required; the flag skips only confirmation, never validation or preflight. Decline sends no money or funding fields and uses historical incoming action `deny`—never outgoing-request `cancel`. A controlled live validation sent one non-retried `deny` update, received the original request ID with exact terminal `cancelled` status, removed the request from pending results, produced no payment activity, and left available balance unchanged. Both request mutations treat any unverified response or transport uncertainty as ambiguous and must not be retried before reconciliation.
+`requests decline` fetches an authoritative incoming exact-`pending` request with a supported audience, displays and flushes the validated plan, and asks for default-No confirmation before writing. When either stdin or stderr is not a terminal, `--yes` is required; the flag skips only confirmation, never validation or preflight. Decline sends no money or funding fields and uses historical incoming action `deny`—never outgoing-request `cancel`. A controlled live validation of a private request sent one non-retried `deny` update, received the original request ID with exact terminal `cancelled` status, removed the request from pending results, produced no payment activity, and left available balance unchanged. The implementation accepts and preserves any supported audience, but non-private success has not been independently pinned. Both request mutations treat any unverified response or transport uncertainty as ambiguous and must not be retried before reconciliation.
 
 For `pay`, the CLI internally chooses the unique default peer-eligible external bank or card, or the sole eligible method when no default exists. It rejects duplicate method IDs, multiple defaults, and ambiguous sets of multiple non-default methods; it never chooses by response order or fee. Any automatically chosen eligible method may carry zero, nonzero, or unknown method-level fee evidence. Venmo may still use available wallet balance before the submitted external backup method. Preflight displays the method-level fee evidence and the separate eligibility-reported fee and warns that eligibility is not bound to the submitted method, so the final fee may differ. Users cannot choose a funding method. Pay retains only the final default-No confirmation when both stdin and stderr are terminals; otherwise it requires `--yes`.
 
@@ -73,6 +75,28 @@ venmo requests create alice 0.01 --note "Dinner" --visibility public
 User-taking commands accept exact usernames with or without a leading `@`; they do not expose user-ID arguments. Each command resolves the normalized username through the shared bounded username search, requires a case-insensitive exact match, and verifies the resulting user through authoritative detail-by-ID before continuing. Omitting `--visibility` preserves the private default. Venmo's participant privacy settings may make the effective audience more restrictive than requested. The flag does not apply to `requests accept` or `requests decline`; those action-only mutations preserve and validate the audience of the existing request.
 
 Direct request creation writes immediately after its account and recipient validation; it has no confirmation prompt and does not accept `--yes`. Decline instead requires default-No confirmation after its authoritative preflight, or `--yes` for noninteractive authorization, while remaining protected as an ambiguous state mutation after possible transmission. If any mutation exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
+
+### Transfer options and standard cash-out
+
+The enabled read-only command:
+
+```sh
+venmo transfer options
+```
+
+uses the current bearer/device-authenticated `GET /v1/transfers/options` contract. It shows preferred inbound/outbound speed, standard and instant branch estimates, whether unit-unverified fee metadata is present, and sanitized eligible source/destination rows. It moves no money. Current controlled evidence found account-specific standard bank candidates in both directions but no instant candidates; that is not a universal eligibility claim.
+
+The enabled first write shape is:
+
+```sh
+venmo transfer out <AMOUNT> --speed standard [--yes]
+```
+
+Standard-out performs current-account validation, checks that available Venmo balance covers the amount, then reads fresh transfer options. It accepts only the standard destination branch and exact `bank` type, requires absent standard fee metadata, rejects duplicate IDs/multiple defaults/ambiguous nondefaults, and chooses the unique default or otherwise sole candidate. Users cannot provide a destination ID or select by response order. Preflight is flushed before a default-No confirmation; `--yes` skips only that confirmation.
+
+The command sends one non-retried `POST /v1/transfers` with identical positive integer-cent `amount` and `final_amount`, the selected destination ID, and `transfer_type: standard`. Success requires HTTP 201 and the controlled-live direct `data` envelope: valid transfer ID/timestamp, exact `pending` status, standard type, exact requested cents, arithmetically consistent net/fee cents, matching dollar amount, and matching destination ID/type/suffix. Output distinguishes requested amount, net amount, and fee. A separately approved one-cent canary on 2026-07-17 returned HTTP 201 with ID/time, pending/standard, exact `$0.01`, numeric requested/net/fee-cent fields, and destination data; exactly one matching pending outgoing activity record had the same transfer ID. Runtime arithmetic and destination equality are additionally enforced fail-closed. This proves accepted/pending submission, not bank settlement.
+
+Every unverified response, non-201 result, interruption, challenge, or output failure is ambiguous: **do not retry** before checking activity and the official app. Inbound, instant, debit-card, manual destination selection, OTP/challenge continuation, cancellation, and expedition remain unavailable. Fee/minimum/maximum units outside the validated standard success fields remain evidence-gated.
 
 ### Endpoint-native read pagination
 
@@ -130,7 +154,7 @@ Never put a device ID, password, OTP, bearer token, or browser cookie in a comma
 ## Contributor documentation
 
 Routine contributor verification is service-free. Do not run ignored/manual tests or live probes,
-load the production credential for tests, or run a real financial command as a development check.
+load the production credential for tests, or run a real financial command—including a transfer—as a development check.
 The user-facing command descriptions above are not contributor test instructions.
 
 - [Contributing and required verification](CONTRIBUTING.md)
@@ -138,4 +162,5 @@ The user-facing command descriptions above are not contributor test instructions
 - [Testing strategy](docs/testing.md)
 - [Retained integration/manual contracts](docs/retained-test-contracts.md)
 - [Evidence-gated follow-ups](docs/evidence-gated-follow-ups.md)
+- [CLI-to-Venmo private API contract inventory](API.md)
 - [Public facade inventory and compatibility](docs/public-api.md)
