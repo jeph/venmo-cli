@@ -32,9 +32,10 @@ Phase 7 keeps that real installation out of in-process unit tests because exerci
 results depend on test order, parallelism, and subscribers installed by the test harness or
 dependencies. An injected recording/failing initializer proves that noninteractive authentication
 never attempts installation, while delegated commands including
-`accept` and `decline` do so before their fake executor. The isolated logging-unit contract proves
-that disabled diagnostics do not install a subscriber. Exact redaction is tested at the structured values, HTTP
-request/response wrappers, errors, and renderers that can carry sensitive data.
+`requests accept` and `requests decline` do so before their fake executor. The isolated logging-unit
+contract proves that disabled diagnostics do not install a subscriber. Exact redaction is tested at
+the structured values, HTTP request/response wrappers, errors, and renderers that can carry
+sensitive data.
 
 A future packaged-binary diagnostics test may exercise `--verbose` only in a fresh child process
 with deterministic stderr capture and no keychain or network access. It must not weaken the

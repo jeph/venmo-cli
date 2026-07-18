@@ -21,8 +21,8 @@ and black-box tests.
 - Wallet reads: `PaymentMethodsArgs`, `PaymentMethodsOperation`.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
-  `RequestDirectionArg`.
-- Financial command inputs: `PayArgs`, `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `VisibilityArg`.
+  `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `RequestDirectionArg`.
+- Other financial command inputs: `PayArgs`, `VisibilityArg`.
 
 ### Process/runtime surface
 
@@ -35,9 +35,9 @@ service-free preconditions delegate a command to the production executor. Caller
 output writers, but cannot supply synthetic terminal state.
 
 `handle_runtime_initialization_failure(cli, stdout, stderr, source)` is the synchronous fallback
-used when the process runtime cannot be built. It owns the same process terminal check. Completion
-generation and noninteractive authentication return
-before logging initialization; local-only logout still deletes the keyring entry without a runtime.
+used when the process runtime cannot be built. It owns the same process terminal check.
+Noninteractive authentication returns before logging initialization; local-only logout still
+deletes the keyring entry without a runtime.
 
 The concrete CLI adapter, production provider, prompts, renderers, and dispatch helpers remain
 private even though selected items are re-exported through this facade.
@@ -117,6 +117,10 @@ Clap schema:
   `ActivityOperation::Info`, `ActivityInfoArgs`, and `ActivityInfoResult`.
 - Handle the new `UsersOperation::Info(UserInfoArgs)` and
   `RequestsOperation::Info(RequestInfoArgs)` variants in exhaustive matches.
+- Request actions are consolidated under `Command::Requests`: exhaustive `RequestsOperation`
+  matches must also handle `Create(RequestArgs)`, `Accept(AcceptArgs)`, and
+  `Decline(DeclineArgs)`. The former top-level `Command::Request`, `Command::Accept`, and
+  `Command::Decline` variants and command forms have no compatibility aliases.
 - `UserInfoResult` and `RequestInfoResult` are now available from `venmo_cli::model`.
 - `UserInfoArgs` exposes `username: Username` rather than a user-ID field. `Username` and
   `RecipientInput` normalize usernames with or without `@`; no command argument exposes `UserId` as

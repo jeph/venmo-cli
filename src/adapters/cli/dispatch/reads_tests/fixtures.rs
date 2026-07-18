@@ -173,10 +173,12 @@ pub(super) fn requests_args() -> TestResult<RequestsListArgs> {
     {
         Command::Requests(args) => match args.operation {
             RequestsOperation::List(args) => Ok(args),
-            RequestsOperation::Info(_) => Err(io::Error::other(
-                "request-list arguments parsed as request-info arguments",
-            )
-            .into()),
+            RequestsOperation::Create(_)
+            | RequestsOperation::Accept(_)
+            | RequestsOperation::Decline(_)
+            | RequestsOperation::Info(_) => {
+                Err(io::Error::other("request-list arguments parsed as another operation").into())
+            }
         },
         _ => Err(io::Error::other("request-list arguments parsed as another command").into()),
     }
@@ -186,10 +188,12 @@ pub(super) fn request_info_args() -> TestResult<RequestInfoArgs> {
     match Cli::try_parse_from(["venmo", "requests", "info", "request-1"])?.command {
         Command::Requests(args) => match args.operation {
             RequestsOperation::Info(args) => Ok(args),
-            RequestsOperation::List(_) => Err(io::Error::other(
-                "request-info arguments parsed as request-list arguments",
-            )
-            .into()),
+            RequestsOperation::List(_)
+            | RequestsOperation::Create(_)
+            | RequestsOperation::Accept(_)
+            | RequestsOperation::Decline(_) => {
+                Err(io::Error::other("request-info arguments parsed as another operation").into())
+            }
         },
         _ => Err(io::Error::other("request-info arguments parsed as another command").into()),
     }

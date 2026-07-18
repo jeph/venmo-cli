@@ -86,6 +86,46 @@ where
                 let (store, api) = provider.credential_store_and_api()?;
                 reads::run_requests_list(args, &store, &api, stdout, stderr).await
             }
+            RequestsOperation::Create(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                writes::run_request_create(
+                    args,
+                    &store,
+                    &api,
+                    &SystemClientRequestIdGenerator,
+                    stdout,
+                    writes::production_financial_interruption,
+                )
+                .await
+            }
+            RequestsOperation::Accept(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                writes::run_accept_with(
+                    args,
+                    &store,
+                    &api,
+                    &prompt,
+                    stdout,
+                    stderr,
+                    writes::production_financial_interruption,
+                )
+                .await
+            }
+            RequestsOperation::Decline(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                writes::run_decline_with(
+                    args,
+                    &store,
+                    &api,
+                    &prompt,
+                    stdout,
+                    stderr,
+                    writes::production_financial_interruption,
+                )
+                .await
+            }
             RequestsOperation::Info(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
                 reads::run_request_info(args, &store, &api, stdout).await
@@ -99,46 +139,6 @@ where
                 &store,
                 &api,
                 &SystemClientRequestIdGenerator,
-                &prompt,
-                stdout,
-                stderr,
-                writes::production_financial_interruption,
-            )
-            .await
-        }
-        Command::Request(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            writes::run_request_create(
-                args,
-                &store,
-                &api,
-                &SystemClientRequestIdGenerator,
-                stdout,
-                writes::production_financial_interruption,
-            )
-            .await
-        }
-        Command::Accept(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            let prompt = provider.prompt();
-            writes::run_accept_with(
-                args,
-                &store,
-                &api,
-                &prompt,
-                stdout,
-                stderr,
-                writes::production_financial_interruption,
-            )
-            .await
-        }
-        Command::Decline(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            let prompt = provider.prompt();
-            writes::run_decline_with(
-                args,
-                &store,
-                &api,
                 &prompt,
                 stdout,
                 stderr,

@@ -1,9 +1,12 @@
 use super::*;
 
 pub(super) fn accept_args() -> TestResult<AcceptArgs> {
-    let cli = Cli::try_parse_from(["venmo", "accept", "request-1"])?;
+    let cli = Cli::try_parse_from(["venmo", "requests", "accept", "request-1"])?;
     match cli.command {
-        Command::Accept(args) => Ok(args),
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::Accept(args) => Ok(args),
+            _ => Err(io::Error::other("accept arguments parsed as another operation").into()),
+        },
         _ => Err(io::Error::other("accept arguments parsed as another command").into()),
     }
 }

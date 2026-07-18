@@ -43,18 +43,18 @@ The initial MCP release provides structured, read-only access to the already imp
 - A successful explicit login may replace any readable existing credential, including another account, only after the new token validates and the replacement reads back exactly. A failed login leaves the existing entry untouched.
 - Do not ship browser automation, browser-cookie import, or web-session authentication as CLI features. Development-time browser observation under Section 7.4 is permitted solely to establish sanitized API contracts.
 - Document the unsupported password/SMS-OTP login risk and local-only logout semantics in the README.
-- Support one recipient per new `pay` or `request` invocation and one request ID per `accept` or `decline` invocation.
+- Support one recipient per new `pay` or `requests create` invocation and one request ID per `requests accept` or `requests decline` invocation.
 - Ship `pay`, request creation, request acceptance, and request decline as independently validated operations. `pay` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation requirements on 2026-07-12. Acceptance and decline passed their operation-specific synthetic and reconciled live validation on 2026-07-14; acceptance retains the disclosed funding-source/fee evidence gap.
 - Keep terminal-capability policy inside private CLI production composition. The public facade exposes no terminal-capability value, and neither normal dispatch nor runtime-initialization fallback accepts caller-supplied terminal state. Prompt capability comes from the actual process; crate-private unit tests may inject synthetic terminal snapshots only while delegating to fake handlers.
-- Initialize verbose CLI logging only after service-free dispatch preconditions. Completion generation and noninteractive login do not install the global subscriber. `accept` and `decline` follow normal delegated-command logging and runtime behavior. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
+- Initialize verbose CLI logging only after service-free dispatch preconditions. Noninteractive login does not install the global subscriber. `requests accept` and `requests decline` follow normal delegated-command logging and runtime behavior. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
 - Normally limit controlled live mutations to $0.01 and reconcile each mutation before authorizing another. On 2026-07-14 the owner made a narrow exception for one existing legitimate $25 incoming request that the owner already owes: one `approve` attempt, no retries or field variation, full authoritative preflight and default-No confirmation, followed by immediate CLI and official-app reconciliation. This exception does not prove the final funding source or fee and does not authorize any other elevated-value test.
-- Keep direct request creation as `venmo request ...`. Make the frequent request-state actions top-level `venmo accept ...` and `venmo decline ...`; reject nested `venmo request accept ...` and add no compatibility alias.
+- Group request reads and writes under `venmo requests`: `list`, `create`, `accept`, `decline`, and `info`. Remove the former top-level `request`, `accept`, and `decline` forms without compatibility aliases.
 - Call transaction history `activity`.
-- Let `pay` and direct request creation select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective, and disclose the restriction rule in payment preflight before confirmation. Do not add the option to action-only request acceptance or decline.
+- Let `pay` and `requests create` select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective, and disclose the restriction rule in payment preflight before confirmation. Do not add the option to action-only request acceptance or decline.
 - Limit ordinary payment release to personal-profile peer-to-peer operations with a valid eligibility token. Allow any peer-eligible external method regardless of method-level or eligibility-reported fee, disclose available fee evidence before confirmation, and do not claim the final fee is proven. Acceptance requires full available-balance coverage and submits no external funding method, but the update and response do not prove the actual source or fee.
 - Choose the submitted peer-eligible external backup method internally: validate duplicate IDs and multiple defaults, choose the unique default regardless of fee, otherwise choose only a sole eligible method, and fail closed on multiple non-default methods. Never choose by response order or fee, and expose no user funding-method override. Venmo wallet balance may take priority; preflight must state that behavior and success output may name an actual source only when authoritative evidence proves it.
-- Require default-No confirmation for `pay`, `accept`, and the destructive request-state change performed by `decline`. Direct request creation remains the only immediate mutation.
-- Expose `--yes` only on `pay`, `accept`, and `decline`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or preflight.
+- Require default-No confirmation for `pay`, `requests accept`, and the destructive request-state change performed by `requests decline`. Direct request creation remains the only immediate mutation.
+- Expose `--yes` only on `pay`, `requests accept`, and `requests decline`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or preflight.
 - Do not expose any `--dry-run` flags.
 - Never automatically retry payment creation, request creation, request acceptance, or request decline.
 - Write no first-party `unsafe` Rust and prohibit it mechanically across every first-party target.
@@ -110,9 +110,9 @@ venmo auth logout
 venmo auth status
 
 venmo pay <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--yes]
-venmo request <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>]
-venmo accept <REQUEST_ID> [--yes]
-venmo decline <REQUEST_ID> [--yes]
+venmo requests create <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>]
+venmo requests accept <REQUEST_ID> [--yes]
+venmo requests decline <REQUEST_ID> [--yes]
 
 venmo friends list [--limit <N>] [--offset <N>]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
@@ -128,7 +128,7 @@ venmo requests info <REQUEST_ID>
 
 No compatibility aliases should be added initially. Add aliases only in response to demonstrated user need.
 
-`request` has only the direct creation form. `accept` and `decline` are separate top-level actions because the hybrid hierarchy keeps frequent operations top-level. `venmo request @accept ...` remains an unambiguous request to the user named `accept`; `venmo request accept ...` is invalid because bare usernames are not valid recipients. Freeze this behavior in parser and help snapshots rather than adding `request create`, nested mutation forms, or compatibility aliases.
+All request operations share the plural `requests` group. After the explicit `create` operation, `venmo requests create accept ...` is an unambiguous request to the user named `accept`; bare and optional-`@` usernames remain equivalent. Freeze the grouped forms and rejection of the removed top-level forms in parser, process, and help snapshots rather than adding compatibility aliases.
 
 ### 3.1 Global behavior
 
@@ -233,8 +233,8 @@ Confirmation defaults to **No**. Non-interactive execution without `--yes` is re
 #### Creating a request for one person
 
 ```text
-venmo request @alice 12.50 --note "Dinner"
-venmo request @alice 12.50 --note "Dinner" --visibility public
+venmo requests create @alice 12.50 --note "Dinner"
+venmo requests create @alice 12.50 --note "Dinner" --visibility public
 ```
 
 The command shares recipient, amount, note, and preflight validation with `pay`, but:
@@ -247,11 +247,11 @@ The command shares recipient, amount, note, and preflight validation with `pay`,
 - Rejects payment-only options, `--yes`, and `--dry-run` instead of ignoring them.
 - Still performs at most one write and is never retried automatically.
 
-#### `venmo accept <REQUEST_ID>`
+#### `venmo requests accept <REQUEST_ID>`
 
 ```text
-venmo accept 123456789
-venmo accept 123456789 --yes
+venmo requests accept 123456789
+venmo requests accept 123456789 --yes
 ```
 
 This is a financial write that pays exactly one existing incoming request. The command requires full available-balance coverage and submits no external funding field, but that snapshot is not transaction-bound and does not prove the actual source or fee:
@@ -281,11 +281,11 @@ On confirmed success, print the accepted request ID, resulting activity/payment 
 
 The archived official contract lead is `PUT /v1/payments/{id}` with `action: "approve"`; the mobile-authenticated implementation sends the action as exact JSON. Reconciled live validation established the current response variants and resulting request/payment state transition.
 
-#### `venmo decline <REQUEST_ID>`
+#### `venmo requests decline <REQUEST_ID>`
 
 ```text
-venmo decline 123456789
-venmo decline 123456789 --yes
+venmo requests decline 123456789
+venmo requests decline 123456789 --yes
 ```
 
 This state-changing write refuses exactly one existing incoming request without sending money:
@@ -385,8 +385,8 @@ venmo requests list --direction incoming --before <TOKEN>
 
 - Lists pending requests involving the authenticated account.
 - `--direction` is a `clap::ValueEnum`: `all`, `incoming`, or `outgoing`; default is `all`.
-- Displays the canonical request ID accepted by top-level `accept` and `decline`, direction, counterparty, amount, note, creation time, and status when supplied.
-- Incoming exact-`pending` records can be passed to `venmo accept <REQUEST_ID>` or `venmo decline <REQUEST_ID>`; outgoing IDs and non-pending records are unacceptable.
+- Displays the canonical request ID accepted by `requests accept` and `requests decline`, direction, counterparty, amount, note, creation time, and status when supplied.
+- Incoming exact-`pending` records can be passed to `venmo requests accept <REQUEST_ID>` or `venmo requests decline <REQUEST_ID>`; outgoing IDs and non-pending records are unacceptable.
 - Does not remind or cancel an outgoing request in the first release. Incoming decline is a distinct `deny` operation and must never be implemented with outgoing `cancel` semantics.
 - Fetches exactly one source page using `--limit` as the server page size, with default 10 and maximum 50. `--direction` is applied locally after that complete page is validated, so fewer than `--limit` rows may be rendered.
 - Accepts the endpoint-native bounded opaque `before` value through `--before` and reports the source page's validated `Next before: <TOKEN>` even when local filtering leaves an empty result.
@@ -524,9 +524,6 @@ pub struct Cli {
 pub enum Command {
     Auth(AuthArgs),
     Pay(PayArgs),
-    Request(RequestArgs),
-    Accept(AcceptArgs),
-    Decline(DeclineArgs),
     Friends(FriendsArgs),
     Users(UsersArgs),
     PaymentMethods(PaymentMethodsArgs),
@@ -536,15 +533,15 @@ pub enum Command {
 }
 ```
 
-Model `request`, `accept`, and `decline` as independent typed top-level argument structs. Do not add a nested request-operation enum or partially populated default-subcommand shape.
+Model request operations as exhaustive `RequestsOperation::List`, `Create`, `Accept`, `Decline`, and `Info` variants. Keep their argument payloads as independent typed structs rather than a partially populated default-subcommand shape.
 
 Requirements:
 
 - Prefer typed fields and custom `FromStr` value types over parsing `Vec<String>` manually.
 - Keep `PayArgs`, `RequestArgs`, `AcceptArgs`, and `DeclineArgs` separate so invalid options are impossible by construction.
-- Prove that `request @user ...`, `request <numeric-id> ...`, `request @accept ...`, `accept <request-id>`, and `decline <request-id>` dispatch exactly as documented.
-- Reject nested or mixed forms such as `request accept <id>` and `accept <id> <amount>`.
-- Reject `--from` everywhere; accept `--yes` only on `pay`, `accept`, and `decline`, and reject it on request creation.
+- Prove that `requests create @user ...`, `requests create <bare-or-numeric-username> ...`, `requests create @accept ...`, `requests accept <request-id>`, and `requests decline <request-id>` dispatch exactly as documented.
+- Reject removed top-level and mixed forms such as `request @user ...`, `accept <id>`, `decline <id>`, and `requests accept <id> <amount>`.
+- Reject `--from` everywhere; accept `--yes` only on `pay`, `requests accept`, and `requests decline`, and reject it on `requests create`.
 - Reject `--dry-run` everywhere; it is not part of the schema.
 - Use `ValueEnum` for request direction.
 - Put validation that depends only on one value in `clap` parsers.
@@ -815,7 +812,7 @@ Never discover a write contract by blind endpoint/body fuzzing, replaying a capt
 - Never commit raw discovery responses.
 - Do not inspect or repurpose historical local response caches without first establishing a safe redaction workflow.
 - A count such as `outgoing_requests_count` does not satisfy `requests list`; actual records are required.
-- `accept` and `decline` require a fresh authoritative request record; a feed summary, count, or guessed association is insufficient.
+- `requests accept` and `requests decline` require a fresh authoritative request record; a feed summary, count, or guessed association is insufficient.
 - If pending-request records or their acceptance contract cannot be retrieved reliably, treat that as a release-scope blocker requiring an explicit product decision rather than fabricating results or sending a substitute payment.
 
 ### 7.6 Feature-facing API ports
@@ -1306,11 +1303,11 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 
 - Every command and subcommand.
 - Required recipient, amount, and note.
-- Direct request creation versus top-level `accept`/`decline`, rejection of nested `request accept`, and the valid `@accept` recipient.
-- `--from` rejected by `pay` and every other command; `--yes` accepted by `pay`, `accept`, and `decline` and rejected by request creation.
+- Grouped `requests create`/`accept`/`decline`, rejection of the removed top-level forms, and the valid `accept` or `@accept` recipient after `requests create`.
+- `--from` rejected by `pay` and every other command; `--yes` accepted by `pay`, `requests accept`, and `requests decline` and rejected by `requests create`.
 - `--dry-run` rejected by every command.
 - Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported funding arguments.
-- Absence of an undocumented `request create` alias.
+- Absence of compatibility aliases for the removed top-level `request`, `accept`, and `decline` forms.
 - Direction enum.
 - Limit bounds.
 - Exact endpoint-native pagination grammar, default limit/offset values, rejection of cross-endpoint or page/page-size forms, and redacted before-token debug/error formatting.
@@ -1377,9 +1374,8 @@ Friends, balance, activity, activity detail, pending requests, request detail, r
 
 - Keyring read/write/delete smoke tests on each supported platform using a test-only service name.
 - Legacy `@napi-rs/keyring` migration test where feasible.
-- Pseudo-terminal prompt smoke tests for hidden token input, default-No confirmation, explicit yes/no, cancellation, EOF, and stderr-only rendering.
+- Pseudo-terminal prompt smoke tests for hidden authentication input, default-No confirmation, explicit yes/no, cancellation, EOF, and stderr-only rendering.
 - Compiled-binary help, version, exit code, stdout/stderr, and redaction tests.
-- Completion generation for every supported shell.
 - Manpage generation.
 - Release archive contents and execution after unpacking.
 - Isolated second-executable Keychain/Secret Service smoke tests using a randomized test-only service/account; never production `venmo-cli` / `default` credentials during automated validation.
@@ -1467,16 +1463,15 @@ Required sections:
 6. `venmo auth login`, trust-device warnings, status, and local-only logout behavior.
 7. Friends and user-search examples, including server-page `--limit`, typed `--offset`, copyable next offsets, one-page behavior, and changing-dataset/no-snapshot semantics.
 8. Payment-method and balance examples.
-9. Pay, request-creation, top-level acceptance, and top-level decline examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for `pay`, `accept`, and `decline`; the acceptance funding limitation; and immediate no-prompt behavior only for request creation.
-10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `accept` or `decline`.
+9. Pay and grouped `requests create`, `requests accept`, and `requests decline` examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for `pay`, request acceptance, and request decline; the acceptance funding limitation; and immediate no-prompt behavior only for request creation.
+10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `requests accept` or `requests decline`.
 11. Ambiguous mutation recovery steps, including checking activity, request state, and the official app before any later operation.
 12. Troubleshooting guidance.
-13. Completion installation.
-14. Local MCP installation and host configuration that launches `venmo-mcp` over stdio with no secret environment variables, after authenticating through `venmo`.
-15. The exact read-only MCP tool catalog, structured result and one-page pagination behavior, standard annotations, and the fact that annotations are hints rather than permissions.
-16. Prominent MCP transcript/privacy and prompt-injection warnings: hosts may retain private financial/social output, and remote notes/names are untrusted data.
-17. The absence of MCP credential mutation and initial financial tools, plus the requirements for any later startup-gated/human-approved write phase.
-18. Upgrade, uninstall, credential removal, and how a running MCP server observes a successful explicit CLI login replacement on the next call.
+13. Local MCP installation and host configuration that launches `venmo-mcp` over stdio with no secret environment variables, after authenticating through `venmo`.
+14. The exact read-only MCP tool catalog, structured result and one-page pagination behavior, standard annotations, and the fact that annotations are hints rather than permissions.
+15. Prominent MCP transcript/privacy and prompt-injection warnings: hosts may retain private financial/social output, and remote notes/names are untrusted data.
+16. The absence of MCP credential mutation and initial financial tools, plus the requirements for any later startup-gated/human-approved write phase.
+17. Upgrade, uninstall, credential removal, and how a running MCP server observes a successful explicit CLI login replacement on the next call.
 
 Documentation must never suggest placing the password, OTP, OTP secret, device ID, or bearer token in a command argument, environment variable, file, browser automation, chat, screenshot, or log. Password/OTP/device-ID entry occurs only in the CLI's interactive prompts and only after an explicit `auth login` invocation.
 
@@ -1621,7 +1616,7 @@ Exit criteria:
 
 Deliverables:
 
-- Single-recipient payment and request-creation models plus single-ID top-level `accept` and `decline` models.
+- Single-recipient payment and request-creation models plus single-ID `requests accept` and `requests decline` models.
 - Recipient and funding-source resolution.
 - Authoritative incoming-request lookup and state validation.
 - Complete default-No confirmation rendering for `pay`, request acceptance, and request decline; no prompt for request creation.
@@ -1724,18 +1719,18 @@ Exit criteria:
 - No old `init`, `deinit`, `charge`, split, or multi-recipient interface remains.
 - `auth login` prompts for the identifier, hidden password, and a newly supplied hidden trusted device ID in that order, and handles SMS OTP when required. It accepts no secrets through arguments, stdin flags, environment variables, or files.
 - Interactive prompts use the tested `dialoguer` adapter and never echo token material or write prompt UI to stdout.
-- README token-retrieval steps are verified and carry prominent secret-handling warnings.
+- README trusted-device setup steps are verified and carry prominent secret-handling warnings.
 - The token is stored only in the native OS credential store through `keyring`.
 - Friends and search output provide copyable recipient identifiers.
 - Payment-method output provides inspectable IDs and metadata but no command accepts them as funding input; acceptance has no funding-method option and does not claim its balance snapshot is transaction-bound.
 - Balance semantics are verified and do not overclaim external balances.
 - Activity supports list and detail views usable for write reconciliation.
-- Pending requests are based on complete verified records and expose canonical IDs accepted by top-level `accept` and `decline`.
+- Pending requests are based on complete verified records and expose canonical IDs accepted by `requests accept` and `requests decline`.
 - Payment and request-acceptance confirmation follows recipient/request and operation-specific funding resolution; request-decline confirmation follows authoritative request-state preflight.
-- Only `pay`, `accept`, and `decline` expose `--yes` or use mutation confirmation; request creation prompts for neither.
+- Only `pay`, `requests accept`, and `requests decline` expose `--yes` or use mutation confirmation; `requests create` prompts for neither.
 - No command exposes `--dry-run`.
-- `accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
-- `decline` validates an authoritative incoming pending record, sends no money, and proves that exact record reached the supported terminal server state.
+- `requests accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
+- `requests decline` validates an authoritative incoming pending record, sends no money, and proves that exact record reached the supported terminal server state.
 - One invocation executes at most one financial write.
 - Failed writes preserve actionable root causes.
 - Ambiguous writes are never retried and direct the user to verification.

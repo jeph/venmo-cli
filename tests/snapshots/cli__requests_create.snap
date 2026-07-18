@@ -4,7 +4,7 @@ expression: help
 ---
 Create a request immediately
 
-Usage: request [OPTIONS] --note <NOTE> <USERNAME> <AMOUNT>
+Usage: create [OPTIONS] --note <NOTE> <USERNAME> <AMOUNT>
 
 Arguments:
   <USERNAME>

@@ -11,7 +11,7 @@ use std::task::{Context, Poll};
 use clap::Parser;
 
 use super::tests::{ErrorVariant, ResultSnapshot, failure_snapshot, snapshot_result};
-use crate::adapters::cli::args::{Cli, Command, DeclineArgs};
+use crate::adapters::cli::args::{Cli, Command, DeclineArgs, RequestsOperation};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::DefaultNoConfirmation;
@@ -945,9 +945,12 @@ fn signal_error() -> AppError {
 }
 
 fn decline_args() -> TestResult<DeclineArgs> {
-    let cli = Cli::try_parse_from(["venmo", "decline", "request-1"])?;
+    let cli = Cli::try_parse_from(["venmo", "requests", "decline", "request-1"])?;
     match cli.command {
-        Command::Decline(args) => Ok(args),
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::Decline(args) => Ok(args),
+            _ => Err(io::Error::other("decline arguments parsed as another operation").into()),
+        },
         _ => Err(io::Error::other("decline arguments parsed as another command").into()),
     }
 }

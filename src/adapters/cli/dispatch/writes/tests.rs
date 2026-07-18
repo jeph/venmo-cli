@@ -672,14 +672,18 @@ fn signal_initialization_error(detail: &str) -> AppError {
 fn request_args() -> Result<RequestArgs, Box<dyn Error>> {
     let cli = crate::adapters::cli::args::Cli::try_parse_from([
         "venmo",
-        "request",
+        "requests",
+        "create",
         "recipient",
         "0.01",
         "--note",
         "Synthetic request",
     ])?;
     match cli.command {
-        crate::adapters::cli::args::Command::Request(args) => Ok(args),
+        crate::adapters::cli::args::Command::Requests(args) => match args.operation {
+            crate::adapters::cli::args::RequestsOperation::Create(args) => Ok(args),
+            _ => Err(io::Error::other("request arguments parsed as another operation").into()),
+        },
         _ => Err(io::Error::other("request arguments parsed as another command").into()),
     }
 }

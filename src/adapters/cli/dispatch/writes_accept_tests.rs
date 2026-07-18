@@ -11,7 +11,7 @@ use std::task::{Context, Poll};
 use clap::Parser;
 
 use super::tests::{ErrorVariant, ResultSnapshot, failure_snapshot, snapshot_result};
-use crate::adapters::cli::args::{AcceptArgs, Cli, Command};
+use crate::adapters::cli::args::{AcceptArgs, Cli, Command, RequestsOperation};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::{DefaultNoConfirmation, FinancialStatus, PaymentId};

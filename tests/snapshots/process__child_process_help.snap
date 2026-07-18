@@ -9,15 +9,12 @@ Usage: venmo [OPTIONS] <COMMAND>
 Commands:
   auth             Validate and manage the stored Venmo bearer token
   pay              Pay one person
-  request          Create a request immediately
-  accept           Accept an incoming request after authoritative validation and confirmation
-  decline          Decline an incoming request without sending money
   friends          Inspect friends of the active account
   users            Find Venmo users
   payment-methods  Inspect available payment methods
   balance          Show the Venmo wallet balance
   activity         Inspect account activity
-  requests         Inspect pending requests
+  requests         Inspect and manage requests
   help             Print this message or the help of the given subcommand(s)
 
 Options:

@@ -85,7 +85,7 @@ fn invalid_request_mutation_ids_are_redacted_and_service_free() -> TestResult {
             "s".repeat(513),
         ] {
             Command::cargo_bin("venmo")?
-                .args([command, raw.as_str()])
+                .args(["requests", command, raw.as_str()])
                 .assert()
                 .code(2)
                 .stdout(predicate::str::is_empty())
@@ -97,6 +97,23 @@ fn invalid_request_mutation_ids_are_redacted_and_service_free() -> TestResult {
         }
     }
 
+    Ok(())
+}
+
+#[test]
+fn removed_top_level_request_actions_are_usage_errors() -> TestResult {
+    for arguments in [
+        &["request", "alice", "0.01", "--note", "Test"][..],
+        &["accept", "request-1"][..],
+        &["decline", "request-1"][..],
+    ] {
+        Command::cargo_bin("venmo")?
+            .args(arguments)
+            .assert()
+            .code(2)
+            .stdout(predicate::str::is_empty())
+            .stderr(predicate::str::contains("unrecognized subcommand"));
+    }
     Ok(())
 }
 
@@ -150,9 +167,7 @@ fn clap_schema_generates_a_manpage() -> TestResult {
 
     assert!(text.contains(".TH venmo"));
     assert!(text.contains("payment\\-methods"));
-    assert!(text.contains("request"));
-    assert!(text.contains("accept"));
-    assert!(text.contains("decline"));
+    assert!(text.contains("requests"));
 
     Ok(())
 }

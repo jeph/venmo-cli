@@ -1,11 +1,10 @@
-use clap::{Args, Subcommand, ValueEnum};
+use clap::{Args, Subcommand};
 
 use crate::features::activity::{ActivityBeforeId, ActivityId};
 use crate::features::people::UserSearchQuery;
-use crate::features::requests::{RequestDirectionFilter, RequestId, RequestsBefore};
 use crate::shared::{Limit, Offset, Username};
 
-use super::parsers::{RedactedActivityBeforeIdParser, RedactedRequestsBeforeParser};
+use super::parsers::RedactedActivityBeforeIdParser;
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 pub struct FriendsArgs {
@@ -110,59 +109,4 @@ pub struct ActivityInfoArgs {
     /// Canonical activity ID.
     #[arg(value_name = "ACTIVITY_ID")]
     pub activity_id: ActivityId,
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct RequestsArgs {
-    #[command(subcommand)]
-    pub operation: RequestsOperation,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
-pub enum RequestsOperation {
-    /// List pending requests involving the active account.
-    List(RequestsListArgs),
-
-    /// Show information about one open request.
-    Info(RequestInfoArgs),
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct RequestInfoArgs {
-    /// Canonical request ID.
-    #[arg(value_name = "REQUEST_ID")]
-    pub request_id: RequestId,
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct RequestsListArgs {
-    /// Filter by the request's direction.
-    #[arg(long, value_enum, default_value_t = RequestDirectionArg::All)]
-    pub direction: RequestDirectionArg,
-
-    /// Server request page size before local direction filtering.
-    #[arg(long, value_name = "N", default_value = "10")]
-    pub limit: Limit,
-
-    /// Fetch pending requests before this endpoint-native token.
-    #[arg(long, value_name = "TOKEN", value_parser = RedactedRequestsBeforeParser)]
-    pub before: Option<RequestsBefore>,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
-pub enum RequestDirectionArg {
-    #[default]
-    All,
-    Incoming,
-    Outgoing,
-}
-
-impl From<RequestDirectionArg> for RequestDirectionFilter {
-    fn from(value: RequestDirectionArg) -> Self {
-        match value {
-            RequestDirectionArg::All => Self::All,
-            RequestDirectionArg::Incoming => Self::Incoming,
-            RequestDirectionArg::Outgoing => Self::Outgoing,
-        }
-    }
 }

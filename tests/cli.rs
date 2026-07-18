@@ -49,8 +49,16 @@ fn removed_auth_surfaces_are_rejected() {
 
 #[test]
 fn direct_request_creation_dispatches_to_create() {
-    let parsed = Cli::try_parse_from(["venmo", "request", "@alice", "12.50", "--note", "Dinner"]);
-    let dispatches_to_create = parsed.is_ok_and(|cli| matches!(cli.command, Command::Request(_)));
+    let parsed = Cli::try_parse_from([
+        "venmo", "requests", "create", "@alice", "12.50", "--note", "Dinner",
+    ]);
+    let dispatches_to_create = parsed.is_ok_and(|cli| {
+        matches!(
+            cli.command,
+            Command::Requests(args)
+                if matches!(args.operation, RequestsOperation::Create(_))
+        )
+    });
     assert!(dispatches_to_create);
 }
 
@@ -81,7 +89,10 @@ fn user_and_request_info_parse_exact_typed_inputs() {
         Ok(cli) => match cli.command {
             Command::Requests(args) => match args.operation {
                 RequestsOperation::Info(args) => Some(args.request_id.to_string()),
-                RequestsOperation::List(_) => None,
+                RequestsOperation::List(_)
+                | RequestsOperation::Create(_)
+                | RequestsOperation::Accept(_)
+                | RequestsOperation::Decline(_) => None,
             },
             _ => None,
         },
@@ -110,20 +121,11 @@ fn user_and_request_info_parse_exact_typed_inputs() {
 
 #[test]
 fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
-    for command in ["pay", "request"] {
-        let defaults = Cli::try_parse_from([
-            "venmo",
-            command,
-            "@alice",
-            "0.01",
-            "--note",
-            "Synthetic note",
-        ]);
-        let default_visibility = defaults.ok().and_then(|cli| match cli.command {
-            Command::Pay(args) => Some(args.visibility),
-            Command::Request(args) => Some(args.visibility),
-            _ => None,
-        });
+    for prefix in [&["venmo", "pay"][..], &["venmo", "requests", "create"][..]] {
+        let mut arguments = prefix.to_vec();
+        arguments.extend(["@alice", "0.01", "--note", "Synthetic note"]);
+        let defaults = Cli::try_parse_from(arguments);
+        let default_visibility = defaults.ok().and_then(request_visibility);
         assert_eq!(default_visibility, Some(VisibilityArg::Private));
 
         for (value, expected) in [
@@ -131,9 +133,8 @@ fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
             ("friends", VisibilityArg::Friends),
             ("public", VisibilityArg::Public),
         ] {
-            let parsed = Cli::try_parse_from([
-                "venmo",
-                command,
+            let mut arguments = prefix.to_vec();
+            arguments.extend([
                 "@alice",
                 "0.01",
                 "--note",
@@ -141,11 +142,9 @@ fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
                 "--visibility",
                 value,
             ]);
-            let visibility = parsed.ok().and_then(|cli| match cli.command {
-                Command::Pay(args) => Some(args.visibility),
-                Command::Request(args) => Some(args.visibility),
-                _ => None,
-            });
+            let visibility = Cli::try_parse_from(arguments)
+                .ok()
+                .and_then(request_visibility);
             assert_eq!(visibility, Some(expected));
         }
     }
@@ -153,10 +152,9 @@ fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
 
 #[test]
 fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
-    for command in ["pay", "request"] {
-        let parsed = Cli::try_parse_from([
-            "venmo",
-            command,
+    for prefix in [&["venmo", "pay"][..], &["venmo", "requests", "create"][..]] {
+        let mut arguments = prefix.to_vec();
+        arguments.extend([
             "@alice",
             "0.01",
             "--note",
@@ -164,6 +162,7 @@ fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
             "--visibility",
             "contacts",
         ]);
+        let parsed = Cli::try_parse_from(arguments);
         assert_eq!(
             parsed.as_ref().err().map(clap::Error::kind),
             Some(ErrorKind::InvalidValue)
@@ -177,8 +176,22 @@ fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
     }
 
     for arguments in [
-        &["venmo", "accept", "request-1", "--visibility", "public"][..],
-        &["venmo", "decline", "request-1", "--visibility", "public"][..],
+        &[
+            "venmo",
+            "requests",
+            "accept",
+            "request-1",
+            "--visibility",
+            "public",
+        ][..],
+        &[
+            "venmo",
+            "requests",
+            "decline",
+            "request-1",
+            "--visibility",
+            "public",
+        ][..],
         &["venmo", "activity", "list", "--visibility", "public"][..],
     ] {
         assert_rejected(arguments);
@@ -194,24 +207,50 @@ fn pay_rejects_removed_from_option() {
 
 #[test]
 fn accept_username_is_not_the_accept_subcommand() {
-    let parsed = Cli::try_parse_from(["venmo", "request", "@accept", "0.01", "--note", "Test"]);
-    let dispatches_to_create = parsed.is_ok_and(|cli| matches!(cli.command, Command::Request(_)));
+    let parsed = Cli::try_parse_from([
+        "venmo", "requests", "create", "@accept", "0.01", "--note", "Test",
+    ]);
+    let dispatches_to_create = parsed.is_ok_and(|cli| {
+        matches!(
+            cli.command,
+            Command::Requests(args)
+                if matches!(args.operation, RequestsOperation::Create(_))
+        )
+    });
     assert!(dispatches_to_create);
 }
 
 #[test]
-fn top_level_accept_and_decline_have_distinct_minimal_arguments() {
-    let accept = Cli::try_parse_from(["venmo", "accept", "request-123", "--yes"]);
-    assert!(accept.is_ok_and(|cli| matches!(cli.command, Command::Accept(args) if args.yes)));
+fn grouped_accept_and_decline_have_distinct_minimal_arguments() {
+    let accept = Cli::try_parse_from(["venmo", "requests", "accept", "request-123", "--yes"]);
+    assert!(accept.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Requests(args)
+            if matches!(&args.operation, RequestsOperation::Accept(args) if args.yes)
+    )));
 
-    let decline = Cli::try_parse_from(["venmo", "decline", "request-123"]);
-    assert!(decline.is_ok_and(|cli| matches!(cli.command, Command::Decline(args) if !args.yes)));
+    let decline = Cli::try_parse_from(["venmo", "requests", "decline", "request-123"]);
+    assert!(decline.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Requests(args)
+            if matches!(&args.operation, RequestsOperation::Decline(args) if !args.yes)
+    )));
 
-    let decline_yes = Cli::try_parse_from(["venmo", "decline", "request-123", "--yes"]);
-    assert!(decline_yes.is_ok_and(|cli| matches!(cli.command, Command::Decline(args) if args.yes)));
+    let decline_yes = Cli::try_parse_from(["venmo", "requests", "decline", "request-123", "--yes"]);
+    assert!(decline_yes.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Requests(args)
+            if matches!(&args.operation, RequestsOperation::Decline(args) if args.yes)
+    )));
 
-    assert_rejected(&["venmo", "request", "accept", "request-123"]);
-    assert_rejected(&["venmo", "accept", "request-123", "--from", "method-456"]);
+    assert_rejected(&[
+        "venmo",
+        "requests",
+        "accept",
+        "request-123",
+        "--from",
+        "method-456",
+    ]);
 }
 
 #[test]
@@ -219,21 +258,29 @@ fn optional_at_usernames_and_global_option_placement_are_supported() {
     for username in ["alice", "@alice"] {
         let parsed = Cli::try_parse_from([
             "venmo",
-            "request",
+            "requests",
             "--verbose",
+            "create",
             username,
             "0.01",
             "--note",
             "Test",
         ]);
         let dispatches_to_create = match parsed {
-            Ok(cli) => cli.verbose && matches!(cli.command, Command::Request(_)),
+            Ok(cli) => {
+                cli.verbose
+                    && matches!(
+                        cli.command,
+                        Command::Requests(args)
+                            if matches!(args.operation, RequestsOperation::Create(_))
+                    )
+            }
             Err(_) => false,
         };
         assert!(dispatches_to_create, "username: {username}");
     }
 
-    let accept = Cli::try_parse_from(["venmo", "--verbose", "accept", "request-123"]);
+    let accept = Cli::try_parse_from(["venmo", "--verbose", "requests", "accept", "request-123"]);
     assert!(accept.is_ok_and(|cli| cli.verbose));
 }
 
@@ -241,6 +288,7 @@ fn optional_at_usernames_and_global_option_placement_are_supported() {
 fn request_and_request_mutation_forms_cannot_be_mixed() {
     assert_rejected(&[
         "venmo",
+        "requests",
         "accept",
         "request-123",
         "12.50",
@@ -248,10 +296,10 @@ fn request_and_request_mutation_forms_cannot_be_mixed() {
         "Dinner",
     ]);
     assert_rejected(&[
-        "venmo", "request", "@alice", "12.50", "--note", "Dinner", "--yes",
+        "venmo", "requests", "create", "@alice", "12.50", "--note", "Dinner", "--yes",
     ]);
     assert_rejected(&[
-        "venmo", "request", "@alice", "12.50", "--note", "Dinner", "--from", "method-1",
+        "venmo", "requests", "create", "@alice", "12.50", "--note", "Dinner", "--from", "method-1",
     ]);
 }
 
@@ -266,6 +314,9 @@ fn removed_and_deferred_forms_are_rejected() {
         &[
             "venmo", "request", "create", "@alice", "1.00", "--note", "note",
         ][..],
+        &["venmo", "request", "@alice", "1.00", "--note", "note"][..],
+        &["venmo", "accept", "request-1"][..],
+        &["venmo", "decline", "request-1"][..],
         &[
             "venmo",
             "pay",
@@ -277,7 +328,8 @@ fn removed_and_deferred_forms_are_rejected() {
         ][..],
         &[
             "venmo",
-            "request",
+            "requests",
+            "create",
             "@alice",
             "1.00",
             "--note",
@@ -305,7 +357,10 @@ fn request_direction_is_a_typed_enum() {
         Ok(cli) => match cli.command {
             Command::Requests(args) => match args.operation {
                 RequestsOperation::List(list) => Some((list.direction, list.limit.get())),
-                RequestsOperation::Info(_) => None,
+                RequestsOperation::Create(_)
+                | RequestsOperation::Accept(_)
+                | RequestsOperation::Decline(_)
+                | RequestsOperation::Info(_) => None,
             },
             _ => None,
         },
@@ -421,7 +476,7 @@ fn before_token_parsers_are_strict_and_cli_debug_is_redacted() {
             "sensitive request",
         ),
         (
-            &["venmo", "accept", "sensitive request id"][..],
+            &["venmo", "requests", "accept", "sensitive request id"][..],
             "error: invalid request ID: request ID must be non-empty, at most 512 bytes, and contain no whitespace or control characters",
             "sensitive request",
         ),
@@ -475,7 +530,7 @@ fn argument_only_validation_errors_are_clap_errors() {
     assert_rejected(&["venmo", "pay", "@alice", "0", "--note", "Dinner"]);
     assert_rejected(&["venmo", "pay", "@alice", "1.001", "--note", "Dinner"]);
     assert_rejected(&["venmo", "pay", "@alice", "1.00", "--note", "   "]);
-    assert_rejected(&["venmo", "request", "accept"]);
+    assert_rejected(&["venmo", "requests", "accept"]);
     assert_rejected(&["venmo", "users", "search", "   "]);
     assert_rejected(&["venmo", "users", "search", "@"]);
 }
@@ -489,9 +544,6 @@ fn every_command_has_a_help_snapshot() {
         ("auth_logout", &["auth", "logout"]),
         ("auth_status", &["auth", "status"]),
         ("pay", &["pay"]),
-        ("request", &["request"]),
-        ("accept", &["accept"]),
-        ("decline", &["decline"]),
         ("friends", &["friends"]),
         ("friends_list", &["friends", "list"]),
         ("users", &["users"]),
@@ -505,6 +557,9 @@ fn every_command_has_a_help_snapshot() {
         ("activity_info", &["activity", "info"]),
         ("requests", &["requests"]),
         ("requests_list", &["requests", "list"]),
+        ("requests_create", &["requests", "create"]),
+        ("requests_accept", &["requests", "accept"]),
+        ("requests_decline", &["requests", "decline"]),
         ("requests_info", &["requests", "info"]),
     ];
 
@@ -528,5 +583,19 @@ fn every_command_has_a_help_snapshot() {
                 insta::assert_snapshot!(*snapshot_name, help);
             }
         }
+    }
+}
+
+fn request_visibility(cli: Cli) -> Option<VisibilityArg> {
+    match cli.command {
+        Command::Pay(args) => Some(args.visibility),
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::Create(args) => Some(args.visibility),
+            RequestsOperation::List(_)
+            | RequestsOperation::Accept(_)
+            | RequestsOperation::Decline(_)
+            | RequestsOperation::Info(_) => None,
+        },
+        _ => None,
     }
 }

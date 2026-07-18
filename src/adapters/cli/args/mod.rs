@@ -3,16 +3,20 @@ use clap::{Parser, Subcommand};
 mod auth;
 mod parsers;
 mod reads;
+mod requests;
 mod writes;
 
 pub use auth::{AuthArgs, AuthOperation};
 pub use reads::{
     ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, FriendsArgs,
-    FriendsListArgs, FriendsOperation, PaymentMethodsArgs, PaymentMethodsOperation,
-    RequestDirectionArg, RequestInfoArgs, RequestsArgs, RequestsListArgs, RequestsOperation,
-    UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
+    FriendsListArgs, FriendsOperation, PaymentMethodsArgs, PaymentMethodsOperation, UserInfoArgs,
+    UserSearchArgs, UsersArgs, UsersOperation,
 };
-pub use writes::{AcceptArgs, DeclineArgs, PayArgs, RequestArgs, VisibilityArg};
+pub use requests::{
+    AcceptArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs,
+    RequestsListArgs, RequestsOperation,
+};
+pub use writes::{PayArgs, VisibilityArg};
 
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]
 #[command(
@@ -39,15 +43,6 @@ pub enum Command {
     /// Pay one person.
     Pay(PayArgs),
 
-    /// Create a request immediately.
-    Request(RequestArgs),
-
-    /// Accept an incoming request after authoritative validation and confirmation.
-    Accept(AcceptArgs),
-
-    /// Decline an incoming request without sending money.
-    Decline(DeclineArgs),
-
     /// Inspect friends of the active account.
     Friends(FriendsArgs),
 
@@ -63,6 +58,6 @@ pub enum Command {
     /// Inspect account activity.
     Activity(ActivityArgs),
 
-    /// Inspect pending requests.
+    /// Inspect and manage requests.
     Requests(RequestsArgs),
 }
