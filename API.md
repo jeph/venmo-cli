@@ -568,8 +568,10 @@ venmo transfer options
 venmo transfer out <AMOUNT> [--speed standard] [--yes]
 ```
 
-`transfer options` implements T1. Its CLI rendering contains eligible instrument rows with an
-`ESTIMATED COMPLETION` column, without preferred-speed or branch-level estimate/fee summaries.
+`transfer options` implements T1. Its CLI rendering contains eligible instrument rows ordered as
+`Id`, `Name`, `Type`, `Last 4`, `Default`, `Direction`, `Speed`, and `Estimated Completion`.
+The semantically unclear API `asset_name` remains validated internally but is not rendered, and
+preferred-speed and branch-level estimate/fee summaries are also omitted.
 `transfer out` implements standard-bank T2 after A5/W2/T1 preflight and default-No confirmation;
 omitted speed defaults to standard and explicit `--speed standard` remains valid. No transfer-in,
 instant, debit, manual destination, or challenge-continuation command is accepted.

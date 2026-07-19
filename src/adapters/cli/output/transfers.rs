@@ -16,15 +16,14 @@ pub(crate) fn write_transfer_options<W: Write>(
     let options = result.options();
     let mut builder = Builder::default();
     builder.push_record([
-        "SPEED",
-        "DIRECTION",
-        "ID",
-        "NAME",
-        "ASSET",
-        "TYPE",
-        "LAST4",
-        "DEFAULT",
-        "ESTIMATED COMPLETION",
+        "Id",
+        "Name",
+        "Type",
+        "Last 4",
+        "Default",
+        "Direction",
+        "Speed",
+        "Estimated Completion",
     ]);
     let mut rows = 0_usize;
     for (speed, mode) in [
@@ -37,11 +36,8 @@ pub(crate) fn write_transfer_options<W: Write>(
         ] {
             for instrument in instruments {
                 builder.push_record([
-                    speed.to_string(),
-                    direction.to_string(),
                     sanitize_terminal_text(instrument.id().as_str()),
                     sanitize_terminal_text(instrument.name()),
-                    sanitize_terminal_text(instrument.asset_name()),
                     sanitize_terminal_text(instrument.instrument_type()),
                     sanitize_terminal_text(instrument.last_four()),
                     if instrument.is_default() {
@@ -49,6 +45,8 @@ pub(crate) fn write_transfer_options<W: Write>(
                     } else {
                         String::new()
                     },
+                    direction.to_string(),
+                    speed.to_string(),
                     sanitize_terminal_text(instrument.transfer_to_estimate()),
                 ]);
                 rows += 1;

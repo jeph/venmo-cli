@@ -363,9 +363,11 @@ All command-level username resolution is shared and fail-closed around the live-
 - Performs one authenticated `GET /v1/transfers/options` and never moves money.
 - Preserves standard/instant eligible source and destination branches; bounds each branch to 100
   instruments and validates every relied-on ID/text/default.
-- Renders sanitized copyable instrument rows and labels their estimates as `ESTIMATED COMPLETION`.
-  It does not render preferred-speed or branch-level estimate/fee summaries or infer dollars, cents,
-  limits, or final fees from unverified fee metadata.
+- Renders sanitized copyable instrument rows as `Id`, `Name`, `Type`, `Last 4`, `Default`,
+  `Direction`, `Speed`, and `Estimated Completion`. The API's semantically unclear `asset_name`
+  remains validated internally but is not rendered. The CLI also omits preferred-speed and
+  branch-level estimate/fee summaries and does not infer dollars, cents, limits, or final fees from
+  unverified fee metadata.
 
 #### `venmo transfer out <AMOUNT> [--speed standard] [--yes]`
 
