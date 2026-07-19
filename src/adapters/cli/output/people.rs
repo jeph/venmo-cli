@@ -117,11 +117,7 @@ pub(crate) fn write_friendship_result(
         .unwrap_or_else(|| "(not provided)".to_owned());
     writeln!(writer, "Action: {}", result.plan().action().label())?;
     writeln!(writer, "Target: {}", sanitize_terminal_text(&username))?;
-    writeln!(
-        writer,
-        "Relationship: {}",
-        friendship_status(result.status())
-    )
+    writeln!(writer, "Result: {}", result.plan().action().result_label())
 }
 
 const fn friendship_status(status: crate::features::people::FriendshipStatus) -> &'static str {

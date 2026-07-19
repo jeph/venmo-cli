@@ -37,6 +37,16 @@ impl FriendshipAction {
         }
     }
 
+    #[must_use]
+    pub const fn result_label(self) -> &'static str {
+        match self {
+            Self::SendRequest => "Outgoing friend request sent",
+            Self::AcceptRequest => "Friend request accepted",
+            Self::Unfriend => "Friend removed",
+            Self::CancelRequest => "Friend request deleted",
+        }
+    }
+
     const fn expected_status(self) -> FriendshipStatus {
         match self {
             Self::SendRequest => FriendshipStatus::RequestSent,
@@ -121,24 +131,18 @@ impl PreparedFriendshipMutation {
 #[derive(Debug, Eq, PartialEq)]
 pub struct FriendshipMutationResult {
     plan: FriendshipPlan,
-    status: FriendshipStatus,
 }
 
 impl FriendshipMutationResult {
     #[cfg(test)]
     #[must_use]
-    pub(crate) const fn new(plan: FriendshipPlan, status: FriendshipStatus) -> Self {
-        Self { plan, status }
+    pub(crate) const fn new(plan: FriendshipPlan) -> Self {
+        Self { plan }
     }
 
     #[must_use]
     pub const fn plan(&self) -> &FriendshipPlan {
         &self.plan
-    }
-
-    #[must_use]
-    pub const fn status(&self) -> FriendshipStatus {
-        self.status
     }
 }
 
@@ -394,7 +398,6 @@ where
     }
     Ok(FriendshipMutationResult {
         plan: prepared.plan,
-        status: expected_status,
     })
 }
 
@@ -548,6 +551,23 @@ mod tests {
             select_action(FriendshipIntent::Remove, FriendshipStatus::RequestReceived),
             Err(FriendshipMutationError::IncomingRequestRequiresSeparateAction)
         ));
+    }
+
+    #[test]
+    fn result_labels_describe_the_confirmed_action() {
+        assert_eq!(
+            FriendshipAction::SendRequest.result_label(),
+            "Outgoing friend request sent"
+        );
+        assert_eq!(
+            FriendshipAction::AcceptRequest.result_label(),
+            "Friend request accepted"
+        );
+        assert_eq!(FriendshipAction::Unfriend.result_label(), "Friend removed");
+        assert_eq!(
+            FriendshipAction::CancelRequest.result_label(),
+            "Friend request deleted"
+        );
     }
 
     #[test]
@@ -750,7 +770,6 @@ mod tests {
             let result = execute(&api, authorized).await?;
 
             assert_eq!(result.plan().action(), action);
-            assert_eq!(result.status(), expected_status);
             assert_eq!(*calls.borrow(), vec![expected_call]);
             assert_eq!(
                 api.responses.borrow().len(),

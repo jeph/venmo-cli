@@ -4,4 +4,4 @@ expression: "String::from_utf8(output)?"
 ---
 Action: send friend request
 Target: @alice
-Relationship: outgoing request
+Result: Outgoing friend request sent

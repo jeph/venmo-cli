@@ -179,23 +179,20 @@ fn friendship_details_and_result_are_exact_and_sanitized() -> TestResult {
     let details = String::from_utf8(details)?;
     insta::assert_snapshot!("friendship_details", details);
 
-    let result = FriendshipMutationResult::new(
-        FriendshipPlan::new(
-            Account::new(
-                UserId::from_str("1000")?,
-                Username::from_bare("owner")?,
-                None,
-            ),
-            User::new(
-                UserId::from_str("456")?,
-                Some(Username::from_bare("alice")?),
-                None,
-            ),
-            FriendshipStatus::NotFriend,
-            FriendshipAction::SendRequest,
+    let result = FriendshipMutationResult::new(FriendshipPlan::new(
+        Account::new(
+            UserId::from_str("1000")?,
+            Username::from_bare("owner")?,
+            None,
         ),
-        FriendshipStatus::RequestSent,
-    );
+        User::new(
+            UserId::from_str("456")?,
+            Some(Username::from_bare("alice")?),
+            None,
+        ),
+        FriendshipStatus::NotFriend,
+        FriendshipAction::SendRequest,
+    ));
     let mut output = Vec::new();
     write_friendship_result(&mut output, &result)?;
     insta::assert_snapshot!("friendship_result", String::from_utf8(output)?);
