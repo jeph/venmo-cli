@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use tabled::builder::Builder;
 use time::format_description::well_known::Rfc3339;
 
-use crate::features::transfers::model::{TransferDirection, TransferModeOptions, TransferSpeed};
+use crate::features::transfers::model::{TransferDirection, TransferSpeed};
 use crate::features::transfers::options::TransferOptionsResult;
 use crate::features::transfers::out::{PreparedTransferOut, TransferOutResult};
 
@@ -14,19 +14,6 @@ pub(crate) fn write_transfer_options<W: Write>(
     result: &TransferOptionsResult,
 ) -> io::Result<()> {
     let options = result.options();
-    writeln!(
-        writer,
-        "Preferred inbound speed: {}",
-        render_optional_speed(options.preferred_in())
-    )?;
-    writeln!(
-        writer,
-        "Preferred outbound speed: {}",
-        render_optional_speed(options.preferred_out())
-    )?;
-    write_mode_summary(writer, TransferSpeed::Standard, options.standard())?;
-    write_mode_summary(writer, TransferSpeed::Instant, options.instant())?;
-
     let mut builder = Builder::default();
     builder.push_record([
         "SPEED",
@@ -37,7 +24,7 @@ pub(crate) fn write_transfer_options<W: Write>(
         "TYPE",
         "LAST4",
         "DEFAULT",
-        "ESTIMATE",
+        "ESTIMATED COMPLETION",
     ]);
     let mut rows = 0_usize;
     for (speed, mode) in [
@@ -154,30 +141,4 @@ pub(crate) fn write_transfer_out_result<W: Write>(
         "Destination ID: {}",
         sanitize_terminal_text(result.plan().destination().id().as_str())
     )
-}
-
-fn render_optional_speed(speed: Option<TransferSpeed>) -> &'static str {
-    match speed {
-        Some(TransferSpeed::Standard) => "standard",
-        Some(TransferSpeed::Instant) => "instant",
-        None => "none",
-    }
-}
-
-fn write_mode_summary(
-    writer: &mut impl Write,
-    speed: TransferSpeed,
-    mode: &TransferModeOptions,
-) -> io::Result<()> {
-    let fee = if mode.fee().is_empty() {
-        "absent"
-    } else {
-        "present; units unverified"
-    };
-    writeln!(
-        writer,
-        "{speed} estimate: {}",
-        sanitize_terminal_text(mode.transfer_to_estimate())
-    )?;
-    writeln!(writer, "{speed} fee metadata: {fee}")
 }

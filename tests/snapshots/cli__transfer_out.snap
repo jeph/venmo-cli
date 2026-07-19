@@ -4,7 +4,7 @@ expression: help
 ---
 Transfer Venmo balance to the unique selected standard bank destination
 
-Usage: out [OPTIONS] --speed <SPEED> <AMOUNT>
+Usage: out [OPTIONS] <AMOUNT>
 
 Arguments:
   <AMOUNT>
@@ -12,8 +12,9 @@ Arguments:
 
 Options:
       --speed <SPEED>
-          Transfer speed; only standard is currently accepted
+          Transfer speed; defaults to standard, the only currently accepted value
 
+          [default: standard]
           [possible values: standard]
 
       --yes

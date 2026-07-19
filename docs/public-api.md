@@ -149,7 +149,8 @@ the eventual audience Venmo applies after participant privacy settings.
 Version 0.3 adds `Command::Transfer(TransferArgs)` and the transfer argument/model types listed
 above. Exhaustive matches over public `Command` must handle the new variant. `TransferOperation`
 contains enabled read-only `Options` and enabled `Out`; only exact `TransferSpeedArg::Standard`
-parses for the latter. Library callers still cannot invoke private adapter internals or bypass
+parses for the latter, and the CLI supplies it when `--speed` is omitted. Library callers still
+cannot invoke private adapter internals or bypass
 preflight, confirmation, ambiguity, and no-retry policy.
 
 ## Semver expectations

@@ -543,24 +543,31 @@ fn transfer_options_and_guarded_standard_out_have_exact_grammar() {
         Command::Transfer(args) if matches!(args.operation, TransferOperation::Options)
     )));
 
-    let out = Cli::try_parse_from([
-        "venmo", "transfer", "out", "12.34", "--speed", "standard", "--yes",
-    ]);
-    assert!(out.is_ok_and(|cli| matches!(
-        cli.command,
-        Command::Transfer(args)
-            if matches!(
-                &args.operation,
-                TransferOperation::Out(out)
-                    if out.amount.cents() == 1_234
-                        && out.speed == TransferSpeedArg::Standard
-                        && out.yes
-            )
-    )));
+    for (arguments, expected_yes) in [
+        (&["venmo", "transfer", "out", "12.34"][..], false),
+        (
+            &[
+                "venmo", "transfer", "out", "12.34", "--speed", "standard", "--yes",
+            ][..],
+            true,
+        ),
+    ] {
+        let out = Cli::try_parse_from(arguments);
+        assert!(out.is_ok_and(|cli| matches!(
+            cli.command,
+            Command::Transfer(args)
+                if matches!(
+                    &args.operation,
+                    TransferOperation::Out(out)
+                        if out.amount.cents() == 1_234
+                            && out.speed == TransferSpeedArg::Standard
+                            && out.yes == expected_yes
+                )
+        )));
+    }
 
     for arguments in [
         &["venmo", "transfer", "out", "1.00", "--speed", "instant"][..],
-        &["venmo", "transfer", "out", "1.00"][..],
         &[
             "venmo",
             "transfer",

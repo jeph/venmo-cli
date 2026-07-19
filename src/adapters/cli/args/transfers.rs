@@ -40,8 +40,8 @@ pub struct TransferOutArgs {
     #[arg(value_name = "AMOUNT")]
     pub amount: Money,
 
-    /// Transfer speed; only standard is currently accepted.
-    #[arg(long, value_enum)]
+    /// Transfer speed; defaults to standard, the only currently accepted value.
+    #[arg(long, value_enum, default_value = "standard")]
     pub speed: TransferSpeedArg,
 
     /// Skip only the final default-No confirmation.

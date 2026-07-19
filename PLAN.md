@@ -361,15 +361,18 @@ All command-level username resolution is shared and fail-closed around the live-
 #### `venmo transfer options`
 
 - Performs one authenticated `GET /v1/transfers/options` and never moves money.
-- Preserves preferred inbound/outbound speed plus standard/instant eligible source and destination
-  branches; bounds each branch to 100 instruments and validates every relied-on ID/text/default.
-- Renders sanitized copyable IDs and labels fee metadata as unit-unverified rather than inferring
-  dollars, cents, limits, or final fees.
+- Preserves standard/instant eligible source and destination branches; bounds each branch to 100
+  instruments and validates every relied-on ID/text/default.
+- Renders sanitized copyable instrument rows and labels their estimates as `ESTIMATED COMPLETION`.
+  It does not render preferred-speed or branch-level estimate/fee summaries or infer dollars, cents,
+  limits, or final fees from unverified fee metadata.
 
-#### `venmo transfer out <AMOUNT> --speed standard [--yes]`
+#### `venmo transfer out <AMOUNT> [--speed standard] [--yes]`
 
 - Runs current-account and balance checks plus fresh transfer options; selects only a unique default
   or sole standard bank destination and never accepts response order or a user-supplied ID.
+- Defaults an omitted `--speed` to `standard`; explicit `--speed standard` remains valid and every
+  unsupported speed is rejected by the CLI.
 - Sends one non-retried integer-cent POST after flushed default-No confirmation. Exact HTTP 201
   pending data must prove ID, timestamp, type, requested/net/fee arithmetic, dollar amount, and
   destination ID/type/suffix. Status alone, challenge, non-201, mismatch, or interruption is

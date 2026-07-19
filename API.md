@@ -109,7 +109,7 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 15 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
 | 16 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
 | 17 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
-| 18 | `transfer out <AMOUNT> --speed standard [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; exactly one **T2** after default-No confirmation. |
+| 18 | `transfer out <AMOUNT> [--speed standard] [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; omitted speed defaults to standard; exactly one **T2** after default-No confirmation. |
 
 Help and version output are also service-free but are not leaf actions. There is no
 implemented generic payment list/detail, outgoing-request cancel/remind, explicit
@@ -565,12 +565,14 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 ### 10.1 Current command state
 ```text
 venmo transfer options
-venmo transfer out <AMOUNT> --speed standard [--yes]
+venmo transfer out <AMOUNT> [--speed standard] [--yes]
 ```
 
-`transfer options` implements T1. `transfer out` implements standard-bank T2 after
-A5/W2/T1 preflight and default-No confirmation. No transfer-in, instant, debit,
-manual destination, or challenge-continuation command is accepted.
+`transfer options` implements T1. Its CLI rendering contains eligible instrument rows with an
+`ESTIMATED COMPLETION` column, without preferred-speed or branch-level estimate/fee summaries.
+`transfer out` implements standard-bank T2 after A5/W2/T1 preflight and default-No confirmation;
+omitted speed defaults to standard and explicit `--speed standard` remains valid. No transfer-in,
+instant, debit, manual destination, or challenge-continuation command is accepted.
 
 ### 10.2 Controlled current mobile options evidence
 On 2026-07-16, one owner-approved, non-retried, fixed-origin
