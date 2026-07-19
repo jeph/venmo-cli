@@ -158,6 +158,8 @@ Activity listing defaults to the authenticated user's existing feed. Optional `-
 `--user @alice` are equivalent: they use the shared bounded exact-username search and authoritative
 user detail, require a personal profile, and fetch the normal personal-profile feed visible to the
 authenticated viewer. Directions and counterparties are then relative to the selected user.
+Amounts are deliberately omitted from other-user list output even when the private API supplies a
+value; the normal social feed does not present transaction amounts as public profile data.
 Business, charity, unknown, and missing profile types fail before the feed request; current Android
 uses a separate public-only business-feed contract. Other-user pages accept only payment stories
 with a supported audience, and private stories must include the authenticated viewer. A malformed
@@ -174,7 +176,8 @@ exactly `pending` or `held`, in either direction. Payment (`action=pay`) and ter
 records are rejected as usage errors rather than displayed as open requests.
 Activity IDs are globally unique, so `activity info` has no `--user` flag. Payment details render
 the absolute actor and target and can therefore represent a server-visible story involving two
-other users; private external stories are rejected. Transfer and authorization details retain
+other users; private external stories are rejected, and an unavailable or external-only amount is
+not rendered. Transfer and authorization details retain
 their current-account ownership checks.
 
 Peer-payment reads are intentionally not exposed yet. The request-specific `/payments` contracts do

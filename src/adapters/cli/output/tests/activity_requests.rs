@@ -61,7 +61,7 @@ fn activity_list_and_info_render_authoritative_status_as_data() -> TestResult {
             "bank".to_owned(),
             Some("1234".to_owned()),
         ),
-        Money::from_str("12.34")?,
+        Some(Money::from_str("12.34")?),
         ActivityStatus::from_str("issued")?,
         None,
         Some("private".to_owned()),
@@ -123,6 +123,29 @@ fn other_user_activity_output_names_its_subject_and_perspective() -> TestResult 
 
     insta::assert_snapshot!("other_user_activity", String::from_utf8(stdout)?);
     assert!(stderr.is_empty());
+    Ok(())
+}
+
+#[test]
+fn external_activity_detail_omits_an_unavailable_amount() -> TestResult {
+    let info = ActivityInfoResult::new(ActivityDetail::payment(
+        ActivityId::from_str("story-1")?,
+        time::OffsetDateTime::UNIX_EPOCH,
+        ActivityAction::from_str("pay")?,
+        synthetic_user("456", "alice")?,
+        synthetic_user("789", "bob")?,
+        None,
+        ActivityStatus::from_str("settled")?,
+        Some("visible note".to_owned()),
+        Some("public".to_owned()),
+    ));
+    let mut stdout = Vec::new();
+
+    write_activity_info(&mut stdout, &info, &super::local_timestamps())?;
+    let stdout = String::from_utf8(stdout)?;
+
+    assert!(!stdout.contains("Amount:"));
+    insta::assert_snapshot!("external_activity_info_without_amount", stdout);
     Ok(())
 }
 
@@ -215,7 +238,7 @@ fn synthetic_activity(status: &str, note: &str) -> Result<Activity, Box<dyn Erro
         ActivityAction::from_str("pay")?,
         ActivityDirection::Outgoing,
         ActivityCounterparty::user(synthetic_user("456", "bob")?),
-        Money::from_str("1.25")?,
+        Some(Money::from_str("1.25")?),
         ActivityStatus::from_str(status)?,
         Some(note.to_owned()),
         Some("private".to_owned()),

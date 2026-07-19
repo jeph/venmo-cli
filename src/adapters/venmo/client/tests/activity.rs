@@ -57,7 +57,7 @@ async fn activity_list_and_detail_use_story_ids_and_verified_party_direction() -
         .await?;
     assert_eq!(activities.len(), 1);
     assert_eq!(detail.id(), &activity_id);
-    assert_eq!(detail.amount().cents(), 125);
+    assert_eq!(detail.amount().map(Money::cents), Some(125));
     let (actor, target) = detail
         .parties()
         .payment_parties()
@@ -112,6 +112,11 @@ async fn activity_rejects_representative_malformed_dto_branches_without_a_socket
         {
             let mut body = activity_body("story-1");
             body["data"]["payment"]["amount"] = Value::String("0.00".to_owned());
+            serde_json::json!({"data": [body["data"].clone()], "pagination": {"next": null}})
+        },
+        {
+            let mut body = activity_body("story-1");
+            body["data"]["payment"]["amount"] = Value::Null;
             serde_json::json!({"data": [body["data"].clone()], "pagination": {"next": null}})
         },
     ] {
@@ -244,7 +249,7 @@ async fn activity_list_maps_external_transfer_records() -> TestResult {
     assert_eq!(activity.action().as_str(), "transfer:standard");
     assert_eq!(activity.status().as_str(), "issued");
     assert_eq!(activity.direction(), ActivityDirection::Outgoing);
-    assert_eq!(activity.amount().cents(), 1_234);
+    assert_eq!(activity.amount().map(Money::cents), Some(1_234));
     assert_eq!(
         activity.counterparty().external_parts(),
         Some(("Synthetic bank", "bank", Some("1234")))
@@ -271,7 +276,7 @@ async fn other_user_activity_uses_native_query_and_subject_relative_direction() 
     let body = serde_json::json!({
         "data": [{
             "id":"story-1","date_created":"2026-07-11T12:00:00","audience":"public",
-            "payment":{"id":"payment-1","status":"settled","action":"pay","amount":"1.25",
+            "payment":{"id":"payment-1","status":"settled","action":"pay","amount":null,
                 "actor":{"id":"456","username":"alice"},
                 "target":{"user":{"id":"789","username":"bob"}},
                 "audience":"public","date_created":"2026-07-11T12:00:00"}
@@ -305,6 +310,7 @@ async fn other_user_activity_uses_native_query_and_subject_relative_direction() 
                     .counterparty()
                     .as_user()
                     .map(|user| user.user_id().as_str().to_owned()),
+                activity.amount(),
                 next.map(|value| value.as_str().to_owned()),
             )
         }),
@@ -314,6 +320,7 @@ async fn other_user_activity_uses_native_query_and_subject_relative_direction() 
         Ok((
             ActivityDirection::Outgoing,
             Some("789".to_owned()),
+            None,
             Some("story-next".to_owned()),
         )),
         vec![authenticated_read_request(
@@ -408,12 +415,12 @@ async fn other_user_activity_accepts_private_story_only_when_viewer_is_other_par
     let observed = ScriptedObservation::observed(
         project_result(result, |page| {
             let (activities, _) = page.into_parts();
-            activities[0].direction()
+            (activities[0].direction(), activities[0].amount())
         }),
         &transport,
     );
     let expected = ScriptedObservation::expected(
-        Ok(ActivityDirection::Outgoing),
+        Ok((ActivityDirection::Outgoing, None)),
         vec![authenticated_read_request(
             "/stories/target-or-actor/{user-id}",
             &["stories", "target-or-actor", "456"],
@@ -445,17 +452,52 @@ async fn unique_public_activity_detail_preserves_absolute_external_parties() -> 
         .await;
     let observed = ScriptedObservation::observed(
         project_result(result, |detail| {
-            detail.parties().payment_parties().map(|(actor, target)| {
-                (
-                    actor.user_id().as_str().to_owned(),
-                    target.user_id().as_str().to_owned(),
-                )
-            })
+            (
+                detail.parties().payment_parties().map(|(actor, target)| {
+                    (
+                        actor.user_id().as_str().to_owned(),
+                        target.user_id().as_str().to_owned(),
+                    )
+                }),
+                detail.amount(),
+            )
         }),
         &transport,
     );
     let expected = ScriptedObservation::expected(
-        Ok(Some(("456".to_owned(), "789".to_owned()))),
+        Ok((Some(("456".to_owned(), "789".to_owned())), None)),
+        vec![authenticated_read_request(
+            "/stories/{story-id}",
+            &["stories", "story-1"],
+            &[],
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn participant_activity_detail_requires_an_amount() -> TestResult {
+    let body = serde_json::json!({"data": {
+        "id":"story-1","date_created":"2026-07-11T12:00:00","audience":"private",
+        "payment":{"id":"payment-1","status":"settled","action":"pay","amount":null,
+            "actor":{"id":"123","username":"owner"},
+            "target":{"user":{"id":"789","username":"bob"}},
+            "audience":"private","date_created":"2026-07-11T12:00:00"}
+    }});
+    let response = scripted_json_response(200, body)?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+
+    let result = client
+        .activity_by_id(&token, &device_id, &current_user_id, &activity_id)
+        .await;
+    let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+    let expected = ScriptedObservation::expected(
+        Err(ApiErrorSnapshot::contract(ACTIVITY_DETAIL_OPERATION)),
         vec![authenticated_read_request(
             "/stories/{story-id}",
             &["stories", "story-1"],

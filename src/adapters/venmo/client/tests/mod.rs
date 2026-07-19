@@ -34,7 +34,7 @@ use crate::features::payments::{
 };
 use crate::features::people::{
     FriendsApi, FriendsPageRequest, FriendshipMutationApi, FriendshipStatus, User, UserLookupApi,
-    UserProfileKind, UserSearchApi, UserSearchPageRequest, UserSearchQuery,
+    UserProfileKind, UserSearchApi, UserSearchPageRequest, UserSearchQuery, lookup,
 };
 use crate::features::requests::{
     AcceptRequestPlan, CreateRequestPlan, DeclineRequestPlan, PendingRequestsPageRequest,

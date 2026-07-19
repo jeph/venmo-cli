@@ -77,7 +77,9 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
   `ActivityStatus`, `ActivityLabelParseError`.
 - `ActivityDetail`, `ActivityDetailParties`, `ActivityFeedKind`, `ActivitySubject`.
 - `ActivityBeforeId`, `ActivityListResult`, `ActivityInfoResult`. Other-user list results expose the
-  resolved subject; current-user results retain the existing unscoped presentation.
+  resolved subject; current-user results retain the existing unscoped presentation. Activity and
+  detail amounts are optional because server-visible external social stories can omit them;
+  participant-owned records retain the required exact-money contract.
 
 ### Payments
 

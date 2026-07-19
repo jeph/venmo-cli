@@ -94,20 +94,6 @@ pub(crate) fn write_transfer_out_details<W: Write>(
         writer,
         "  Estimate: {}",
         sanitize_terminal_text(destination.transfer_to_estimate())
-    )?;
-    writeln!(
-        writer,
-        "  Submitted amount and final amount: identical integer cents"
-    )?;
-    if plan.amount_selection() == TransferOutAmount::AllAvailable {
-        writeln!(
-            writer,
-            "  Warning: `all` resolves once from this snapshot and is not an atomic account drain."
-        )?;
-    }
-    writeln!(
-        writer,
-        "  Warning: this unsupported private transfer API must never be retried after an uncertain outcome."
     )
 }
 

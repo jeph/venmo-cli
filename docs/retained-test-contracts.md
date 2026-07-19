@@ -80,11 +80,12 @@ Evidence-gated questions remain recorded in
 [`evidence-gated-follow-ups.md`](evidence-gated-follow-ups.md), not assigned to contributors as live
 experiments.
 
-Other-user activity needs no new ignored probe. Historical public client-1 documentation and
-signer-verified current Android code corroborate the personal-profile route, while exact synthetic
-tests retain viewer/subject separation, privacy checks, and continuation scope. A separately
-approved read-only smoke may suppress output, but it is not routine verification and no account or
-story data may be retained.
+The ignored `live_other_user_activity_shape_probe` requires an explicit
+`VENMO_ACTIVITY_PROBE_USERNAME` and resolves that exact personal user before requesting one record.
+It emits only response paths and JSON types/nullness: never raw values, IDs, names, notes, amounts,
+tokens, URLs, or bodies. It was executed once with separate owner approval on 2026-07-19 and must
+not become routine verification. Exact synthetic tests retain viewer/subject separation, nullable
+external amounts, amount suppression, privacy checks, and continuation scope.
 
 There is deliberately no ignored live friendship mutation test. Signer-verified Android artifacts
 and service-free synthetic contracts retain the route, form body, state matrix, reconciliation, and

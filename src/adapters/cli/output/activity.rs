@@ -35,28 +35,55 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
         }
     } else {
         let mut builder = Builder::default();
-        builder.push_record([
-            "Id",
-            "Time",
-            "Action",
-            "Direction",
-            "Counterparty",
-            "Amount",
-            "Status",
-            "Note",
-        ]);
+        let other_user_feed = result.subject().is_some();
+        if other_user_feed {
+            builder.push_record([
+                "Id",
+                "Time",
+                "Action",
+                "Direction",
+                "Counterparty",
+                "Status",
+                "Note",
+            ]);
+        } else {
+            builder.push_record([
+                "Id",
+                "Time",
+                "Action",
+                "Direction",
+                "Counterparty",
+                "Amount",
+                "Status",
+                "Note",
+            ]);
+        }
         for activity in result.activities() {
             let timestamp = timestamps.format(activity.occurred_at())?;
-            builder.push_record([
+            let common = [
                 sanitize_terminal_text(activity.id().as_str()),
                 timestamp,
                 sanitize_terminal_text(activity.action().as_str()),
                 activity.direction().to_string(),
                 sanitize_terminal_text(&activity_counterparty_label(activity.counterparty())),
-                format!("${}", activity.amount()),
-                sanitize_terminal_text(activity.status().as_str()),
-                sanitize_terminal_text(activity.note().unwrap_or("")),
-            ]);
+            ];
+            if other_user_feed {
+                builder.push_record(common.into_iter().chain([
+                    sanitize_terminal_text(activity.status().as_str()),
+                    sanitize_terminal_text(activity.note().unwrap_or("")),
+                ]));
+            } else {
+                builder.push_record(
+                    common.into_iter().chain([
+                        activity
+                            .amount()
+                            .map(|amount| format!("${amount}"))
+                            .unwrap_or_default(),
+                        sanitize_terminal_text(activity.status().as_str()),
+                        sanitize_terminal_text(activity.note().unwrap_or("")),
+                    ]),
+                );
+            }
         }
         write_table(stdout, builder)?;
     }
@@ -100,7 +127,9 @@ pub(crate) fn write_activity_info<W: Write>(
             sanitize_terminal_text(&activity_counterparty_label(counterparty))
         )?;
     }
-    writeln!(writer, "Amount: ${}", activity.amount())?;
+    if let Some(amount) = activity.amount() {
+        writeln!(writer, "Amount: ${amount}")?;
+    }
     writeln!(
         writer,
         "Status: {}",

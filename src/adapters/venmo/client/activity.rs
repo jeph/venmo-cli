@@ -10,7 +10,8 @@ use crate::features::people::User;
 use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
 
 use super::super::dto::{
-    AuthorizationDto, PaymentRecordDto, StoriesEnvelope, StoryDto, StoryEnvelope, TransferDto,
+    ActivityPaymentRecordDto, AuthorizationDto, StoriesEnvelope, StoryDto, StoryEnvelope,
+    TransferDto,
 };
 use super::super::transport::{ApiSession, ApiTransport, HttpRequest};
 use super::error::VenmoApiError;
@@ -390,7 +391,7 @@ fn map_authorization_activity(
         action,
         ActivityDirection::Outgoing,
         ActivityCounterparty::external(merchant_name, "merchant".to_owned(), None),
-        amount,
+        Some(amount),
         status,
         note,
         audience,
@@ -399,7 +400,7 @@ fn map_authorization_activity(
 
 fn map_payment_activity(
     story: StoryMetadata,
-    payment: PaymentRecordDto,
+    payment: ActivityPaymentRecordDto,
     current_user_id: &UserId,
     operation: &'static str,
 ) -> Result<Activity, VenmoApiError> {
@@ -408,7 +409,7 @@ fn map_payment_activity(
 
 fn map_payment_activity_for_scope(
     story: StoryMetadata,
-    payment: PaymentRecordDto,
+    payment: ActivityPaymentRecordDto,
     subject_user_id: &UserId,
     viewer_user_id: Option<&UserId>,
     operation: &'static str,
@@ -423,6 +424,10 @@ fn map_payment_activity_for_scope(
             operation,
         )?;
     }
+    let amount = match viewer_user_id {
+        Some(_) => None,
+        None => Some(require_activity_amount(payment.amount, operation)?),
+    };
     let (direction, counterparty) =
         relative_parties(payment.actor, payment.target, subject_user_id, operation)?;
     Ok(Activity::new(
@@ -431,7 +436,7 @@ fn map_payment_activity_for_scope(
         payment.action,
         direction,
         counterparty,
-        payment.amount,
+        amount,
         payment.status,
         payment.note,
         payment.audience,
@@ -440,7 +445,7 @@ fn map_payment_activity_for_scope(
 
 fn map_payment_detail(
     story: StoryMetadata,
-    payment: PaymentRecordDto,
+    payment: ActivityPaymentRecordDto,
     viewer_user_id: &UserId,
     operation: &'static str,
 ) -> Result<ActivityDetail, VenmoApiError> {
@@ -453,7 +458,9 @@ fn map_payment_detail(
     }
     let viewer_participates =
         payment.actor.user_id() == viewer_user_id || payment.target.user_id() == viewer_user_id;
-    if !viewer_participates {
+    let amount = if viewer_participates {
+        Some(require_activity_amount(payment.amount, operation)?)
+    } else {
         validate_visible_other_user_payment(
             payment.audience.as_deref(),
             &payment.actor,
@@ -461,14 +468,15 @@ fn map_payment_detail(
             viewer_user_id,
             operation,
         )?;
-    }
+        None
+    };
     Ok(ActivityDetail::payment(
         payment.id,
         payment.occurred_at,
         payment.action,
         payment.actor,
         payment.target,
-        payment.amount,
+        amount,
         payment.status,
         payment.note,
         payment.audience,
@@ -481,7 +489,7 @@ struct MappedPayment {
     action: ActivityAction,
     actor: User,
     target: User,
-    amount: Money,
+    amount: Option<Money>,
     status: ActivityStatus,
     note: Option<String>,
     audience: Option<String>,
@@ -489,11 +497,11 @@ struct MappedPayment {
 
 fn map_payment_fields(
     story: StoryMetadata,
-    payment: PaymentRecordDto,
+    payment: ActivityPaymentRecordDto,
     operation: &'static str,
 ) -> Result<MappedPayment, VenmoApiError> {
-    let PaymentRecordDto {
-        id: _,
+    let ActivityPaymentRecordDto {
+        id: payment_id,
         status,
         action,
         amount,
@@ -503,12 +511,17 @@ fn map_payment_fields(
         audience: payment_audience,
         date_created: payment_created,
     } = payment;
+    let _ = payment_id.into_string();
     let actor = map_user(actor, operation)?;
     let target = map_user(target.user, operation)?;
-    let amount = Money::from_str(&amount.into_string()).map_err(|_| VenmoApiError::Contract {
-        operation,
-        problem: "the activity response contained an invalid positive USD amount",
-    })?;
+    let amount = amount
+        .map(|amount| {
+            Money::from_str(&amount.into_string()).map_err(|_| VenmoApiError::Contract {
+                operation,
+                problem: "the activity response contained an invalid positive USD amount",
+            })
+        })
+        .transpose()?;
     let action = ActivityAction::from_str(&action).map_err(|_| VenmoApiError::Contract {
         operation,
         problem: "the activity response contained an invalid action",
@@ -578,6 +591,16 @@ fn validate_visible_other_user_payment(
             problem: "another user's activity omitted its audience",
         }),
     }
+}
+
+fn require_activity_amount(
+    amount: Option<Money>,
+    operation: &'static str,
+) -> Result<Money, VenmoApiError> {
+    amount.ok_or(VenmoApiError::Contract {
+        operation,
+        problem: "an activity involving the authenticated account omitted its amount",
+    })
 }
 
 fn map_transfer_activity(
@@ -664,7 +687,7 @@ fn map_transfer_activity(
         action,
         direction,
         ActivityCounterparty::external(name, kind, last_four),
-        amount,
+        Some(amount),
         status,
         note,
         audience,

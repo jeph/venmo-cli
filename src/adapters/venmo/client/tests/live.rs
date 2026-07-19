@@ -133,6 +133,47 @@ async fn live_activity_continuation_probe() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "manually probes one other-user activity record without emitting response values"]
+async fn live_other_user_activity_shape_probe() -> TestResult {
+    let username = std::env::var("VENMO_ACTIVITY_PROBE_USERNAME")
+        .map_err(|_| io::Error::other("the probe requires VENMO_ACTIVITY_PROBE_USERNAME"))?;
+    let username = Username::from_bare(username)?;
+    let loaded = NativeCredentialStore::new()
+        .read_credential()?
+        .ok_or_else(|| io::Error::other("the live schema probe requires a stored credential"))?;
+    let client = VenmoApiClient::production()?;
+    let user = lookup::resolve_with_credential(&loaded.envelope, &client, &username).await?;
+    let path_segments = ["stories", "target-or-actor", user.user_id().as_str()];
+    let response = client
+        .transport
+        .send_authenticated(
+            ApiSession::from(&loaded.envelope),
+            HttpRequest::read(
+                "/stories/target-or-actor/{user-id}",
+                &path_segments,
+                &[("limit", "1")],
+            ),
+        )
+        .await?;
+    if !response.status().is_success() {
+        return Err(io::Error::other("the other-user activity probe did not succeed").into());
+    }
+    let value: Value = serde_json::from_slice(response.body())?;
+    let records = value
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| io::Error::other("the activity probe did not return a data array"))?;
+    let mut shape = BTreeSet::new();
+    for record in records {
+        collect_json_types(record, "$.data[]", 0, &mut shape);
+    }
+    for line in shape {
+        eprintln!("  {line}");
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "manually probes non-payment activity shapes with the active credential"]
 async fn live_non_payment_activity_probe() -> TestResult {
     let loaded = NativeCredentialStore::new()
@@ -445,6 +486,41 @@ fn collect_json_shape(
                     depth + 1,
                     shape,
                 );
+            }
+        }
+    }
+}
+
+fn collect_json_types(value: &Value, path: &str, depth: usize, shape: &mut BTreeSet<String>) {
+    const MAX_DEPTH: usize = 12;
+    if depth > MAX_DEPTH {
+        shape.insert(format!("{path}: depth-limit"));
+        return;
+    }
+    match value {
+        Value::Null => {
+            shape.insert(format!("{path}: null"));
+        }
+        Value::Bool(_) => {
+            shape.insert(format!("{path}: bool"));
+        }
+        Value::Number(_) => {
+            shape.insert(format!("{path}: number"));
+        }
+        Value::String(_) => {
+            shape.insert(format!("{path}: string"));
+        }
+        Value::Array(values) => {
+            shape.insert(format!("{path}: array"));
+            for value in values {
+                collect_json_types(value, &format!("{path}[]"), depth + 1, shape);
+            }
+        }
+        Value::Object(fields) => {
+            shape.insert(format!("{path}: object"));
+            for (key, value) in fields {
+                let safe_key = safe_schema_key(key).unwrap_or("[dynamic-key]");
+                collect_json_types(value, &format!("{path}.{safe_key}"), depth + 1, shape);
             }
         }
     }

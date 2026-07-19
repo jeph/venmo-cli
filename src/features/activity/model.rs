@@ -228,7 +228,7 @@ pub struct Activity {
     action: ActivityAction,
     direction: ActivityDirection,
     counterparty: ActivityCounterparty,
-    amount: Money,
+    amount: Option<Money>,
     status: ActivityStatus,
     note: Option<String>,
     audience: Option<String>,
@@ -243,7 +243,7 @@ impl Activity {
         action: ActivityAction,
         direction: ActivityDirection,
         counterparty: ActivityCounterparty,
-        amount: Money,
+        amount: Option<Money>,
         status: ActivityStatus,
         note: Option<String>,
         audience: Option<String>,
@@ -287,7 +287,7 @@ impl Activity {
     }
 
     #[must_use]
-    pub const fn amount(&self) -> Money {
+    pub const fn amount(&self) -> Option<Money> {
         self.amount
     }
 
@@ -372,7 +372,7 @@ pub struct ActivityDetail {
     occurred_at: OffsetDateTime,
     action: ActivityAction,
     parties: ActivityDetailParties,
-    amount: Money,
+    amount: Option<Money>,
     status: ActivityStatus,
     note: Option<String>,
     audience: Option<String>,
@@ -387,7 +387,7 @@ impl ActivityDetail {
         action: ActivityAction,
         actor: User,
         target: User,
-        amount: Money,
+        amount: Option<Money>,
         status: ActivityStatus,
         note: Option<String>,
         audience: Option<String>,
@@ -442,7 +442,7 @@ impl ActivityDetail {
     }
 
     #[must_use]
-    pub const fn amount(&self) -> Money {
+    pub const fn amount(&self) -> Option<Money> {
         self.amount
     }
 
@@ -536,7 +536,7 @@ mod tests {
             ActivityAction::from_str("pay")?,
             ActivityDirection::Outgoing,
             ActivityCounterparty::user(user.clone()),
-            Money::from_cents(125)?,
+            Some(Money::from_cents(125)?),
             ActivityStatus::from_str("settled")?,
             Some("private note".to_owned()),
             Some("private".to_owned()),
@@ -546,7 +546,7 @@ mod tests {
         assert_eq!(activity.action().as_str(), "pay");
         assert_eq!(activity.direction(), ActivityDirection::Outgoing);
         assert_eq!(activity.counterparty().as_user(), Some(&user));
-        assert_eq!(activity.amount().cents(), 125);
+        assert_eq!(activity.amount().map(Money::cents), Some(125));
         assert_eq!(activity.status().as_str(), "settled");
         assert_eq!(activity.note(), Some("private note"));
         assert_eq!(activity.audience(), Some("private"));

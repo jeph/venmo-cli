@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use super::common::{StringOrInteger, StringOrNumber};
-use super::payments::PaymentRecordDto;
+use super::payments::PaymentTargetDto;
 use super::people::UserDto;
 
 #[derive(Deserialize)]
@@ -41,11 +41,28 @@ pub(crate) struct StoryDto {
     #[serde(default)]
     pub audience: Option<String>,
     #[serde(default)]
-    pub payment: Option<PaymentRecordDto>,
+    pub payment: Option<ActivityPaymentRecordDto>,
     #[serde(default)]
     pub transfer: Option<TransferDto>,
     #[serde(default)]
     pub authorization: Option<AuthorizationDto>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ActivityPaymentRecordDto {
+    pub id: StringOrInteger,
+    pub status: String,
+    pub action: String,
+    #[serde(default)]
+    pub amount: Option<StringOrNumber>,
+    pub actor: UserDto,
+    pub target: PaymentTargetDto,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub audience: Option<String>,
+    #[serde(default)]
+    pub date_created: Option<String>,
 }
 
 #[derive(Deserialize)]

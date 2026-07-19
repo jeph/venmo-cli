@@ -111,6 +111,11 @@ assertions instead of being wrapped in an artificial fake-state snapshot. This e
 apply to `ScriptedTransport` or another mutable scripted fake, and it never permits a production
 service call.
 
+Activity adapter fixtures separately prove that current-account payment stories require exact
+positive money while authorized external social stories may carry a null amount. Other-user output
+snapshots omit the Amount column entirely, and external detail output omits the Amount line rather
+than rendering a placeholder. Supplied malformed amounts remain contract failures.
+
 Friendship mutation coverage follows the same zero/one-write rules as financial workflows while
 remaining a distinct state-write class. Exact tests pin form-urlencoded P4, bodyless P5, native
 relationship-state selection, default-No and `--yes`, interruption ties, post-transmission

@@ -409,9 +409,9 @@ All command-level username resolution is shared and fail-closed around the live-
   once from the fresh positive available-balance snapshot, excludes on-hold funds, and fails before
   options/write when availability is zero or negative. The immutable plan preserves the selector
   and resolved integer cents.
-- Treats `all` as a snapshot shorthand, not an atomic drain. Details disclose that boundary and the
-  resolved amount; default-No confirmation asks whether to transfer the entire displayed available
-  balance. `--yes` skips only that prompt.
+- Treats `all` as a snapshot shorthand, not an atomic drain. Help and documentation disclose that
+  boundary; details show the resolved amount and snapshot source, and default-No confirmation asks
+  whether to transfer the entire displayed available balance. `--yes` skips only that prompt.
 - Defaults an omitted `--speed` to `standard`; explicit `--speed standard` remains valid and every
   unsupported speed is rejected by the CLI.
 - Sends one non-retried integer-cent POST after flushed default-No confirmation. Exact HTTP 201
@@ -429,8 +429,13 @@ All command-level username resolution is shared and fail-closed around the live-
 
 - Without `--user`, lists the authenticated account's existing feed with no behavior change.
 - With `--user`, resolves an optional-`@` exact username through bounded search and authoritative detail, requires a personal profile, and lists the native personal-profile feed visible to the authenticated viewer. Business/public-only profile feeds remain a separate unsupported contract.
-- Shows activity ID, timestamp, action/direction, counterparty, amount when available, status, and sanitized note.
+- Shows activity ID, timestamp, action/direction, counterparty, status, and sanitized note. The
+  authenticated user's feed includes its required amount; other-user lists deliberately omit the
+  amount column even when the private API supplies a value.
 - Interprets direction and counterparty relative to the viewed user. Other-user pages accept only payment stories, require exactly one viewed-user party and a supported audience, and accept private records only when the authenticated viewer is the other participant.
+- Accepts a null amount only for external social activity. A supplied amount remains strictly
+  parsed, but other-user list mapping discards it before output. Detail omits Amount when the viewer
+  is external; participant-owned activity still requires and renders exact money.
 - Fetches exactly one source page using `--limit` as the server page size, with default 10 and maximum 50.
 - Accepts the endpoint-native bounded opaque `before_id` value through `--before-id` and reports a validated `Next before-id: <TOKEN>` value after successful record output.
 - Does not expose a generic public/friends feed or silently discard unsupported records.
