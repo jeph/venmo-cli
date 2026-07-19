@@ -9,7 +9,7 @@
 > [!WARNING]
 > **Contributor safety:** routine development and CI are service-free. Do not use a
 > production credential, invoke ignored/manual probes, replay browser traffic, or
-> run a real `pay`, `requests create`, `requests accept`, `requests decline`, or
+> run a real `pay user`, `requests create`, `requests accept`, `requests decline`, or
 > transfer as a test. Use the
 > commands in [CONTRIBUTING.md](CONTRIBUTING.md), with fakes or loopback servers.
 > Never put a bearer token, device ID, password, cookie, CSRF value, OTP material,
@@ -95,14 +95,14 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 1 | `auth login` | Password: **A1 → A5**. OTP: **A1 → A2 → A3 → A5**, verified local save, then **A4** (maximum 5). | Remote auth plus hidden identifier/password/fresh-device prompts and optional hidden OTP. |
 | 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
-| 4 | `pay <USERNAME> <AMOUNT> --note <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
+| 4 | `pay user <USERNAME> <AMOUNT> --note <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
 | 5 | `requests create <USERNAME> <AMOUNT> --note <NOTE> [--visibility ...]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3**; no prompt. |
 | 6 | `requests accept <REQUEST_ID> [--yes]` | **A5 → R2 → P2 → W2 → F4** (5). | Financial; exactly one **F4** after default-No confirmation. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
 | 8 | `friends list [--limit N] [--offset N]` | **P3** once. | One page; stored self ID. |
 | 9 | `users search <QUERY> [--limit N] [--offset N]` | **P1** once. | One page. |
 | 10 | `users info <USERNAME>` | 1–4 × **P1** then **P2** (maximum 5). | Shared exact-username resolution followed by detail read. |
-| 11 | `payment-methods list` | **W1** once. | One read. |
+| 11 | `pay methods` | **W1** once. | One read. |
 | 12 | `balance` | **W2** once. | One read. |
 | 13 | `activity list [--limit N] [--before-id TOKEN]` | **AC1** once. | One page; stored self ID. |
 | 14 | `activity info <ACTIVITY_ID>` | **AC2** once. | One detail read. |
@@ -191,7 +191,7 @@ Unless a token or financial rule below is stricter:
 
 A supported user has a valid string/integer `id`; optional `username`,
 `display_name`/`displayName`/`name`, `identity_type`, and `is_payable`. Where P2
-recipient detail is authoritative (`pay`, request creation, and `accept`), the
+recipient detail is authoritative (`pay user`, request creation, and `accept`), the
 counterparty must be nonself, exactly personal, and `is_payable: true`. `Decline`
 does no P2 and does not prove profile type or payability. Identity types are
 interpreted case-insensitively as personal, business, charity, or unknown.
@@ -283,7 +283,7 @@ valid IDs and accepts optional `name`/`display_name`/`label`,
 `payment_method_role`, `peer_payment_role`, or `merchant_payment_role`
 case-insensitively contains `default`.
 
-The `pay` consumer is stricter:
+The `pay user` consumer is stricter:
 
 1. every method has exact case-insensitive `peer_payment_role` `default`, `backup`,
    or `none`; `none` is skipped and any unknown/omitted role fails the response;
@@ -473,7 +473,7 @@ equivalence.
 **Pay:** A5 validates self; recipient search/detail proves a nonself personal/payable
 user; W2 captures balance; strict W1 selects an external peer method; F1 either
 confirms eligibility or denies it without F2. The CLI generates a UUID, renders and
-flushes preflight, then requires default-No confirmation unless `--yes`
+flushes validated payment details, then requires default-No confirmation unless `--yes`
 (noninteractive always needs `--yes`). It installs interruption protection before
 exactly one F2. W2 may coexist with an external backup; neither W1 nor F1 proves the
 final source/fee.
@@ -483,12 +483,13 @@ funding field, balance gate, prompt, or `--yes`.
 
 **Accept:** A5 and R2 prove an incoming exact-`pending`, exact-`private` request; P2
 proves the requester personal/payable; W2 available balance must cover the amount.
-After flushed default-No preflight (unless `--yes`), interruption protection is
-installed and exactly one F4 is attempted. F4 carries no funding source. Balance
+Validated request-acceptance details are always flushed; unless `--yes` is supplied,
+default-No confirmation follows. Interruption protection is then installed and exactly one F4 is
+attempted. F4 carries no funding source. Balance
 coverage is only a safety snapshot and proves neither actual source nor fee.
 
 **Decline:** A5 and R2 prove an incoming exact-`pending` request with any supported
-audience. The CLI renders and flushes authoritative preflight, requires default-No
+audience. The CLI renders and flushes authoritative request-decline details, requires default-No
 confirmation unless `--yes`, installs interruption protection, then attempts exactly
 one F5. No P2/W1/W2/F1 runs, profile type/payability is unproved, and no money/funding
 field is sent.
@@ -608,7 +609,8 @@ and amount ≤ available balance, and selects only
 known/additional non-null standard fee metadata, rejects duplicate IDs and multiple
 defaults, chooses the unique default even with backups or otherwise a sole candidate,
 and rejects multiple nondefaults. It never uses response order or accepts a raw CLI
-destination ID. Preflight is flushed before default-No confirmation.
+destination ID. Validated transfer details are flushed before the write; unless `--yes` is
+supplied, default-No confirmation follows.
 
 The exact current write, initially sourced from the historical lead and then
 controlled-live validated, is one financial, non-retried:

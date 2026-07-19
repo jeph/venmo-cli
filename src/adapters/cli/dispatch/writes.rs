@@ -16,13 +16,13 @@ use crate::features::transfers::{TransferOptionsApi, TransferOutCreationApi};
 use crate::features::wallet::BalanceApi;
 use crate::shared::{ApiFailure, ClientRequestIdGenerator, CredentialReader};
 
-use super::super::args::{AcceptArgs, DeclineArgs, PayArgs, RequestArgs, TransferOutArgs};
+use super::super::args::{AcceptArgs, DeclineArgs, PayUserArgs, RequestArgs, TransferOutArgs};
 use super::super::{error::AppError, output};
 use super::write_and_flush;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_pay_with<R, A, G, P, W, E, M, S>(
-    args: PayArgs,
+    args: PayUserArgs,
     store: &R,
     api: &A,
     generator: &G,
@@ -58,7 +58,7 @@ where
         args.visibility.into(),
     )
     .await?;
-    write_and_flush(stderr, &prepared, output::write_pay_preflight)?;
+    write_and_flush(stderr, &prepared, output::write_pay_details)?;
     let authorized = pay::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result = protect_with_interruption(pay::execute(api, authorized), interruption).await??;
@@ -125,7 +125,7 @@ where
 {
     let prepared = accept::prepare(store, api, &args.request_id).await?;
     write_and_flush(stderr, &prepared, |writer, prepared| {
-        output::write_accept_preflight(writer, prepared, timestamps)
+        output::write_accept_details(writer, prepared, timestamps)
     })?;
     let authorized = accept::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
@@ -159,7 +159,7 @@ where
 {
     let prepared = decline::prepare(store, api, &args.request_id).await?;
     write_and_flush(stderr, &prepared, |writer, prepared| {
-        output::write_decline_preflight(writer, prepared, timestamps)
+        output::write_decline_details(writer, prepared, timestamps)
     })?;
     let authorized = decline::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
@@ -192,7 +192,7 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = transfer_out::prepare(store, api, args.amount, args.speed.into()).await?;
-    write_and_flush(stderr, &prepared, output::write_transfer_out_preflight)?;
+    write_and_flush(stderr, &prepared, output::write_transfer_out_details)?;
     let authorized = transfer_out::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =

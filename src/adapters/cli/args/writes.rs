@@ -1,4 +1,4 @@
-use clap::{Args, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
 
 use crate::features::people::RecipientInput;
 use crate::shared::{Money, Note, Visibility};
@@ -22,10 +22,25 @@ impl From<VisibilityArg> for Visibility {
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
+pub struct PayArgs {
+    #[command(subcommand)]
+    pub operation: PayOperation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
+pub enum PayOperation {
+    /// List payment methods and copyable IDs.
+    Methods,
+
+    /// Pay one person.
+    User(PayUserArgs),
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
     after_long_help = "Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app."
 )]
-pub struct PayArgs {
+pub struct PayUserArgs {
     /// Exact username with an optional leading @.
     #[arg(value_name = "USERNAME")]
     pub recipient: RecipientInput,

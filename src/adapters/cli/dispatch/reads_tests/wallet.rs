@@ -3,7 +3,6 @@ use super::*;
 #[tokio::test(flavor = "current_thread")]
 async fn payment_methods_handler_has_exact_typed_call_output_and_zero_flushes() -> TestResult {
     // Setup.
-    let args = payment_methods_args()?;
     let response = vec![PaymentMethod::new(
         PaymentMethodId::from_str("method-1")?,
         Some("Bank\nname".to_owned()),
@@ -42,7 +41,7 @@ async fn payment_methods_handler_has_exact_typed_call_output_and_zero_flushes() 
     );
 
     // Execute once.
-    let result = run_payment_methods(args, &reader, &api, &mut stdout).await;
+    let result = run_payment_methods(&reader, &api, &mut stdout).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {

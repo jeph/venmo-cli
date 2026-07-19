@@ -55,13 +55,13 @@ pub(crate) fn write_transfer_options<W: Write>(
     }
 }
 
-pub(crate) fn write_transfer_out_preflight<W: Write>(
+pub(crate) fn write_transfer_out_details<W: Write>(
     writer: &mut W,
     prepared: &PreparedTransferOut,
 ) -> io::Result<()> {
     let plan = prepared.plan();
     let destination = plan.destination();
-    writeln!(writer, "Transfer preflight:")?;
+    writeln!(writer, "Transfer details:")?;
     writeln!(
         writer,
         "  From account: {} (ID {})",

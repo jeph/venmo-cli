@@ -166,7 +166,8 @@ fn clap_schema_generates_a_manpage() -> TestResult {
     let text = String::from_utf8(rendered)?;
 
     assert!(text.contains(".TH venmo"));
-    assert!(text.contains("payment\\-methods"));
+    assert!(text.contains("pay"));
+    assert!(!text.contains("payment\\-methods"));
     assert!(text.contains("requests"));
 
     Ok(())

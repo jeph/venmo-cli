@@ -89,13 +89,6 @@ pub(super) fn synthetic_request() -> TestResult<RequestRecord> {
     ))
 }
 
-pub(super) fn payment_methods_args() -> TestResult<PaymentMethodsArgs> {
-    match Cli::try_parse_from(["venmo", "payment-methods", "list"])?.command {
-        Command::PaymentMethods(args) => Ok(args),
-        _ => Err(io::Error::other("payment-method arguments parsed as another command").into()),
-    }
-}
-
 pub(super) fn users_args() -> TestResult<UserSearchArgs> {
     match Cli::try_parse_from([
         "venmo", "users", "search", "alice", "--limit", "1", "--offset", "10",

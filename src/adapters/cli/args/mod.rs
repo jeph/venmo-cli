@@ -10,15 +10,14 @@ mod writes;
 pub use auth::{AuthArgs, AuthOperation};
 pub use reads::{
     ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, FriendsArgs,
-    FriendsListArgs, FriendsOperation, PaymentMethodsArgs, PaymentMethodsOperation, UserInfoArgs,
-    UserSearchArgs, UsersArgs, UsersOperation,
+    FriendsListArgs, FriendsOperation, UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
 };
 pub use requests::{
     AcceptArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs,
     RequestsListArgs, RequestsOperation,
 };
 pub use transfers::{TransferArgs, TransferOperation, TransferOutArgs, TransferSpeedArg};
-pub use writes::{PayArgs, VisibilityArg};
+pub use writes::{PayArgs, PayOperation, PayUserArgs, VisibilityArg};
 
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]
 #[command(
@@ -42,7 +41,7 @@ pub enum Command {
     /// Validate and manage the stored Venmo bearer token.
     Auth(AuthArgs),
 
-    /// Pay one person.
+    /// Pay users or inspect payment methods.
     Pay(PayArgs),
 
     /// Inspect friends of the active account.
@@ -50,9 +49,6 @@ pub enum Command {
 
     /// Find Venmo users.
     Users(UsersArgs),
-
-    /// Inspect available payment methods.
-    PaymentMethods(PaymentMethodsArgs),
 
     /// Show the Venmo wallet balance.
     Balance,

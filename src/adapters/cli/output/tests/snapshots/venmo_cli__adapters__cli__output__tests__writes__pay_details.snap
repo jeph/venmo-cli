@@ -1,8 +1,8 @@
 ---
 source: src/adapters/cli/output/tests/writes.rs
-expression: preflight
+expression: details
 ---
-Payment preflight:
+Payment details:
   From account: @owner (ID 123)
   Recipient: @bob (Synthetic\nrecipient) (ID 456)
   Amount: $0.01

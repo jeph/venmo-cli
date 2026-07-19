@@ -1,9 +1,22 @@
 use super::*;
 
-pub(super) fn pay_args() -> TestResult<PayArgs> {
-    let cli = Cli::try_parse_from(["venmo", "pay", "bob", "0.01", "--note", "Synthetic payment"])?;
+pub(super) fn pay_args() -> TestResult<PayUserArgs> {
+    let cli = Cli::try_parse_from([
+        "venmo",
+        "pay",
+        "user",
+        "bob",
+        "0.01",
+        "--note",
+        "Synthetic payment",
+    ])?;
     match cli.command {
-        Command::Pay(args) => Ok(args),
+        Command::Pay(args) => match args.operation {
+            PayOperation::User(args) => Ok(args),
+            PayOperation::Methods => {
+                Err(io::Error::other("pay-user arguments parsed as pay methods").into())
+            }
+        },
         _ => Err(io::Error::other("pay arguments parsed as another command").into()),
     }
 }
@@ -74,8 +87,8 @@ pub(super) fn created_payment() -> TestResult<CreatedPayment> {
     ))
 }
 
-pub(super) const PAY_PREFLIGHT: &str = concat!(
-    "Payment preflight:\n",
+pub(super) const PAY_DETAILS: &str = concat!(
+    "Payment details:\n",
     "  From account: @owner (ID 123)\n",
     "  Recipient: @bob (Synthetic recipient) (ID 456)\n",
     "  Amount: $0.01\n",

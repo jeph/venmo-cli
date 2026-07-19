@@ -3,9 +3,7 @@ use std::str::FromStr;
 
 use time::OffsetDateTime;
 
-use super::super::{
-    write_transfer_options, write_transfer_out_preflight, write_transfer_out_result,
-};
+use super::super::{write_transfer_options, write_transfer_out_details, write_transfer_out_result};
 use crate::features::transfers::model::{
     CreatedTransfer, TransferFeeMetadata, TransferId, TransferInstrument, TransferInstrumentId,
     TransferInstrumentSuffix, TransferModeOptions, TransferOptions, TransferOutPlan, TransferSpeed,
@@ -47,7 +45,7 @@ fn transfer_options_output_is_complete_and_sanitized() -> TestResult {
 }
 
 #[test]
-fn transfer_preflight_and_result_outputs_are_complete() -> TestResult {
+fn transfer_details_and_result_outputs_are_complete() -> TestResult {
     let plan = plan()?;
     let prepared = PreparedTransferOut::new(credential()?, plan.clone());
     let result = TransferOutResult::new(
@@ -60,14 +58,14 @@ fn transfer_preflight_and_result_outputs_are_complete() -> TestResult {
             0,
         ),
     );
-    let mut preflight = Vec::new();
+    let mut details = Vec::new();
     let mut completed = Vec::new();
     let timestamps = super::local_timestamps();
 
-    write_transfer_out_preflight(&mut preflight, &prepared)?;
+    write_transfer_out_details(&mut details, &prepared)?;
     write_transfer_out_result(&mut completed, &result, &timestamps)?;
 
-    insta::assert_snapshot!("transfer_out_preflight", String::from_utf8(preflight)?);
+    insta::assert_snapshot!("transfer_out_details", String::from_utf8(details)?);
     insta::assert_snapshot!("transfer_out_result", String::from_utf8(completed)?);
     Ok(())
 }

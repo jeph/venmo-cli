@@ -13,7 +13,7 @@ async fn pay_handler_orders_full_preflight_confirmation_write_output_and_flush()
             calls: successful_calls(),
             remaining: Some(RemainingPayScript::after_success()),
             stdout: writer_state(PAY_RESULT, 1),
-            stderr: writer_state(PAY_PREFLIGHT, 1),
+            stderr: writer_state(PAY_DETAILS, 1),
         },
     );
     let mut harness = PayHarness::new(script, initial)?;
@@ -35,7 +35,7 @@ async fn pay_handler_propagates_explicit_visibility_to_plan_and_output() -> Test
             calls: successful_calls_with_visibility(Visibility::Public),
             remaining: Some(RemainingPayScript::after_success()),
             stdout: writer_state(&PAY_RESULT.replace("private", "public"), 1),
-            stderr: writer_state(&PAY_PREFLIGHT.replace("private", "public"), 1),
+            stderr: writer_state(&PAY_DETAILS.replace("private", "public"), 1),
         },
     );
     let mut harness = PayHarness::new(script, PayState::default())?;

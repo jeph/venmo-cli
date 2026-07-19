@@ -592,7 +592,7 @@ async fn decline_handler_orders_default_no_confirmation_one_write_output_and_flu
             calls: successful_calls(),
             remaining: Some(RemainingDeclineScript::after_success()),
             stdout: writer_state(DECLINE_RESULT, 1),
-            stderr: writer_state(DECLINE_PREFLIGHT, 1),
+            stderr: writer_state(DECLINE_DETAILS, 1),
         },
     );
     let mut harness = DeclineHarness::new(script, initial)?;
@@ -654,7 +654,7 @@ async fn decline_confirmation_rejection_and_failures_stop_before_interruption_an
                     interruptions: 2,
                     declines: 2,
                 }),
-                stderr: writer_state(DECLINE_PREFLIGHT, 1),
+                stderr: writer_state(DECLINE_DETAILS, 1),
                 ..DeclineState::default()
             },
         );
@@ -679,7 +679,7 @@ async fn decline_yes_retains_preflight_and_one_write_without_prompt_calls() -> T
                 ..RemainingDeclineScript::after_success()
             }),
             stdout: writer_state(DECLINE_RESULT, 1),
-            stderr: writer_state(DECLINE_PREFLIGHT, 1),
+            stderr: writer_state(DECLINE_DETAILS, 1),
         },
     );
     let mut harness = DeclineHarness::new(DeclineScript::successful(), DeclineState::default())?;
@@ -779,7 +779,7 @@ async fn decline_interruption_tie_and_signal_failure_preserve_exact_ambiguity_bo
                     declines: if write_started { 1 } else { 2 },
                     ..RemainingDeclineScript::after_success()
                 }),
-                stderr: writer_state(DECLINE_PREFLIGHT, 1),
+                stderr: writer_state(DECLINE_DETAILS, 1),
                 ..DeclineState::default()
             },
         );
@@ -838,7 +838,7 @@ async fn decline_post_write_output_failures_are_specialized_ambiguous_outcomes()
                 },
                 remaining: Some(RemainingDeclineScript::after_success()),
                 stdout: expected_stdout,
-                stderr: writer_state(DECLINE_PREFLIGHT, 1),
+                stderr: writer_state(DECLINE_DETAILS, 1),
             },
         );
         let mut harness = DeclineHarness::new(script, initial)?;
@@ -1005,8 +1005,8 @@ fn declined_request() -> TestResult<DeclinedRequest> {
     ))
 }
 
-const DECLINE_PREFLIGHT: &str = concat!(
-    "Request decline preflight:\n",
+const DECLINE_DETAILS: &str = concat!(
+    "Request decline details:\n",
     "  Request ID: request-1\n",
     "  Requester: @requester (Synthetic requester) (ID 456)\n",
     "  Amount: $0.01\n",

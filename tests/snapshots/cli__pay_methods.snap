@@ -4,7 +4,7 @@ expression: help
 ---
 List payment methods and copyable IDs
 
-Usage: list
+Usage: methods
 
 Options:
   -h, --help

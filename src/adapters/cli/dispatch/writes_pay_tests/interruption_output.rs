@@ -57,7 +57,7 @@ async fn pay_interruption_tie_and_signal_failures_have_exact_write_boundaries() 
                     creations: if write_started { 1 } else { 2 },
                     ..RemainingPayScript::after_success()
                 }),
-                stderr: writer_state(PAY_PREFLIGHT, 1),
+                stderr: writer_state(PAY_DETAILS, 1),
                 ..PayState::default()
             },
         );
@@ -116,7 +116,7 @@ async fn pay_post_write_output_failures_keep_the_specialized_ambiguous_outcome()
                 },
                 remaining: Some(RemainingPayScript::after_success()),
                 stdout: expected_stdout,
-                stderr: writer_state(PAY_PREFLIGHT, 1),
+                stderr: writer_state(PAY_DETAILS, 1),
             },
         );
         let mut harness = PayHarness::new(script, initial)?;

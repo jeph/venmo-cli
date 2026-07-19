@@ -43,18 +43,18 @@ The initial MCP release provides structured, read-only access to the already imp
 - A successful explicit login may replace any readable existing credential, including another account, only after the new token validates and the replacement reads back exactly. A failed login leaves the existing entry untouched.
 - Do not ship browser automation, browser-cookie import, or web-session authentication as CLI features. Development-time browser observation under Section 7.4 is permitted solely to establish sanitized API contracts.
 - Document the unsupported password/SMS-OTP login risk and local-only logout semantics in the README.
-- Support one recipient per new `pay` or `requests create` invocation and one request ID per `requests accept` or `requests decline` invocation.
-- Ship `pay`, request creation, request acceptance, and request decline as independently validated operations. `pay` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation requirements on 2026-07-12. Acceptance and decline passed their operation-specific synthetic and reconciled live validation on 2026-07-14; acceptance retains the disclosed funding-source/fee evidence gap.
+- Support one recipient per new `pay user` or `requests create` invocation and one request ID per `requests accept` or `requests decline` invocation.
+- Ship `pay user`, request creation, request acceptance, and request decline as independently validated operations. `pay user` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation requirements on 2026-07-12. Acceptance and decline passed their operation-specific synthetic and reconciled live validation on 2026-07-14; acceptance retains the disclosed funding-source/fee evidence gap.
 - Keep terminal-capability policy inside private CLI production composition. The public facade exposes no terminal-capability value, and neither normal dispatch nor runtime-initialization fallback accepts caller-supplied terminal state. Prompt capability comes from the actual process; crate-private unit tests may inject synthetic terminal snapshots only while delegating to fake handlers.
 - Initialize verbose CLI logging only after service-free dispatch preconditions. Noninteractive login does not install the global subscriber. `requests accept` and `requests decline` follow normal delegated-command logging and runtime behavior. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
 - Normally limit controlled live mutations to $0.01 and reconcile each mutation before authorizing another. On 2026-07-14 the owner made a narrow exception for one existing legitimate $25 incoming request that the owner already owes: one `approve` attempt, no retries or field variation, full authoritative preflight and default-No confirmation, followed by immediate CLI and official-app reconciliation. This exception does not prove the final funding source or fee and does not authorize any other elevated-value test.
 - Group request reads and writes under `venmo requests`: `list`, `create`, `accept`, `decline`, and `info`. Remove the former top-level `request`, `accept`, and `decline` forms without compatibility aliases.
 - Call transaction history `activity`.
-- Let `pay` and `requests create` select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective, and disclose the restriction rule in payment preflight before confirmation. Do not add the option to action-only request acceptance or decline.
+- Let `pay user` and `requests create` select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective, and disclose the restriction rule in payment details before confirmation. Do not add the option to action-only request acceptance or decline.
 - Limit ordinary payment release to personal-profile peer-to-peer operations with a valid eligibility token. Allow any peer-eligible external method regardless of method-level or eligibility-reported fee, disclose available fee evidence before confirmation, and do not claim the final fee is proven. Acceptance requires full available-balance coverage and submits no external funding method, but the update and response do not prove the actual source or fee.
-- Choose the submitted peer-eligible external backup method internally: validate duplicate IDs and multiple defaults, choose the unique default regardless of fee, otherwise choose only a sole eligible method, and fail closed on multiple non-default methods. Never choose by response order or fee, and expose no user funding-method override. Venmo wallet balance may take priority; preflight must state that behavior and success output may name an actual source only when authoritative evidence proves it.
-- Require default-No confirmation for `pay`, `requests accept`, and the destructive request-state change performed by `requests decline`. Direct request creation remains the only immediate mutation.
-- Expose `--yes` only on `pay`, `requests accept`, and `requests decline`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or preflight.
+- Choose the submitted peer-eligible external backup method internally: validate duplicate IDs and multiple defaults, choose the unique default regardless of fee, otherwise choose only a sole eligible method, and fail closed on multiple non-default methods. Never choose by response order or fee, and expose no user funding-method override. Venmo wallet balance may take priority; payment details must state that behavior and success output may name an actual source only when authoritative evidence proves it.
+- Require default-No confirmation for `pay user`, `requests accept`, and the destructive request-state change performed by `requests decline`. Direct request creation remains the only immediate mutation.
+- Expose `--yes` only on `pay user`, `requests accept`, and `requests decline`, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or the details display.
 - Do not expose any `--dry-run` flags.
 - Never automatically retry payment creation, request creation, request acceptance, or request decline.
 - Write no first-party `unsafe` Rust and prohibit it mechanically across every first-party target.
@@ -109,7 +109,7 @@ venmo auth login
 venmo auth logout
 venmo auth status
 
-venmo pay <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--yes]
+venmo pay user <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>] [--yes]
 venmo requests create <USERNAME> <AMOUNT> --note <NOTE> [--visibility <VISIBILITY>]
 venmo requests accept <REQUEST_ID> [--yes]
 venmo requests decline <REQUEST_ID> [--yes]
@@ -117,7 +117,7 @@ venmo requests decline <REQUEST_ID> [--yes]
 venmo friends list [--limit <N>] [--offset <N>]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
 venmo users info <USERNAME>
-venmo payment-methods list
+venmo pay methods
 venmo balance
 
 venmo activity list [--limit <N>] [--before-id <TOKEN>]
@@ -190,8 +190,8 @@ Proposed stable exit codes:
 ### 3.3 Paying one person
 
 ```text
-venmo pay @alice 12.50 --note "Dinner"
-venmo pay alice 12.50 --note "Dinner" --visibility friends --yes
+venmo pay user @alice 12.50 --note "Dinner"
+venmo pay user alice 12.50 --note "Dinner" --visibility friends --yes
 ```
 
 Contract:
@@ -203,7 +203,7 @@ Contract:
 - `--note` is required and must contain non-whitespace text.
 - `--visibility` accepts exactly `private`, `friends`, or `public` and defaults to `private`.
 - Funding-method input is not exposed; `--from` is rejected.
-- `--yes` skips only confirmation; it does not skip validation or preflight.
+- `--yes` skips only confirmation; it does not skip validation or the payment-details display.
 
 Automatic funding-source policy:
 
@@ -212,7 +212,7 @@ Automatic funding-source policy:
 3. If there is no default, choose the method only when exactly one eligible method exists.
 4. Otherwise fail closed with a Usage-class ambiguity error.
 
-Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact external `bank`/`card` type; wallet balance, merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible backup source. Method-level fee evidence does not filter or rank those peer-eligible methods: proven-zero, known-nonzero, and unknown-fee methods may be submitted under the automatic policy. The transaction-specific blank-source eligibility call remains required for its token, but its fee is not used as a rejection gate or tiebreaker. Because that call sends an empty funding-source field, preflight displays its reported fee separately from the internally selected method's fee evidence and warns that the final fee may differ. Duplicate IDs, unknown peer roles, or multiple defaults are contract failures; multiple non-default methods are an ambiguity Usage error and send no write.
+Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact external `bank`/`card` type; wallet balance, merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible backup source. Method-level fee evidence does not filter or rank those peer-eligible methods: proven-zero, known-nonzero, and unknown-fee methods may be submitted under the automatic policy. The transaction-specific blank-source eligibility call remains required for its token, but its fee is not used as a rejection gate or tiebreaker. Because that call sends an empty funding-source field, payment details display its reported fee separately from the internally selected method's fee evidence and warn that the final fee may differ. Duplicate IDs, unknown peer roles, or multiple defaults are contract failures; multiple non-default methods are an ambiguity Usage error and send no write.
 
 Before confirmation, show:
 
@@ -237,10 +237,10 @@ venmo requests create @alice 12.50 --note "Dinner"
 venmo requests create @alice 12.50 --note "Dinner" --visibility public
 ```
 
-The command shares recipient, amount, note, and preflight validation with `pay`, but:
+The command shares recipient, amount, note, and preflight validation with `pay user`, but:
 
 - Creates a request rather than a payment.
-- Accepts the same typed `--visibility private|friends|public` selection as `pay` and defaults to `private`.
+- Accepts the same typed `--visibility private|friends|public` selection as `pay user` and defaults to `private`.
 - Never accepts or sends a funding-source ID.
 - Has no confirmation prompt and no `--yes`; after successful preflight it creates the request immediately.
 - Works non-interactively without an acknowledgement flag.
@@ -292,7 +292,7 @@ This state-changing write refuses exactly one existing incoming request without 
 
 - Fetches and validates the authoritative request by ID and requires exact incoming `pending` state addressed to the active account.
 - Takes no requester, amount, note, or funding arguments.
-- Displays and flushes the authoritative preflight, then asks for default-No confirmation. Non-interactive execution requires `--yes`.
+- Displays and flushes authoritative request-decline details, then asks for default-No confirmation. Non-interactive execution requires `--yes`.
 - `--yes` skips only terminal detection and the final confirmation; it never skips account, lookup, request-state, or preflight validation.
 - Sends exactly one `PUT /v1/payments/{id}` JSON update with `action: "deny"`, never outgoing-request `cancel`.
 - Requires a successful response to preserve the exact request ID, amount, parties, note, and audience and to prove the supported terminal `cancelled` server status. Any mismatch, empty response, unverified error, or transport uncertainty is exit `3` and requires reconciliation without retry.
@@ -330,7 +330,7 @@ Confirmation defaults to **No**. No, cancellation, prompt failure, or non-intera
   user ID.
 - Uses the shared bounded exact-user resolver: case-insensitive exact search, ambiguity rejection,
   then authoritative detail-by-ID verification of both immutable ID and username.
-- Shares this resolution implementation and input grammar with `pay` and `request`.
+- Shares this resolution implementation and input grammar with `pay user` and `request`.
 
 All command-level username resolution is shared and fail-closed around the live-verified mobile behavior:
 
@@ -345,7 +345,7 @@ All command-level username resolution is shared and fail-closed around the live-
 
 ### 3.6 Payment methods and balance
 
-#### `venmo payment-methods list`
+#### `venmo pay methods`
 
 - Lists method ID, safe display name, type, masked last four digits when available, and default status.
 - Provides inspectable method metadata, including IDs used internally in ordinary payment wire requests. Neither pay nor request acceptance exposes a funding-method option.
@@ -475,7 +475,7 @@ Do not register tools for:
 - `auth login`, `auth logout`, or any remote session mutation.
 - Passwords, OTPs, OTP secrets, bearer tokens, device IDs, cookies, CSRF values, or alternate credential sources.
 - Help, version, or package management.
-- `pay`, request creation, request acceptance, or request decline until their CLI contracts and the later MCP write phase are complete.
+- `pay user`, request creation, request acceptance, or request decline until their CLI contracts and the later MCP write phase are complete.
 - Internal exact-recipient resolution, automatic funding policy, request detail, or any lower-level API merely because implementation code exists.
 
 “Auth-status-only” describes the MCP authentication command surface: `venmo_auth_status` is the sole auth-oriented tool.
@@ -553,7 +553,6 @@ pub enum Command {
     Pay(PayArgs),
     Friends(FriendsArgs),
     Users(UsersArgs),
-    PaymentMethods(PaymentMethodsArgs),
     Balance,
     Activity(ActivityArgs),
     Requests(RequestsArgs),
@@ -565,10 +564,10 @@ Model request operations as exhaustive `RequestsOperation::List`, `Create`, `Acc
 Requirements:
 
 - Prefer typed fields and custom `FromStr` value types over parsing `Vec<String>` manually.
-- Keep `PayArgs`, `RequestArgs`, `AcceptArgs`, and `DeclineArgs` separate so invalid options are impossible by construction.
+- Model `PayOperation::Methods` and `PayOperation::User(PayUserArgs)` as exhaustive grouped operations, keeping payment-only fields out of the read-only methods branch.
 - Prove that `requests create @user ...`, `requests create <bare-or-numeric-username> ...`, `requests create @accept ...`, `requests accept <request-id>`, and `requests decline <request-id>` dispatch exactly as documented.
 - Reject removed top-level and mixed forms such as `request @user ...`, `accept <id>`, `decline <id>`, and `requests accept <id> <amount>`.
-- Reject `--from` everywhere; accept `--yes` only on `pay`, `requests accept`, and `requests decline`, and reject it on `requests create`.
+- Reject `--from` everywhere; accept `--yes` only on `pay user`, `requests accept`, and `requests decline`, and reject it on `pay methods` and `requests create`.
 - Reject `--dry-run` everywhere; it is not part of the schema.
 - Use `ValueEnum` for request direction.
 - Put validation that depends only on one value in `clap` parsers.
@@ -580,7 +579,7 @@ Requirements:
 
 This section defines only the `venmo` terminal adapter. `venmo-mcp` must not invoke the `clap` command dispatcher, parse terminal table output, or reuse human output writers. Its stdio stream is the protocol transport, so even a normal CLI banner or success message would corrupt framing. If a future startup policy flag such as `--allow-financial-writes` is added, parse only that server-composition setting before stdio service starts; it must never accept a secret or stand in for per-call human approval.
 
-Interactive mutation confirmation applies to `pay`, `accept`, and `decline`. On a TTY, each command shows its complete plan and asks for default-No confirmation unless `--yes` is present. Off a TTY, each command fails before writing unless `--yes` is present. Direct request creation never prompts and does not accept `--yes`. `auth login` remains an intentional non-financial exception because credential and OTP input is interactive-only; it has no `--yes` option.
+Interactive mutation confirmation applies to `pay user`, `accept`, and `decline`. On a TTY, each command shows its complete details and asks for default-No confirmation unless `--yes` is present. With `--yes`, the details remain visible but the prompt is skipped. Off a TTY, each command fails before writing unless `--yes` is present. Direct request creation never prompts and does not accept `--yes`. `auth login` remains an intentional non-financial exception because credential and OTP input is interactive-only; it has no `--yes` option.
 
 Prompt adapter rules:
 
@@ -715,9 +714,9 @@ This is not a reproducible pure-HTTP CLI contract. Before credential verificatio
 
 The raw capture was kept only in a mode-0700 temporary directory with mode-0600 files, never printed through agent output, and deleted immediately after local analysis; the temporary Chrome profile and all experimental capture code were also removed. The owner elected to rotate exposed login/session material after the experiment and should review official remembered-device and session controls.
 
-Immediately afterward, separate processes successfully used the mobile-issued token for `auth status`, `balance`, bounded `friends list`, bounded `users search`, `payment-methods list`, bounded `activity list`, and bounded `requests list`, with sensitive stdout discarded. This proves authentication compatibility across the implemented read-only adapters and native keychain reload. It does not establish token lifetime or authorize any financial-write contract; no financial mutation was attempted.
+Immediately afterward, separate processes successfully used the mobile-issued token for `auth status`, `balance`, bounded `friends list`, bounded `users search`, `pay methods`, bounded `activity list`, and bounded `requests list`, with sensitive stdout discarded. This proves authentication compatibility across the implemented read-only adapters and native keychain reload. It does not establish token lifetime or authorize any financial-write contract; no financial mutation was attempted.
 
-The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `payment-methods list` all succeeded. User search confirmed the inherited endpoint is fuzzy even for username-specific requests and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. Public single-token searches now intentionally normalize optional `@` spelling to the same `type=username` request, while multi-word searches remain general; the separate internal exhaustive traversal retains its fail-closed exact-match checks. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
+The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `pay methods` all succeeded. User search confirmed the inherited endpoint is fuzzy even for username-specific requests and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. Public single-token searches now intentionally normalize optional `@` spelling to the same `type=username` request, while multi-word searches remain general; the separate internal exhaustive traversal retains its fail-closed exact-match checks. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
 
 The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, and `requests list` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed.
 
@@ -786,10 +785,10 @@ Public-source research completed on 2026-07-12 produced the contract leads below
 - Maintained descendants support bearer-authenticated JSON `PUT /v1/payments/{id}` with `action: "cancel"` or `"remind"`, but their listing scope proves only outgoing/requester-owned requests. They do not establish incoming denial. A 2022 client contains a conflicting, weakly evidenced `action: "pay"` plus actor/funding-source lead. A current June 2026 client implements pay and request creation but no request completion. The Rust contract combines the current mobile authentication/JSON update convention with the historically explicit incoming actions `approve` and `deny`, while treating every unverified error or response mismatch as ambiguous.
 - Acceptance exposes no funding-method input and is restricted to requests whose entire amount is covered by authoritative available Venmo balance. Current official product guidance says full available balance takes priority and personal balance-funded payments have zero Venmo fee, but the `approve` request does not bind the balance snapshot or return proven actual funding/fee fields. The CLI must never claim the guard proves wallet funding or a zero fee. If balance is insufficient, acceptance fails before the write. Decline submits no funding fields and sends no money. Ordinary pay internally submits the automatically chosen peer-eligible external backup method and never claims an actual debit source without authoritative result evidence.
 - A read-only live CLI preflight resolved the exact approved test counterparty through an authoritative user-detail fetch, proved a personal/payable non-self target, excluded wallet balance from external backup selection, and received a transaction-specific eligibility result totaling exactly zero fee. The search reached its bounded traversal limit, so the verified rule accepts one exact username match only after detail-by-ID returns the same ID and case-insensitive exact username; no match is reported as username not found.
-- After separate immediate approval, the Rust `pay` command sent exactly one private $0.01 payment with a unique generated note and zero retries. Its response matched `data.payment` and the submitted action, parties, amount, note, private audience, supported status, creation timestamp, and canonical ID. A separate CLI activity read found the matching latest one-cent pay, and the owner independently confirmed exactly one matching payment in the official Venmo mobile app.
+- After separate immediate approval, the Rust `pay user` command sent exactly one private $0.01 payment with a unique generated note and zero retries. Its response matched `data.payment` and the submitted action, parties, amount, note, private audience, supported status, creation timestamp, and canonical ID. A separate CLI activity read found the matching latest one-cent pay, and the owner independently confirmed exactly one matching payment in the official Venmo mobile app.
 - After the payment was reconciled and a second immediate approval was obtained, the Rust request command sent exactly one private $0.01 request with a distinct generated note and zero retries. Its response passed the same operation-specific strict checks, a separate CLI request read found the matching pending outgoing request, and the owner independently confirmed exactly one matching request in the official mobile app. No token, device ID, user/payment/request ID, note, raw body, account identity, funding details, or mobile traffic was retained.
 
-**Visibility scope and validation decision (2026-07-14):** The owner approved implementing `friends` and `public` creation audiences for both `pay` and direct `request`, alongside the existing default-private behavior. The typed selection is carried through immutable feature plans and exact request serialization, and synthetic tests pin every value for both positive payment and negative request bodies. Current official Venmo privacy guidance states that an individual payment may select Public, Friends, or Private, while Venmo always applies the more restrictive setting selected between payment partners; it also says past payments can only be made more private ([Manage your Venmo privacy settings](https://help.venmo.com/cs/articles/manage-your-venmo-privacy-settings-vhel351), [Changing Payment Privacy & Hiding Past Payments](https://help.venmo.com/cs/articles/changing-payment-privacy-hiding-past-payments-vhel191)). Creation validation therefore requires a supported response audience no more public than requested. Missing, unknown, or more-public values remain ambiguous, but an equal or more-restrictive value is accepted. Output calls the plan value `Requested audience` rather than claiming it is effective; payment preflight carries the participant-privacy disclaimer, and post-write output does not repeat it.
+**Visibility scope and validation decision (2026-07-14):** The owner approved implementing `friends` and `public` creation audiences for both `pay user` and direct `request`, alongside the existing default-private behavior. The typed selection is carried through immutable feature plans and exact request serialization, and synthetic tests pin every value for both positive payment and negative request bodies. Current official Venmo privacy guidance states that an individual payment may select Public, Friends, or Private, while Venmo always applies the more restrictive setting selected between payment partners; it also says past payments can only be made more private ([Manage your Venmo privacy settings](https://help.venmo.com/cs/articles/manage-your-venmo-privacy-settings-vhel351), [Changing Payment Privacy & Hiding Past Payments](https://help.venmo.com/cs/articles/changing-payment-privacy-hiding-past-payments-vhel191)). Creation validation therefore requires a supported response audience no more public than requested. Missing, unknown, or more-public values remain ambiguous, but an equal or more-restrictive value is accepted. Output calls the plan value `Requested audience` rather than claiming it is effective; payment details carry the participant-privacy disclaimer, and post-write output does not repeat it.
 
 Four separately approved, non-retried, one-cent payment validations then used unique notes and immediate CLI plus official-app reconciliation. Two friends-selected payments to counterparties with more restrictive settings each settled exactly once as Private. With a compatible counterparty, a friends-selected payment settled exactly once as Friends and a public-selected payment settled exactly once as Public. Every payment reduced available balance by exactly one cent and appeared exactly once in authoritative activity and the official app. The immediate creation responses did not consistently prove the eventual selected audience, including for the reconciled Friends and Public results, so exact selected-audience response equality would falsely report successful writes as ambiguous. The equal-or-more-restrictive response rule remains fail-closed against any response more public than requested while tolerating Venmo's documented partner restriction and observed response timing.
 
@@ -1127,7 +1126,7 @@ The implementation targets the [MCP specification dated 2025-11-25](https://mode
 
 ### 10.1 Pagination policy
 
-Pagination applies to `friends list`, `users search`, `activity list`, and `requests list`. Single-resource commands and `payment-methods list` are not paginated unless Phase 0 proves that their verified endpoint requires it.
+Pagination applies to `friends list`, `users search`, `activity list`, and `requests list`. Single-resource commands and `pay methods` are not paginated unless Phase 0 proves that their verified endpoint requires it.
 
 User-visible contract:
 
@@ -1194,18 +1193,18 @@ An identified connection-establishment failure, including DNS/TCP/TLS setup fail
 
 ### 11.1 New payment or request preflight
 
-Before writing, and before the confirmation prompt for `pay`:
+Before writing, and before the confirmation prompt for `pay user`:
 
 1. Parse one recipient.
 2. Resolve that recipient to exactly one Venmo user.
 3. Parse the amount into checked integer cents.
 4. Validate the non-empty note.
 5. Verify a personal, payable, non-self recipient for the exact operation.
-6. Resolve the strictly peer-eligible backup funding method for `pay` under the automatic fail-closed policy: validate duplicate IDs and multiple defaults; choose the unique default regardless of fee, otherwise choose only a sole eligible method, and never choose by response order or fee.
+6. Resolve the strictly peer-eligible backup funding method for `pay user` under the automatic fail-closed policy: validate duplicate IDs and multiple defaults; choose the unique default regardless of fee, otherwise choose only a sole eligible method, and never choose by response order or fee.
 7. Preserve the internally selected method's fee evidence and the eligibility-reported fee without rejecting zero, nonzero, or unknown fee states.
 8. Read the wallet balance required for the balance-priority disclosure.
 9. Build an immutable plan carrying the selected requested audience, which defaults to private.
-10. For `pay`, render a sanitized complete summary including the requested audience, the participant-privacy restriction warning, method fee evidence, eligibility-reported fee and total, wallet balance, backup method, method-binding caveat, and balance-priority warning before confirmation.
+10. For `pay user`, render sanitized complete payment details including the requested audience, the participant-privacy restriction warning, method fee evidence, eligibility-reported fee and total, wallet balance, backup method, method-binding caveat, and balance-priority warning before confirmation or immediate `--yes` execution.
 
 If any preflight step fails, send no write request.
 
@@ -1248,8 +1247,8 @@ Before the decline write:
 Execution rules:
 
 - One invocation creates, accepts, or declines at most one operation.
-- For `pay`, `accept`, and `decline`, prompt only when both stdin and stderr are terminals and default to No.
-- For `pay`, `accept`, and `decline`, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation.
+- For `pay user`, `accept`, and `decline`, prompt only when both stdin and stderr are terminals and default to No.
+- For `pay user`, `accept`, and `decline`, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation and never the details display.
 - Request creation never prompts, never requires `--yes`, and rejects that flag.
 - Send exactly one verified mutation for payment creation, request creation, request acceptance, or request decline.
 - Preserve the original API or transport cause on failure.
@@ -1332,7 +1331,7 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Every command and subcommand.
 - Required recipient, amount, and note.
 - Grouped `requests create`/`accept`/`decline`, rejection of the removed top-level forms, and the valid `accept` or `@accept` recipient after `requests create`.
-- `--from` rejected by `pay` and every other command; `--yes` accepted by `pay`, `requests accept`, and `requests decline` and rejected by `requests create`.
+- `--from` rejected by `pay user` and every other command; `--yes` accepted by `pay user`, `requests accept`, and `requests decline` and rejected by `pay methods` and `requests create`.
 - `--dry-run` rejected by every command.
 - Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported funding arguments.
 - Absence of compatibility aliases for the removed top-level `request`, `accept`, and `decline` forms.
@@ -1361,9 +1360,9 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Every public paginated feature flow makes exactly one source request, uses `--limit` as its page size, validates and buffers the page before output, preserves source continuation after local request-direction filtering, and rejects oversized/conflicting/no-progress pages.
 - The separate internal exact-recipient traversal remains limited to four 50-record pages/200 unique users and accepts no public continuation. Exhaustion is required for normal not-found; one exact match found at the bound still requires matching authoritative detail-by-ID before use.
 - Balance does not infer unsupported values.
-- Funding is displayed before confirmation: `pay` has transaction-specific fee proof and shows its backup method, while `accept` shows full available-balance coverage, submits no external method, and explicitly does not claim request-bound source/fee proof.
-- Cancelled `pay`, acceptance, and decline prompts and all preflight failures send zero writes.
-- `pay`, `accept`, and `decline` prompt default-No on a TTY and require `--yes` off a TTY.
+- Funding is displayed in details before confirmation or `--yes` execution: `pay user` has transaction-specific fee proof and shows its backup method, while `accept` shows full available-balance coverage, submits no external method, and explicitly does not claim request-bound source/fee proof.
+- Cancelled `pay user`, acceptance, and decline prompts and all preflight failures send zero writes.
+- `pay user`, `accept`, and `decline` prompt default-No on a TTY and require `--yes` off a TTY.
 - Request creation never prompts and works off a TTY without `--yes`.
 - The `dialoguer` adapter sends prompts to stderr, never echoes the bearer token, maps default Enter to No, and distinguishes cancellation from terminal failure.
 - First write failure preserves its source.
@@ -1424,7 +1423,7 @@ Automated tests use fakes and mock HTTP servers; their synthetic amounts are not
 - Test request acceptance only from a fresh $0.01 incoming request created by the approved test counterparty for the authenticated test account.
 - Only after acceptance has been fully reconciled, test request decline with a different fresh $0.01 incoming request created by the approved test counterparty. Confirm that no money moved and that the request reached the expected terminal state in CLI reads and the official app.
 - Use a unique, non-sensitive test note so identical one-cent operations can be reconciled, but never commit the note or raw response.
-- Run one mutation at a time. Require an explicit human go-ahead immediately before invocation and never fuzz, loop, schedule, or batch-probe a financial route. Prefer the default-No terminal prompt. When the trusted execution harness has no TTY, `--yes` may carry only the immediately preceding human approval for that exact rendered preflight; it is never standing, unattended, inferred, or reusable authorization.
+- Run one mutation at a time. Require an explicit human go-ahead immediately before invocation and never fuzz, loop, schedule, or batch-probe a financial route. Prefer the default-No terminal prompt. When the trusted execution harness has no TTY, `--yes` may carry only the immediately preceding human approval for those exact rendered details; it is never standing, unattended, inferred, or reusable authorization.
 - After each mutation, verify the counterparty, amount, request/payment ID, status, audience, and funding result through the CLI reads and official Venmo application before continuing.
 - If any result is ambiguous, stop immediately. Do not retry or begin another mutation until the prior outcome is reconciled independently.
 - Never upload or commit tokens, device IDs, user IDs, notes, payment/request IDs, raw responses, screenshots containing account data, or live-test logs.
@@ -1491,7 +1490,7 @@ Required sections:
 6. `venmo auth login`, trust-device warnings, status, and local-only logout behavior.
 7. Friends and user-search examples, including server-page `--limit`, typed `--offset`, copyable next offsets, one-page behavior, and changing-dataset/no-snapshot semantics.
 8. Payment-method and balance examples.
-9. Pay and grouped `requests create`, `requests accept`, and `requests decline` examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for `pay`, request acceptance, and request decline; the acceptance funding limitation; and immediate no-prompt behavior only for request creation.
+9. Grouped `pay methods`/`pay user` and `requests create`/`requests accept`/`requests decline` examples; automatic fail-closed payment funding policy; rejection of funding-method input; confirmation and `--yes` rules for `pay user`, request acceptance, and request decline; the acceptance funding limitation; and immediate no-prompt behavior only for request creation.
 10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `requests accept` or `requests decline`.
 11. Ambiguous mutation recovery steps, including checking activity, request state, and the official app before any later operation.
 12. Troubleshooting guidance.
@@ -1615,13 +1614,13 @@ Deliverables:
 
 - `friends list`.
 - `users search`.
-- `payment-methods list`.
+- `pay methods`.
 - `balance`.
 - Sanitized output and truthful pagination.
 
 Exit criteria:
 
-- Output provides recipient identifiers accepted by `pay`/request creation and inspectable payment-method metadata; no command accepts a user funding-method ID, and acceptance never claims the unproven actual source or fee.
+- Output provides recipient identifiers accepted by `pay user`/request creation and inspectable payment-method metadata; no command accepts a user funding-method ID, and acceptance never claims the unproven actual source or fee.
 - No command silently truncates without saying so.
 - Public `--limit` is enforced as the one-request endpoint page size, and any validated native continuation is reported without describing the page as the complete collection.
 
@@ -1647,13 +1646,13 @@ Deliverables:
 - Single-recipient payment and request-creation models plus single-ID `requests accept` and `requests decline` models.
 - Recipient and funding-source resolution.
 - Authoritative incoming-request lookup and state validation.
-- Complete default-No confirmation rendering for `pay`, request acceptance, and request decline; no prompt for request creation.
+- Complete details and default-No confirmation rendering for `pay user`, request acceptance, and request decline; no prompt for request creation.
 - One-write execution, stale-state handling, and ambiguous-outcome handling.
 
 Exit criteria:
 
 - Every preflight failure sends zero writes.
-- `pay`, request-acceptance, and request-decline confirmation follows a complete authoritative preflight and defaults to No.
+- `pay user`, request-acceptance, and request-decline confirmation follows a complete authoritative preflight and defaults to No; user-facing output labels the prepared plan as details.
 - Request creation exposes neither `--yes` nor an interactive confirmation.
 - Request decline exposes `--yes`, requires default-No confirmation without it, and proves a terminal server state without money movement.
 - No write is automatically retried.
@@ -1755,7 +1754,7 @@ Exit criteria:
 - Activity supports list and detail views usable for write reconciliation.
 - Pending requests are based on complete verified records and expose canonical IDs accepted by `requests accept` and `requests decline`.
 - Payment and request-acceptance confirmation follows recipient/request and operation-specific funding resolution; request-decline confirmation follows authoritative request-state preflight.
-- Only `pay`, `requests accept`, and `requests decline` expose `--yes` or use mutation confirmation; `requests create` prompts for neither.
+- Only `pay user`, `requests accept`, and `requests decline` expose `--yes` or use mutation confirmation; `pay methods` and `requests create` prompt for neither.
 - No command exposes `--dry-run`.
 - `requests accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
 - `requests decline` validates an authoritative incoming pending record, sends no money, and proves that exact record reached the supported terminal server state.
@@ -1796,7 +1795,7 @@ Exit criteria:
 | Pending request records are unavailable | Fail closed; never substitute counts, incomplete guesses, an ordinary payment, outgoing cancellation, or local-only dismissal |
 | Live discovery moves money | Use only the Section 13.6 protocol: exactly $0.01 with the approved test counterparty, one immediately confirmed mutation at a time, no unattended authorization, and immediate reconciliation |
 | A timed-out write actually succeeded | Never retry; classify as ambiguous; use activity detail, request state, and the official app for verification |
-| Wrong recipient | Exact resolution and one recipient; show identity before default-No `pay` confirmation and in the confirmed request-creation result |
+| Wrong recipient | Exact resolution and one recipient; show identity in `pay user` details before default-No confirmation and in the confirmed request-creation result |
 | Wrong funding source | Apply the validated automatic policy, fail closed on ambiguity, never rank by order or fee, and display the submitted safe method label and ID before confirmation |
 | Wrong, stale, or already-settled request | Fetch authoritative record, require incoming/pending/current-account ownership, confirm all immutable fields, and handle state conflict without a retry |
 | Token exposure | Hidden prompt, keyring-only persistence, redacted token type, no body/header logs |

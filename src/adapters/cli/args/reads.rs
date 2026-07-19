@@ -67,18 +67,6 @@ pub struct UserSearchArgs {
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct PaymentMethodsArgs {
-    #[command(subcommand)]
-    pub operation: PaymentMethodsOperation,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
-pub enum PaymentMethodsOperation {
-    /// List payment methods and copyable IDs.
-    List,
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
 pub struct ActivityArgs {
     #[command(subcommand)]
     pub operation: ActivityOperation,

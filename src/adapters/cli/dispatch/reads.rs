@@ -12,8 +12,8 @@ use crate::features::wallet::{BalanceApi, PaymentMethodsApi, balance, payment_me
 use crate::shared::CredentialReader;
 
 use super::super::args::{
-    ActivityArgs, ActivityOperation, FriendsArgs, FriendsOperation, PaymentMethodsArgs,
-    PaymentMethodsOperation, RequestInfoArgs, RequestsListArgs, UserInfoArgs, UserSearchArgs,
+    ActivityArgs, ActivityOperation, FriendsArgs, FriendsOperation, RequestInfoArgs,
+    RequestsListArgs, UserInfoArgs, UserSearchArgs,
 };
 use super::super::{error::AppError, output};
 
@@ -155,7 +155,6 @@ where
 }
 
 pub(super) async fn run_payment_methods<R, A, W>(
-    args: PaymentMethodsArgs,
     store: &R,
     api: &A,
     stdout: &mut W,
@@ -165,12 +164,8 @@ where
     A: PaymentMethodsApi,
     W: Write,
 {
-    match args.operation {
-        PaymentMethodsOperation::List => {
-            let result = payment_methods::list(store, api).await?;
-            output::write_payment_methods(stdout, &result)?;
-        }
-    }
+    let result = payment_methods::list(store, api).await?;
+    output::write_payment_methods(stdout, &result)?;
     Ok(())
 }
 

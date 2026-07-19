@@ -2,31 +2,15 @@
 source: tests/cli.rs
 expression: help
 ---
-Pay one person
+Pay users or inspect payment methods
 
-Usage: pay [OPTIONS] --note <NOTE> <USERNAME> <AMOUNT>
+Usage: pay <COMMAND>
 
-Arguments:
-  <USERNAME>
-          Exact username with an optional leading @
-
-  <AMOUNT>
-          Positive USD amount with at most two fractional digits
+Commands:
+  methods  List payment methods and copyable IDs
+  user     Pay one person
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
-      --note <NOTE>
-          Non-empty payment note
-
-      --visibility <VISIBILITY>
-          Visibility of the created payment
-
-          [default: private]
-          [possible values: private, friends, public]
-
-      --yes
-          Skip only the final default-No confirmation
-
   -h, --help
-          Print help (see a summary with '-h')
-
-Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app.
+          Print help

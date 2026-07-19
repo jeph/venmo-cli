@@ -11,7 +11,7 @@ use std::task::{Context, Poll};
 use clap::Parser;
 
 use super::tests::{ErrorVariant, ResultSnapshot, failure_snapshot, snapshot_result};
-use crate::adapters::cli::args::{Cli, Command, PayArgs};
+use crate::adapters::cli::args::{Cli, Command, PayOperation, PayUserArgs};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::{
@@ -573,7 +573,7 @@ struct PayState {
 }
 
 struct PayHarness {
-    args: PayArgs,
+    args: PayUserArgs,
     script: Rc<PayScriptState>,
     transcript: Transcript,
     reader: FakeReader,

@@ -74,8 +74,8 @@ pub(super) fn accepted_request() -> TestResult<AcceptedRequest> {
     ))
 }
 
-pub(super) const ACCEPT_PREFLIGHT: &str = concat!(
-    "Request acceptance preflight:\n",
+pub(super) const ACCEPT_DETAILS: &str = concat!(
+    "Request acceptance details:\n",
     "  Paying account: @owner (ID 123)\n",
     "  Request ID: request-1\n",
     "  Requester: @requester (Synthetic requester) (ID 456)\n",
@@ -96,5 +96,5 @@ pub(super) const ACCEPT_RESULT: &str = concat!(
     "Status: settled\n",
     "Paid requester: @requester (Synthetic requester)\n",
     "Amount: $0.01\n",
-    "Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee.\n",
+    "Validation required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee.\n",
 );

@@ -1,8 +1,8 @@
 ---
 source: src/adapters/cli/output/tests/writes.rs
-expression: decline_preflight
+expression: decline_details
 ---
-Request decline preflight:
+Request decline details:
   Request ID: request-1
   Requester: @requester (Synthetic\nrequester) (ID 456)
   Amount: $0.01

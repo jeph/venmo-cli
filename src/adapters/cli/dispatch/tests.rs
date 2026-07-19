@@ -289,6 +289,7 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
             &[
                 "venmo",
                 "pay",
+                "user",
                 "@alice",
                 "0.01",
                 "--note",
@@ -326,7 +327,7 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
             TerminalCapabilities::new(false, false),
         ),
         (
-            &["venmo", "payment-methods", "list"][..],
+            &["venmo", "pay", "methods"][..],
             TerminalCapabilities::new(false, false),
         ),
         (

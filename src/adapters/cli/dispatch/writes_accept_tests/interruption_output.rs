@@ -49,7 +49,7 @@ async fn accept_interruption_tie_and_signal_failure_preserve_exact_ambiguity_bou
                     acceptances: if write_started { 1 } else { 2 },
                     ..RemainingAcceptScript::after_success()
                 }),
-                stderr: writer_state(ACCEPT_PREFLIGHT, 1),
+                stderr: writer_state(ACCEPT_DETAILS, 1),
                 ..AcceptState::default()
             },
         );
@@ -108,7 +108,7 @@ async fn accept_post_write_output_failures_are_specialized_ambiguous_outcomes() 
                 },
                 remaining: Some(RemainingAcceptScript::after_success()),
                 stdout: expected_stdout,
-                stderr: writer_state(ACCEPT_PREFLIGHT, 1),
+                stderr: writer_state(ACCEPT_DETAILS, 1),
             },
         );
         let mut harness = AcceptHarness::new(script, initial)?;

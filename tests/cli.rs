@@ -1,7 +1,7 @@
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
-    AuthOperation, Cli, Command, RequestDirectionArg, RequestsOperation, TransferOperation,
-    TransferSpeedArg, UsersOperation, VisibilityArg,
+    AuthOperation, Cli, Command, PayOperation, RequestDirectionArg, RequestsOperation,
+    TransferOperation, TransferSpeedArg, UsersOperation, VisibilityArg,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -121,7 +121,10 @@ fn user_and_request_info_parse_exact_typed_inputs() {
 
 #[test]
 fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
-    for prefix in [&["venmo", "pay"][..], &["venmo", "requests", "create"][..]] {
+    for prefix in [
+        &["venmo", "pay", "user"][..],
+        &["venmo", "requests", "create"][..],
+    ] {
         let mut arguments = prefix.to_vec();
         arguments.extend(["@alice", "0.01", "--note", "Synthetic note"]);
         let defaults = Cli::try_parse_from(arguments);
@@ -152,7 +155,10 @@ fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
 
 #[test]
 fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
-    for prefix in [&["venmo", "pay"][..], &["venmo", "requests", "create"][..]] {
+    for prefix in [
+        &["venmo", "pay", "user"][..],
+        &["venmo", "requests", "create"][..],
+    ] {
         let mut arguments = prefix.to_vec();
         arguments.extend([
             "@alice",
@@ -201,8 +207,38 @@ fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
 #[test]
 fn pay_rejects_removed_from_option() {
     assert_rejected(&[
-        "venmo", "pay", "@alice", "12.50", "--note", "Dinner", "--from", "method-1",
+        "venmo", "pay", "user", "@alice", "12.50", "--note", "Dinner", "--from", "method-1",
     ]);
+}
+
+#[test]
+fn pay_methods_and_user_have_exact_grouped_grammar() {
+    let methods = Cli::try_parse_from(["venmo", "pay", "methods"]);
+    assert!(methods.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Pay(args) if matches!(args.operation, PayOperation::Methods)
+    )));
+
+    let user = Cli::try_parse_from([
+        "venmo", "pay", "user", "@alice", "12.34", "--note", "Dinner", "--yes",
+    ]);
+    assert!(user.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Pay(args)
+            if matches!(
+                &args.operation,
+                PayOperation::User(user)
+                    if user.amount.cents() == 1_234 && user.yes
+            )
+    )));
+
+    for arguments in [
+        &["venmo", "payment-methods", "list"][..],
+        &["venmo", "pay", "@alice", "1.00", "--note", "Dinner"][..],
+        &["venmo", "pay", "methods", "list"][..],
+    ] {
+        assert_rejected(arguments);
+    }
 }
 
 #[test]
@@ -317,9 +353,12 @@ fn removed_and_deferred_forms_are_rejected() {
         &["venmo", "request", "@alice", "1.00", "--note", "note"][..],
         &["venmo", "accept", "request-1"][..],
         &["venmo", "decline", "request-1"][..],
+        &["venmo", "payment-methods", "list"][..],
+        &["venmo", "pay", "@alice", "1.00", "--note", "note"][..],
         &[
             "venmo",
             "pay",
+            "user",
             "@alice",
             "1.00",
             "--note",
@@ -408,7 +447,7 @@ fn each_paginated_command_accepts_only_its_endpoint_native_inputs() {
         ][..],
         &["venmo", "activity", "list", "--offset", "12"][..],
         &["venmo", "requests", "list", "--offset", "12"][..],
-        &["venmo", "payment-methods", "list", "--offset", "12"][..],
+        &["venmo", "pay", "methods", "--offset", "12"][..],
         &[
             "venmo",
             "activity",
@@ -527,9 +566,11 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
 
 #[test]
 fn argument_only_validation_errors_are_clap_errors() {
-    assert_rejected(&["venmo", "pay", "@alice", "0", "--note", "Dinner"]);
-    assert_rejected(&["venmo", "pay", "@alice", "1.001", "--note", "Dinner"]);
-    assert_rejected(&["venmo", "pay", "@alice", "1.00", "--note", "   "]);
+    assert_rejected(&["venmo", "pay", "user", "@alice", "0", "--note", "Dinner"]);
+    assert_rejected(&[
+        "venmo", "pay", "user", "@alice", "1.001", "--note", "Dinner",
+    ]);
+    assert_rejected(&["venmo", "pay", "user", "@alice", "1.00", "--note", "   "]);
     assert_rejected(&["venmo", "requests", "accept"]);
     assert_rejected(&["venmo", "users", "search", "   "]);
     assert_rejected(&["venmo", "users", "search", "@"]);
@@ -594,13 +635,13 @@ fn every_command_has_a_help_snapshot() {
         ("auth_logout", &["auth", "logout"]),
         ("auth_status", &["auth", "status"]),
         ("pay", &["pay"]),
+        ("pay_methods", &["pay", "methods"]),
+        ("pay_user", &["pay", "user"]),
         ("friends", &["friends"]),
         ("friends_list", &["friends", "list"]),
         ("users", &["users"]),
         ("users_search", &["users", "search"]),
         ("users_info", &["users", "info"]),
-        ("payment_methods", &["payment-methods"]),
-        ("payment_methods_list", &["payment-methods", "list"]),
         ("balance", &["balance"]),
         ("activity", &["activity"]),
         ("activity_list", &["activity", "list"]),
@@ -641,7 +682,10 @@ fn every_command_has_a_help_snapshot() {
 
 fn request_visibility(cli: Cli) -> Option<VisibilityArg> {
     match cli.command {
-        Command::Pay(args) => Some(args.visibility),
+        Command::Pay(args) => match args.operation {
+            PayOperation::User(args) => Some(args.visibility),
+            PayOperation::Methods => None,
+        },
         Command::Requests(args) => match args.operation {
             RequestsOperation::Create(args) => Some(args.visibility),
             RequestsOperation::List(_)

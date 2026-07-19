@@ -1,8 +1,8 @@
 ---
 source: src/adapters/cli/output/tests/writes.rs
-expression: preflight
+expression: details
 ---
-Request acceptance preflight:
+Request acceptance details:
   Paying account: @owner (ID 123)
   Request ID: request-1
   Requester: @requester (Synthetic\nrequester) (ID 456)

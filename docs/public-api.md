@@ -18,12 +18,11 @@ and black-box tests.
 - Authentication: `AuthArgs`, `AuthOperation`.
 - Friends: `FriendsArgs`, `FriendsOperation`, `FriendsListArgs`.
 - Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`, `UserInfoArgs`.
-- Wallet reads: `PaymentMethodsArgs`, `PaymentMethodsOperation`.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
   `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `RequestDirectionArg`.
 - Transfers: `TransferArgs`, `TransferOperation`, `TransferOutArgs`, `TransferSpeedArg`.
-- Other financial command inputs: `PayArgs`, `VisibilityArg`.
+- Payment commands: `PayArgs`, `PayOperation`, `PayUserArgs`, `VisibilityArg`.
 
 ### Process/runtime surface
 
@@ -138,18 +137,18 @@ Clap schema:
   an alternate user selector. `UserSearchQuery` likewise normalizes single-token optional-`@`
   inputs as username searches; multi-word values remain general searches.
 
-`PayArgs` and `RequestArgs` also gained a public `visibility: VisibilityArg` field. Callers
+`PayUserArgs` and `RequestArgs` expose a public `visibility: VisibilityArg` field. Callers
 constructing either argument struct directly must select a value, normally
-`VisibilityArg::Private` to preserve 0.1 behavior. `PayPlan` and `CreateRequestPlan` now expose the
+`VisibilityArg::Private` to preserve the CLI default. `PayPlan` and `CreateRequestPlan` expose the
 corresponding requested, frontend-neutral `Visibility` through `visibility()`; it does not claim
 the eventual audience Venmo applies after participant privacy settings.
 
 ## Initial 0.0.1 surface
 
-Version 0.0.1 exposes read-only transfer options and guarded standard-bank
-`TransferOperation::Out`. It intentionally does not expose inbound transfers. Library callers
-cannot invoke private adapter internals or bypass preflight, confirmation, ambiguity, and no-retry
-policy.
+Version 0.0.1 exposes grouped `PayOperation::Methods` and `PayOperation::User`, read-only transfer
+options, and guarded standard-bank `TransferOperation::Out`. It intentionally does not expose
+inbound transfers. Library callers cannot invoke private adapter internals or bypass preflight,
+confirmation, ambiguity, and no-retry policy.
 
 ## Semver expectations
 

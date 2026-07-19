@@ -5,7 +5,9 @@ use crate::adapters::credentials::NativeCredentialStore;
 use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
 
-use super::super::args::{Command, RequestsOperation, TransferOperation, UsersOperation};
+use super::super::args::{
+    Command, PayOperation, RequestsOperation, TransferOperation, UsersOperation,
+};
 use super::super::error::AppError;
 use super::super::output::TimestampFormatter;
 use super::super::prompt::{DialoguerPrompt, TerminalCapabilities};
@@ -60,10 +62,6 @@ where
     let provider = ProductionProvider::new(terminal_capabilities);
     match command {
         Command::Auth(args) => auth::run_production(args, provider, stdout, stderr).await,
-        Command::PaymentMethods(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            reads::run_payment_methods(args, &store, &api, stdout).await
-        }
         Command::Users(args) => match args.operation {
             UsersOperation::Search(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
@@ -165,20 +163,26 @@ where
                 .await
             }
         },
-        Command::Pay(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            let prompt = provider.prompt();
-            writes::run_pay_with(
-                args,
-                &store,
-                &api,
-                &SystemClientRequestIdGenerator,
-                &prompt,
-                stdout,
-                stderr,
-                writes::production_financial_interruption,
-            )
-            .await
-        }
+        Command::Pay(args) => match args.operation {
+            PayOperation::Methods => {
+                let (store, api) = provider.credential_store_and_api()?;
+                reads::run_payment_methods(&store, &api, stdout).await
+            }
+            PayOperation::User(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                writes::run_pay_with(
+                    args,
+                    &store,
+                    &api,
+                    &SystemClientRequestIdGenerator,
+                    &prompt,
+                    stdout,
+                    stderr,
+                    writes::production_financial_interruption,
+                )
+                .await
+            }
+        },
     }
 }

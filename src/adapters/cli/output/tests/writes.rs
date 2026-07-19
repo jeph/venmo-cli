@@ -2,8 +2,8 @@ use std::error::Error;
 use std::str::FromStr;
 
 use super::super::{
-    write_accept_preflight, write_accept_result, write_decline_preflight, write_decline_result,
-    write_pay_preflight, write_pay_result, write_request_create_result,
+    write_accept_details, write_accept_result, write_decline_details, write_decline_result,
+    write_pay_details, write_pay_result, write_request_create_result,
 };
 use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{
@@ -32,21 +32,21 @@ const AUDIENCE_WARNING: &str =
 #[test]
 fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used() -> TestResult {
     let prepared = PreparedPay::new(synthetic_credential()?, synthetic_pay_plan()?);
-    let mut preflight = Vec::new();
+    let mut details = Vec::new();
 
-    write_pay_preflight(&mut preflight, &prepared)?;
+    write_pay_details(&mut details, &prepared)?;
 
-    let preflight = String::from_utf8(preflight)?;
-    insta::assert_snapshot!("pay_preflight", preflight);
-    assert!(preflight.contains(AUDIENCE_WARNING));
-    assert!(!preflight.contains("Synthetic\nrecipient"));
+    let details = String::from_utf8(details)?;
+    insta::assert_snapshot!("pay_details", details);
+    assert!(details.contains(AUDIENCE_WARNING));
+    assert!(!details.contains("Synthetic\nrecipient"));
     for hidden in [
         "synthetic-token",
         "synthetic-device",
         "synthetic-eligibility",
         "123e4567-e89b-12d3-a456-426614174000",
     ] {
-        assert!(!preflight.contains(hidden));
+        assert!(!details.contains(hidden));
     }
 
     let pay = PayResult::new(
@@ -78,13 +78,13 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
 #[test]
 fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult {
     let prepared = PreparedAccept::new(synthetic_credential()?, synthetic_accept_plan()?);
-    let mut preflight = Vec::new();
+    let mut details = Vec::new();
     let timestamps = super::local_timestamps();
-    write_accept_preflight(&mut preflight, &prepared, &timestamps)?;
-    let preflight = String::from_utf8(preflight)?;
-    insta::assert_snapshot!("accept_preflight", preflight);
-    assert!(!preflight.contains("synthetic-token"));
-    assert!(!preflight.contains("Synthetic\nrequest"));
+    write_accept_details(&mut details, &prepared, &timestamps)?;
+    let details = String::from_utf8(details)?;
+    insta::assert_snapshot!("accept_details", details);
+    assert!(!details.contains("synthetic-token"));
+    assert!(!details.contains("Synthetic\nrequest"));
 
     let accepted = AcceptResult::new(
         synthetic_accept_plan()?,
@@ -96,11 +96,11 @@ fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult 
     insta::assert_snapshot!("accept_result", accept_output);
 
     let decline_prepared = PreparedDecline::new(synthetic_credential()?, synthetic_decline_plan()?);
-    let mut decline_preflight = Vec::new();
-    write_decline_preflight(&mut decline_preflight, &decline_prepared, &timestamps)?;
-    let decline_preflight = String::from_utf8(decline_preflight)?;
-    insta::assert_snapshot!("decline_preflight", decline_preflight);
-    assert!(!decline_preflight.contains("Synthetic\nrequest"));
+    let mut decline_details = Vec::new();
+    write_decline_details(&mut decline_details, &decline_prepared, &timestamps)?;
+    let decline_details = String::from_utf8(decline_details)?;
+    insta::assert_snapshot!("decline_details", decline_details);
+    assert!(!decline_details.contains("Synthetic\nrequest"));
 
     let decline_plan = synthetic_decline_plan()?;
     let decline = DeclineResult::new(
@@ -125,7 +125,7 @@ fn creation_output_renders_requested_visibility() -> TestResult {
         synthetic_pay_plan_with_visibility(Visibility::Friends)?,
     );
     let mut pay_output = Vec::new();
-    write_pay_preflight(&mut pay_output, &prepared)?;
+    write_pay_details(&mut pay_output, &prepared)?;
     assert!(String::from_utf8(pay_output)?.contains("Requested audience: friends"));
 
     let request = RequestCreateResult::new(

@@ -9,12 +9,12 @@ use crate::features::requests::decline::{DeclineResult, PreparedDecline};
 use super::TimestampFormatter;
 use super::shared::{financial_user_label, sanitize_terminal_text};
 
-pub(crate) fn write_pay_preflight<W: Write>(
+pub(crate) fn write_pay_details<W: Write>(
     writer: &mut W,
     prepared: &PreparedPay,
 ) -> io::Result<()> {
     let plan = prepared.plan();
-    writeln!(writer, "Payment preflight:")?;
+    writeln!(writer, "Payment details:")?;
     writeln!(
         writer,
         "  From account: {} (ID {})",
@@ -124,14 +124,14 @@ pub(crate) fn write_request_create_result<W: Write>(
     writeln!(writer, "Requested audience: {}", result.plan().visibility())
 }
 
-pub(crate) fn write_accept_preflight<W: Write>(
+pub(crate) fn write_accept_details<W: Write>(
     writer: &mut W,
     prepared: &PreparedAccept,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     let plan = prepared.plan();
     let request = plan.request();
-    writeln!(writer, "Request acceptance preflight:")?;
+    writeln!(writer, "Request acceptance details:")?;
     writeln!(
         writer,
         "  Paying account: {} (ID {})",
@@ -213,7 +213,7 @@ pub(crate) fn write_accept_result<W: Write>(
     writeln!(writer, "Amount: ${}", result.plan().request().amount())?;
     writeln!(
         writer,
-        "Preflight required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee."
+        "Validation required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee."
     )
 }
 
@@ -246,13 +246,13 @@ pub(crate) fn write_decline_result<W: Write>(
     writeln!(writer, "Money sent: no")
 }
 
-pub(crate) fn write_decline_preflight<W: Write>(
+pub(crate) fn write_decline_details<W: Write>(
     writer: &mut W,
     prepared: &PreparedDecline,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     let request = prepared.plan().request();
-    writeln!(writer, "Request decline preflight:")?;
+    writeln!(writer, "Request decline details:")?;
     writeln!(
         writer,
         "  Request ID: {}",

@@ -12,7 +12,7 @@ evidence-sensitive invariant. macOS contributors should also review the local
 This project controls authentication and financial operations through unsupported private APIs. Automated development and CI must never use a live credential or invoke a real financial mutation. Financial-path tests must use in-process fakes or loopback mock servers. Tests marked `ignored` are manual contracts and must not be included in routine verification.
 
 Routine contributors must not run an ignored test by name, enable ignored tests, run a live schema
-probe, use the production keychain entry, or invoke a real `pay`, request-creation, `accept`,
+probe, use the production keychain entry, or invoke a real `pay user`, request-creation, `accept`,
 `decline`, or transfer operation for development or verification. Do not turn a product command into a test
 step. Separately authorized owner/release procedures are outside routine contribution and are not
 initiated by these docs.

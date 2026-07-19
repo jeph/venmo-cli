@@ -13,7 +13,7 @@ async fn accept_handler_orders_default_no_authorization_one_write_output_and_flu
             calls: successful_calls(),
             remaining: Some(RemainingAcceptScript::after_success()),
             stdout: writer_state(ACCEPT_RESULT, 1),
-            stderr: writer_state(ACCEPT_PREFLIGHT, 1),
+            stderr: writer_state(ACCEPT_DETAILS, 1),
         },
     );
     let mut harness = AcceptHarness::new(script, initial)?;
@@ -47,7 +47,7 @@ async fn accept_default_no_decline_stops_before_interrupt_installation_and_write
                 acceptances: 2,
                 ..RemainingAcceptScript::after_success()
             }),
-            stderr: writer_state(ACCEPT_PREFLIGHT, 1),
+            stderr: writer_state(ACCEPT_DETAILS, 1),
             ..AcceptState::default()
         },
     );
