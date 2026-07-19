@@ -220,6 +220,9 @@ impl ApiErrorSnapshot {
             VenmoApiError::FinancialOutcomeUnknown { operation, .. } => {
                 ApiErrorDetail::FinancialOutcomeUnknown { operation }
             }
+            VenmoApiError::FinancialHttpOutcomeUnknown { operation, .. } => {
+                ApiErrorDetail::FinancialOutcomeUnknown { operation }
+            }
             VenmoApiError::Contract { operation, .. } => ApiErrorDetail::Contract { operation },
         };
         Self { kind, detail }

@@ -334,7 +334,8 @@ async fn request_update_mismatches_and_unverified_errors_are_ambiguous() -> Test
             .await;
         assert!(matches!(
             result,
-            Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+            Err(VenmoApiError::FinancialOutcomeUnknown { .. }
+                | VenmoApiError::FinancialHttpOutcomeUnknown { .. })
         ));
         assert_eq!(
             result.as_ref().err().map(ApiFailure::kind),
@@ -384,7 +385,8 @@ async fn decline_rejects_every_unproven_terminal_response_as_ambiguous() -> Test
             .await;
         assert!(matches!(
             result,
-            Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+            Err(VenmoApiError::FinancialOutcomeUnknown { .. }
+                | VenmoApiError::FinancialHttpOutcomeUnknown { .. })
         ));
         assert_eq!(
             result.as_ref().err().map(ApiFailure::kind),
