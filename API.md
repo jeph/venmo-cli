@@ -111,7 +111,7 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 17 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
 | 18 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
 | 19 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
-| 20 | `transfer out <AMOUNT> [--speed standard] [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; omitted speed defaults to standard; exactly one **T2** after default-No confirmation. |
+| 20 | `transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; exact lowercase `all` resolves from W2 available cents; exactly one **T2** after default-No confirmation. |
 
 Help and version output are also service-free but are not leaf actions. There is no
 implemented generic payment list/detail, outgoing-request cancel/remind, explicit
@@ -608,7 +608,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 ### 10.1 Current command state
 ```text
 venmo transfer options
-venmo transfer out <AMOUNT> [--speed standard] [--yes]
+venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]
 ```
 
 `transfer options` implements the outbound portion of T1. Its CLI rendering contains eligible
@@ -616,8 +616,10 @@ cash-out destination rows ordered as
 `Id`, `Name`, `Type`, `Last 4`, `Default`, `Direction`, `Speed`, and `Estimated Completion`.
 The semantically unclear API `asset_name` remains validated internally but is not rendered, and
 preferred-speed and branch-level estimate/fee summaries are also omitted.
-`transfer out` implements standard-bank T2 after A5/W2/T1 preflight and default-No confirmation;
-omitted speed defaults to standard and explicit `--speed standard` remains valid. Transfer-in is
+`transfer out` implements standard-bank T2 after A5/W2/T1 validation and default-No confirmation;
+omitted speed defaults to standard and explicit `--speed standard` remains valid. The positional
+selector accepts either the existing positive exact-decimal amount or exact lowercase `all`.
+Transfer-in is
 intentionally unsupported. No instant, debit, manual destination, or challenge-continuation
 command is accepted.
 
@@ -642,14 +644,20 @@ implemented T1 view ignores source metadata, preserves the standard/instant dest
 bounds each destination array to 100, and validates all fields relied on by cash-out.
 
 ### 10.3 Standard-out contract
-The command performs A5 → W2 → T1, requires exact stored/current account equality
-and amount ≤ available balance, and selects only
+The command performs A5 → W2 → T1 and requires exact stored/current account equality. An explicit
+amount must be ≤ available balance. `all` requires positive W2 available cents, safely converts that
+one signed snapshot to positive `Money`, excludes on-hold funds, and preserves both the selector and
+resolved amount in the immutable plan. Zero or negative availability fails before T1 or T2. This is
+not an atomic drain: concurrent balance changes can cause rejection or leave funds that arrived
+after the snapshot. The command then selects only
 `standard.eligible_destinations`. It accepts exact type `bank`, requires absent
 known/additional non-null standard fee metadata, rejects duplicate IDs and multiple
 defaults, chooses the unique default even with backups or otherwise a sole candidate,
 and rejects multiple nondefaults. It never uses response order or accepts a raw CLI
-destination ID. Validated transfer details are flushed before the write; unless `--yes` is
-supplied, default-No confirmation follows.
+destination ID. Validated transfer details are flushed before the write; `all` details disclose the
+resolved amount, snapshot source, on-hold exclusion, and non-atomic behavior. Unless `--yes` is
+supplied, default-No confirmation follows, with an action-specific entire-displayed-balance prompt
+for `all`.
 
 The exact current write, initially sourced from the historical lead and then
 controlled-live validated, is one financial, non-retried:
@@ -667,7 +675,7 @@ device-id: <DEVICE_ID>
 
 The adapter encodes this as `FinancialWrite`, so post-connect uncertainty is
 ambiguous. Success is only the exact T2 HTTP-201/direct-data contract in §5.3. Output
-reports requested amount, validated net amount, and fee; exact `pending` means
+reports requested amount, selector source when `all` was used, validated net amount, and fee; exact `pending` means
 accepted, not settled. Empty or mismatched JSON, status-only 2xx, non-201, error code,
 challenge, interruption, and output uncertainty remain ambiguous. The historical
 client's status-only 200–204 rule is rejected.

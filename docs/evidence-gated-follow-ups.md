@@ -110,6 +110,9 @@ approved independently; failure to prove detail must not block an otherwise prov
 only direction/speed-specific cash-out destination branches. Enabled standard out uses only exact
 `bank` destinations, identical integer-cent `amount`/`final_amount`, fail-closed automatic
 selection, default-No confirmation, and one non-retried `POST /v1/transfers`.
+Exact lowercase `all` is a client-side shorthand over the already required fresh available-balance
+read: it resolves once to positive available cents, excludes on-hold funds, and changes no wire
+contract. It therefore requires synthetic regression coverage, not another live canary.
 
 One separately approved $0.01 canary on 2026-07-17 returned HTTP 201 direct pending transfer data
 and reconciled to exactly one outgoing activity record with the same transfer ID. Production

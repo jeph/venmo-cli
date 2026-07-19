@@ -91,6 +91,12 @@ impl fmt::Display for TransferSpeed {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TransferOutAmount {
+    Exact(Money),
+    AllAvailable,
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub struct TransferInstrument {
     id: TransferInstrumentId,
@@ -347,6 +353,7 @@ impl TransferOptions {
 pub struct TransferOutPlan {
     account: Account,
     balance: Balance,
+    amount_selection: TransferOutAmount,
     amount: Money,
     speed: TransferSpeed,
     destination: TransferInstrument,
@@ -357,6 +364,7 @@ impl TransferOutPlan {
     pub const fn new(
         account: Account,
         balance: Balance,
+        amount_selection: TransferOutAmount,
         amount: Money,
         speed: TransferSpeed,
         destination: TransferInstrument,
@@ -364,6 +372,7 @@ impl TransferOutPlan {
         Self {
             account,
             balance,
+            amount_selection,
             amount,
             speed,
             destination,
@@ -383,6 +392,11 @@ impl TransferOutPlan {
     #[must_use]
     pub const fn amount(&self) -> Money {
         self.amount
+    }
+
+    #[must_use]
+    pub const fn amount_selection(&self) -> TransferOutAmount {
+        self.amount_selection
     }
 
     #[must_use]
@@ -522,6 +536,7 @@ mod tests {
                 crate::features::wallet::SignedUsdAmount::from_cents(500),
                 crate::features::wallet::SignedUsdAmount::from_cents(0),
             ),
+            TransferOutAmount::Exact(Money::from_cents(100)?),
             Money::from_cents(100)?,
             TransferSpeed::Standard,
             instrument.clone(),

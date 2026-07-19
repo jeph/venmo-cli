@@ -22,7 +22,8 @@ and black-box tests.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
   `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `RequestDirectionArg`.
-- Transfers: `TransferArgs`, `TransferOperation`, `TransferOutArgs`, `TransferSpeedArg`.
+- Transfers: `TransferArgs`, `TransferOperation`, `TransferOutArgs`, `TransferAmountArg`,
+  `TransferSpeedArg`.
 - Payment commands: `PayArgs`, `PayOperation`, `PayUserArgs`, `VisibilityArg`.
 
 ### Process/runtime surface
@@ -94,7 +95,8 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 
 - `TransferId`, `TransferInstrumentId`, `TransferInstrumentSuffix`,
   `TransferInstrumentSuffixParseError`, `TransferSpeed`.
-- `TransferInstrument`, `TransferFeeMetadata`, `TransferModeOptions`, `TransferOptions`.
+- `TransferInstrument`, `TransferFeeMetadata`, `TransferModeOptions`, `TransferOptions`,
+  `TransferOutAmount`.
 - `TransferOutPlan`, `CreatedTransfer`, `TransferOptionsResult`, `TransferOutResult`.
 
 The public model types describe the frontend-neutral options and validated standard-out states.
@@ -148,7 +150,8 @@ the eventual audience Venmo applies after participant privacy settings.
 ## Initial 0.0.1 surface
 
 Version 0.0.1 exposes grouped `PayOperation::Methods` and `PayOperation::User`, read-only transfer
-options, and guarded standard-bank `TransferOperation::Out`. It intentionally does not expose
+options, and guarded standard-bank `TransferOperation::Out` with typed exact/all amount selection.
+It intentionally does not expose
 inbound transfers. Library callers cannot invoke private adapter internals or bypass preflight,
 confirmation, ambiguity, and no-retry policy.
 

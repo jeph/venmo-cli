@@ -39,7 +39,7 @@ pub use crate::features::requests::plans::{
 pub use crate::features::transfers::model::{
     CreatedTransfer, TransferFeeMetadata, TransferId, TransferInstrument, TransferInstrumentId,
     TransferInstrumentSuffix, TransferInstrumentSuffixParseError, TransferModeOptions,
-    TransferOptions, TransferOutPlan, TransferSpeed,
+    TransferOptions, TransferOutAmount, TransferOutPlan, TransferSpeed,
 };
 pub use crate::features::transfers::options::TransferOptionsResult;
 pub use crate::features::transfers::out::TransferOutResult;

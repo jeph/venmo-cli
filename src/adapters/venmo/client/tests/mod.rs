@@ -43,7 +43,7 @@ use crate::features::requests::{
 };
 use crate::features::transfers::{
     TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix, TransferOptionsApi,
-    TransferOutCreationApi, TransferOutPlan, TransferSpeed,
+    TransferOutAmount, TransferOutCreationApi, TransferOutPlan, TransferSpeed,
 };
 use crate::features::wallet::{
     Balance, BalanceApi, PaymentMethod, PaymentMethodId, PaymentMethodsApi, SignedUsdAmount,

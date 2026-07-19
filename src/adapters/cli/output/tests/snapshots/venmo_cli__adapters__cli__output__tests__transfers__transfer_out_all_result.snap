@@ -1,0 +1,14 @@
+---
+source: src/adapters/cli/output/tests/transfers.rs
+expression: "String::from_utf8(all_completed)?"
+---
+Transfer ID: transfer-all
+Status: pending
+Direction: out
+Speed: standard
+Requested amount: $100.00
+Amount source: all available-balance snapshot
+Net amount: $100.00
+Fee: $0.00
+Requested: 1969-12-31T16:00:00
+Destination ID: destination-all

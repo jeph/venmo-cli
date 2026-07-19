@@ -401,10 +401,17 @@ All command-level username resolution is shared and fail-closed around the live-
   branch-level estimate/fee summaries and does not infer dollars, cents, limits, or final fees from
   unverified fee metadata.
 
-#### `venmo transfer out <AMOUNT> [--speed standard] [--yes]`
+#### `venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]`
 
 - Runs current-account and balance checks plus fresh transfer options; selects only a unique default
   or sole standard bank destination and never accepts response order or a user-supplied ID.
+- Accepts either the existing positive exact-decimal amount or exact lowercase `all`. `all` resolves
+  once from the fresh positive available-balance snapshot, excludes on-hold funds, and fails before
+  options/write when availability is zero or negative. The immutable plan preserves the selector
+  and resolved integer cents.
+- Treats `all` as a snapshot shorthand, not an atomic drain. Details disclose that boundary and the
+  resolved amount; default-No confirmation asks whether to transfer the entire displayed available
+  balance. `--yes` skips only that prompt.
 - Defaults an omitted `--speed` to `standard`; explicit `--speed standard` remains valid and every
   unsupported speed is rejected by the CLI.
 - Sends one non-retried integer-cent POST after flushed default-No confirmation. Exact HTTP 201

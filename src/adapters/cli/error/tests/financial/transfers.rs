@@ -71,6 +71,10 @@ fn transfer_read_and_guarded_write_variants_have_deliberate_categories() {
             ErrorCategory::Usage,
         ),
         (
+            AppError::from(TransferOutError::NoAvailableBalance),
+            ErrorCategory::Usage,
+        ),
+        (
             AppError::from(TransferOutError::UnsupportedSpeed),
             ErrorCategory::Usage,
         ),

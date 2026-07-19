@@ -211,7 +211,7 @@ async fn standard_out_preserves_preflight_confirmation_and_one_write_order() -> 
     let prepared = out::prepare(
         &store,
         &api,
-        Money::from_cents(1_234)?,
+        TransferOutAmount::Exact(Money::from_cents(1_234)?),
         TransferSpeed::Standard,
     )
     .await?;
@@ -225,6 +225,133 @@ async fn standard_out_preserves_preflight_confirmation_and_one_write_order() -> 
     };
 
     assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn all_available_resolves_once_and_uses_action_specific_confirmation() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let store = FakeStore {
+        transcript: Rc::clone(&transcript),
+        user_id: "123",
+    };
+    let api = FakeApi {
+        transcript: Rc::clone(&transcript),
+        account_user_id: "123",
+        available_cents: 5_000,
+        options: options_with_destinations(vec![instrument("bank-default", true)?]),
+    };
+    let prompt = FakePrompt {
+        transcript: Rc::clone(&transcript),
+        answer: true,
+    };
+
+    let prepared = out::prepare(
+        &store,
+        &api,
+        TransferOutAmount::AllAvailable,
+        TransferSpeed::Standard,
+    )
+    .await?;
+    assert_eq!(prepared.plan().amount().cents(), 5_000);
+    assert_eq!(
+        prepared.plan().amount_selection(),
+        TransferOutAmount::AllAvailable
+    );
+    let authorized = out::authorize(&prompt, prepared, false)?;
+    let result = out::execute(&api, authorized).await?;
+
+    assert_eq!(result.plan().amount().cents(), 5_000);
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [
+            Call::ReadCredential,
+            Call::CurrentAccount,
+            Call::Balance,
+            Call::TransferOptions,
+            Call::PromptAvailability,
+            Call::Confirm {
+                prompt: "Transfer the entire displayed available balance to the selected bank?"
+                    .to_owned(),
+            },
+            Call::Create {
+                amount_cents: 5_000,
+                speed: TransferSpeed::Standard,
+                destination_id: "bank-default".to_owned(),
+            },
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn all_available_rejects_nonpositive_balances_before_options_or_write() -> TestResult {
+    for available_cents in [0, -1, i64::MIN] {
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let store = FakeStore {
+            transcript: Rc::clone(&transcript),
+            user_id: "123",
+        };
+        let api = FakeApi {
+            transcript: Rc::clone(&transcript),
+            account_user_id: "123",
+            available_cents,
+            options: options_with_destinations(vec![instrument("bank-default", true)?]),
+        };
+
+        let result = out::prepare(
+            &store,
+            &api,
+            TransferOutAmount::AllAvailable,
+            TransferSpeed::Standard,
+        )
+        .await;
+
+        assert!(matches!(result, Err(TransferOutError::NoAvailableBalance)));
+        assert_eq!(
+            transcript.borrow().as_slice(),
+            [Call::ReadCredential, Call::CurrentAccount, Call::Balance]
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn all_available_yes_skips_only_the_confirmation_prompt() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let store = FakeStore {
+        transcript: Rc::clone(&transcript),
+        user_id: "123",
+    };
+    let api = FakeApi {
+        transcript: Rc::clone(&transcript),
+        account_user_id: "123",
+        available_cents: 500,
+        options: options_with_destinations(vec![instrument("bank-default", true)?]),
+    };
+    let prompt = FakePrompt {
+        transcript: Rc::clone(&transcript),
+        answer: false,
+    };
+
+    let prepared = out::prepare(
+        &store,
+        &api,
+        TransferOutAmount::AllAvailable,
+        TransferSpeed::Standard,
+    )
+    .await?;
+    let _authorized = out::authorize(&prompt, prepared, true)?;
+
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [
+            Call::ReadCredential,
+            Call::CurrentAccount,
+            Call::Balance,
+            Call::TransferOptions,
+        ]
+    );
     Ok(())
 }
 
@@ -275,7 +402,7 @@ async fn standard_out_stops_before_later_reads_or_write_on_preflight_failures() 
         let result = out::prepare(
             &store,
             &api,
-            Money::from_cents(100)?,
+            TransferOutAmount::Exact(Money::from_cents(100)?),
             TransferSpeed::Standard,
         )
         .await;
@@ -310,7 +437,7 @@ async fn unsupported_speed_stops_before_credential_or_api_access() -> TestResult
     let result = out::prepare(
         &store,
         &api,
-        Money::from_cents(100)?,
+        TransferOutAmount::Exact(Money::from_cents(100)?),
         TransferSpeed::Instant,
     )
     .await;

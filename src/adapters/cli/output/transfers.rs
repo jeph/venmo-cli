@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use tabled::builder::Builder;
 
-use crate::features::transfers::model::TransferSpeed;
+use crate::features::transfers::model::{TransferOutAmount, TransferSpeed};
 use crate::features::transfers::options::TransferOptionsResult;
 use crate::features::transfers::out::{PreparedTransferOut, TransferOutResult};
 
@@ -71,6 +71,12 @@ pub(crate) fn write_transfer_out_details<W: Write>(
     writeln!(writer, "  Direction: out")?;
     writeln!(writer, "  Speed: {}", plan.speed())?;
     writeln!(writer, "  Amount: ${}", plan.amount())?;
+    if plan.amount_selection() == TransferOutAmount::AllAvailable {
+        writeln!(
+            writer,
+            "  Amount source: all available Venmo balance from this fresh snapshot (on-hold funds excluded)"
+        )?;
+    }
     writeln!(
         writer,
         "  Available Venmo balance: {}",
@@ -93,6 +99,12 @@ pub(crate) fn write_transfer_out_details<W: Write>(
         writer,
         "  Submitted amount and final amount: identical integer cents"
     )?;
+    if plan.amount_selection() == TransferOutAmount::AllAvailable {
+        writeln!(
+            writer,
+            "  Warning: `all` resolves once from this snapshot and is not an atomic account drain."
+        )?;
+    }
     writeln!(
         writer,
         "  Warning: this unsupported private transfer API must never be retried after an uncertain outcome."
@@ -118,6 +130,9 @@ pub(crate) fn write_transfer_out_result<W: Write>(
     writeln!(writer, "Direction: out")?;
     writeln!(writer, "Speed: {}", result.plan().speed())?;
     writeln!(writer, "Requested amount: ${}", result.plan().amount())?;
+    if result.plan().amount_selection() == TransferOutAmount::AllAvailable {
+        writeln!(writer, "Amount source: all available-balance snapshot")?;
+    }
     writeln!(writer, "Net amount: ${}", result.created().net_amount())?;
     writeln!(
         writer,

@@ -117,10 +117,20 @@ moves no money and does not expose inbound source metadata.
 The enabled first write shape is:
 
 ```sh
-venmo transfer out <AMOUNT> [--speed standard] [--yes]
+venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]
 ```
 
-Standard-out performs current-account validation, checks that available Venmo balance covers the amount, then reads fresh transfer options. Omitting `--speed` defaults to `standard`; explicit `--speed standard` remains valid, and no other speed is supported. It accepts only the standard destination branch and exact `bank` type, requires absent standard fee metadata, rejects duplicate IDs/multiple defaults/ambiguous nondefaults, and chooses the unique default or otherwise sole candidate. Users cannot provide a destination ID or select by response order. Validated transfer details are flushed before the write; without `--yes`, they are followed by default-No confirmation.
+Standard-out performs current-account validation and reads a fresh available-balance snapshot before
+fresh transfer options. A positive decimal amount retains the exact balance-coverage check. Exact
+lowercase `all` instead resolves once to every positive available cent in that snapshot; it excludes
+on-hold funds and is not an atomic account drain. Zero or negative availability fails before options
+or a write. Omitting `--speed` defaults to `standard`; explicit `--speed standard` remains valid, and
+no other speed is supported. The command accepts only the standard destination branch and exact
+`bank` type, requires absent standard fee metadata, rejects duplicate IDs/multiple
+defaults/ambiguous nondefaults, and chooses the unique default or otherwise sole candidate. Users
+cannot provide a destination ID or select by response order. Validated transfer details show the
+resolved amount and, for `all`, its snapshot source. Without `--yes`, action-specific default-No
+confirmation follows.
 
 The command sends one non-retried `POST /v1/transfers` with identical positive integer-cent `amount` and `final_amount`, the selected destination ID, and `transfer_type: standard`. Success requires HTTP 201 and the controlled-live direct `data` envelope: valid transfer ID/timestamp, exact `pending` status, standard type, exact requested cents, arithmetically consistent net/fee cents, matching dollar amount, and matching destination ID/type/suffix. Output distinguishes requested amount, net amount, and fee. A separately approved one-cent canary on 2026-07-17 returned HTTP 201 with ID/time, pending/standard, exact `$0.01`, numeric requested/net/fee-cent fields, and destination data; exactly one matching pending outgoing activity record had the same transfer ID. Runtime arithmetic and destination equality are additionally enforced fail-closed. This proves accepted/pending submission, not bank settlement.
 

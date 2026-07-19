@@ -1,7 +1,7 @@
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
     AuthOperation, Cli, Command, PayOperation, RequestDirectionArg, RequestsOperation,
-    TransferOperation, TransferSpeedArg, UsersOperation, VisibilityArg,
+    TransferAmountArg, TransferOperation, TransferSpeedArg, UsersOperation, VisibilityArg,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -631,14 +631,32 @@ fn transfer_options_and_guarded_standard_transfers_have_exact_grammar() {
                 if matches!(
                     &args.operation,
                     TransferOperation::Out(out)
-                        if out.amount.cents() == 1_234
+                        if matches!(
+                            out.amount,
+                            TransferAmountArg::Exact(amount) if amount.cents() == 1_234
+                        )
                             && out.speed == TransferSpeedArg::Standard
                             && out.yes == expected_yes
                 )
         )));
     }
 
+    let all = Cli::try_parse_from(["venmo", "transfer", "out", "all", "--yes"]);
+    assert!(all.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Transfer(args)
+            if matches!(
+                &args.operation,
+                TransferOperation::Out(out)
+                    if out.amount == TransferAmountArg::All
+                        && out.speed == TransferSpeedArg::Standard
+                        && out.yes
+            )
+    )));
+
     for arguments in [
+        &["venmo", "transfer", "out", "ALL"][..],
+        &["venmo", "transfer", "out", "all.00"][..],
         &["venmo", "transfer", "out", "1.00", "--speed", "instant"][..],
         &[
             "venmo",

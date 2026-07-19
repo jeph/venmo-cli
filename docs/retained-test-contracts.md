@@ -92,3 +92,8 @@ There is deliberately no ignored test or contributor runbook for a live payment 
 mutation. Financial safety is proved routinely with typed feature transcripts and exact synthetic
 wire tests. Any separately authorized owner procedure is outside this test suite and does not make
 a live financial command part of development, CI, or release verification.
+
+The `transfer out all` contract is entirely service-free: typed feature tests prove one-time
+positive available-balance resolution, zero/negative fail-closed behavior, exact action-specific
+confirmation, one write/no retry, and exact resolved T2 cents. No additional live transfer is
+needed or authorized for this client-side shorthand.

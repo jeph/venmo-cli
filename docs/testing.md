@@ -10,6 +10,11 @@ The suite tests each boundary at the lowest level that can prove its contract. F
 tested against narrow fakes, wire behavior against synthetic transports or loopback servers, and
 terminal behavior against captured writers or service-free child processes.
 
+Transfer shorthand coverage resolves exact lowercase `all` only from synthetic fresh positive
+available-balance snapshots, rejects zero/negative values before options or a write, pins the
+action-specific confirmation and disclosure output, and proves that T2 receives only the resolved
+integer cents. It never performs a live transfer.
+
 ## Test layers
 
 | Layer | Primary contract |

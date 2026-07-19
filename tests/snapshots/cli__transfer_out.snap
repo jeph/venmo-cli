@@ -4,11 +4,11 @@ expression: help
 ---
 Transfer Venmo balance to the unique selected standard bank destination
 
-Usage: out [OPTIONS] <AMOUNT>
+Usage: out [OPTIONS] <AMOUNT_OR_ALL>
 
 Arguments:
-  <AMOUNT>
-          Positive USD amount with at most two fractional digits
+  <AMOUNT_OR_ALL>
+          Positive USD amount, or `all` to use the fresh available-balance snapshot
 
 Options:
       --speed <SPEED>
@@ -23,4 +23,4 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-Confirmation defaults to No. Financial exit code 3 means the transfer outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app. This subcommand supports only standard bank cash-out; instant, debit, manual destination selection, and challenge continuation remain unavailable.
+Confirmation defaults to No. Exact lowercase `all` resolves once from a fresh available-balance snapshot, excludes on-hold funds, and is not an atomic account drain. Financial exit code 3 means the transfer outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app. This subcommand supports only standard bank cash-out; instant, debit, manual destination selection, and challenge continuation remain unavailable.

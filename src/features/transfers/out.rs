@@ -2,7 +2,8 @@ use thiserror::Error;
 
 use super::selection::{self, TransferSelectionError};
 use super::{
-    CreatedTransfer, TransferOptionsApi, TransferOutCreationApi, TransferOutPlan, TransferSpeed,
+    CreatedTransfer, TransferOptionsApi, TransferOutAmount, TransferOutCreationApi,
+    TransferOutPlan, TransferSpeed,
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
 use crate::features::payments::confirmation::{self, DefaultNoConfirmationError};
@@ -88,6 +89,9 @@ pub enum TransferOutError {
     #[error("the requested transfer exceeds the available Venmo balance")]
     InsufficientBalance,
 
+    #[error("there is no positive available Venmo balance to transfer")]
+    NoAvailableBalance,
+
     #[error("only standard outbound transfers are currently supported")]
     UnsupportedSpeed,
 
@@ -123,7 +127,9 @@ impl TransferOutError {
             | Self::Create { source } => ApplicationFailureKind::Api(source.kind()),
             Self::Validation(source) => source.failure_kind(),
             Self::Selection(source) => source.failure_kind(),
-            Self::InsufficientBalance | Self::UnsupportedSpeed => ApplicationFailureKind::Usage,
+            Self::InsufficientBalance | Self::NoAvailableBalance | Self::UnsupportedSpeed => {
+                ApplicationFailureKind::Usage
+            }
             Self::ConfirmationRequired => ApplicationFailureKind::Usage,
             Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
             Self::Confirmation { source } => prompt_failure_kind(source),
@@ -137,7 +143,7 @@ pub(crate) struct AuthorizedTransferOut(PreparedTransferOut);
 pub(crate) async fn prepare<R, A>(
     credentials: &R,
     api: &A,
-    amount: Money,
+    amount_selection: TransferOutAmount,
     speed: TransferSpeed,
 ) -> Result<PreparedTransferOut, TransferOutError>
 where
@@ -163,10 +169,20 @@ where
         .map_err(|source| TransferOutError::Balance {
             source: ApiOperationFailure::new(source),
         })?;
-    let amount_cents = i128::from(amount.cents());
-    if i128::from(balance.available().cents()) < amount_cents {
-        return Err(TransferOutError::InsufficientBalance);
-    }
+    let amount = match amount_selection {
+        TransferOutAmount::Exact(amount) => {
+            let amount_cents = i128::from(amount.cents());
+            if i128::from(balance.available().cents()) < amount_cents {
+                return Err(TransferOutError::InsufficientBalance);
+            }
+            amount
+        }
+        TransferOutAmount::AllAvailable => {
+            let available_cents = u64::try_from(balance.available().cents())
+                .map_err(|_| TransferOutError::NoAvailableBalance)?;
+            Money::from_cents(available_cents).map_err(|_| TransferOutError::NoAvailableBalance)?
+        }
+    };
     let options = api
         .transfer_options(credential.access_token(), credential.device_id())
         .await
@@ -174,7 +190,14 @@ where
             source: ApiOperationFailure::new(source),
         })?;
     let destination = selection::select_standard_out(&options)?;
-    let plan = TransferOutPlan::new(account, balance, amount, speed, destination);
+    let plan = TransferOutPlan::new(
+        account,
+        balance,
+        amount_selection,
+        amount,
+        speed,
+        destination,
+    );
     Ok(PreparedTransferOut::new(credential, plan))
 }
 
@@ -186,12 +209,13 @@ pub(crate) fn authorize<P>(
 where
     P: DefaultNoConfirmation,
 {
-    confirmation::authorize(
-        prompt,
-        assume_yes,
-        "Transfer this balance to the selected bank?",
-    )
-    .map_err(|error| match error {
+    let question = match prepared.plan.amount_selection() {
+        TransferOutAmount::Exact(_) => "Transfer this balance to the selected bank?",
+        TransferOutAmount::AllAvailable => {
+            "Transfer the entire displayed available balance to the selected bank?"
+        }
+    };
+    confirmation::authorize(prompt, assume_yes, question).map_err(|error| match error {
         DefaultNoConfirmationError::Required => TransferOutError::ConfirmationRequired,
         DefaultNoConfirmationError::Declined => TransferOutError::ConfirmationDeclined,
         DefaultNoConfirmationError::Prompt(source) => TransferOutError::Confirmation { source },

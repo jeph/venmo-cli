@@ -195,7 +195,7 @@ where
     M: FnOnce() -> Result<S, AppError>,
     S: Future<Output = Result<(), AppError>>,
 {
-    let prepared = transfer_out::prepare(store, api, args.amount, args.speed.into()).await?;
+    let prepared = transfer_out::prepare(store, api, args.amount.into(), args.speed.into()).await?;
     write_and_flush(stderr, &prepared, output::write_transfer_out_details)?;
     let authorized = transfer_out::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;

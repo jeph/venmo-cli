@@ -293,6 +293,36 @@ async fn transfer_creation_sends_exact_standard_body_and_validates_reconciled_su
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn all_available_selection_uses_only_the_resolved_plan_cents_on_the_wire() -> TestResult {
+    let response = scripted_json_response(201, created_transfer_body())?;
+    let (token, device_id) = test_session()?;
+    let plan = transfer_all_plan()?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+
+    let created = client
+        .create_transfer_out(&token, &device_id, &plan)
+        .await?;
+
+    assert_eq!(created.net_amount().cents(), 1_234);
+    assert_eq!(
+        transport.snapshot(),
+        ScriptedTransportSnapshot::for_test(
+            vec![authenticated_request(
+                Method::POST,
+                "/transfers",
+                &["transfers"],
+                &[],
+                Some(TRANSFER_CREATION_REQUEST_BODY.as_bytes()),
+                OperationClass::FinancialWrite,
+            )],
+            Vec::new(),
+            false,
+        )
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn transfer_creation_treats_empty_or_non_success_responses_as_ambiguous() -> TestResult {
     for response in [
         scripted_response(201, Vec::new())?,
@@ -480,6 +510,33 @@ fn transfer_plan() -> Result<TransferOutPlan, Box<dyn Error>> {
             SignedUsdAmount::from_cents(10_000),
             SignedUsdAmount::from_cents(0),
         ),
+        TransferOutAmount::Exact(Money::from_cents(1_234)?),
+        Money::from_cents(1_234)?,
+        TransferSpeed::Standard,
+        TransferInstrument::new(
+            TransferInstrumentId::from_str("bank-out")?,
+            "Bank".to_owned(),
+            "Checking".to_owned(),
+            "bank".to_owned(),
+            TransferInstrumentSuffix::from_str("2222")?,
+            true,
+            "1-3 business days".to_owned(),
+        ),
+    ))
+}
+
+fn transfer_all_plan() -> Result<TransferOutPlan, Box<dyn Error>> {
+    Ok(TransferOutPlan::new(
+        Account::new(
+            UserId::from_str("123")?,
+            Username::from_bare("alice")?,
+            Some("Alice".to_owned()),
+        ),
+        Balance::new(
+            SignedUsdAmount::from_cents(1_234),
+            SignedUsdAmount::from_cents(500),
+        ),
+        TransferOutAmount::AllAvailable,
         Money::from_cents(1_234)?,
         TransferSpeed::Standard,
         TransferInstrument::new(

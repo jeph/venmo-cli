@@ -6,7 +6,8 @@ pub(crate) mod selection;
 
 pub(crate) use model::{
     CreatedTransfer, TransferFeeMetadata, TransferInstrument, TransferInstrumentId,
-    TransferInstrumentSuffix, TransferModeOptions, TransferOptions, TransferOutPlan, TransferSpeed,
+    TransferInstrumentSuffix, TransferModeOptions, TransferOptions, TransferOutAmount,
+    TransferOutPlan, TransferSpeed,
 };
 pub(crate) use ports::{TransferOptionsApi, TransferOutCreationApi};
 
