@@ -200,13 +200,13 @@ pub(super) fn request_info_args() -> TestResult<RequestInfoArgs> {
 }
 
 pub(super) const PAYMENT_METHODS_OUTPUT: &str = concat!(
-    " ID       | NAME       | TYPE | LAST4 | DEFAULT\n",
-    "----------+------------+------+-------+---------\n",
-    " method-1 | Bank\\nname | bank | 1234  | yes\n",
+    " Id       | Name       | Type | Last 4 | Default\n",
+    "----------+------------+------+--------+---------\n",
+    " method-1 | Bank\\nname | bank | 1234   | yes\n",
 );
 
 pub(super) const USERS_OUTPUT: &str = concat!(
-    " ID  | USERNAME | NAME\n",
+    " Id  | Username | Name\n",
     "-----+----------+-------------------\n",
     " 123 | @alice   | Alice\\u{001B}[31m\n",
 );
@@ -220,13 +220,13 @@ pub(super) const USER_INFO_OUTPUT: &str = concat!(
 );
 
 pub(super) const FRIENDS_OUTPUT: &str = concat!(
-    " ID  | USERNAME | NAME\n",
+    " Id  | Username | Name\n",
     "-----+----------+-----------\n",
     " 456 | @bob     | Bob\\nName\n",
 );
 
 pub(super) const ACTIVITY_LIST_OUTPUT: &str = concat!(
-    " ID             | TIME                 | ACTION            | DIRECTION | COUNTERPARTY               | AMOUNT | STATUS | NOTE\n",
+    " Id             | Time                 | Action            | Direction | Counterparty               | Amount | Status | Note\n",
     "----------------+----------------------+-------------------+-----------+----------------------------+--------+--------+------------------------\n",
     " story-1        | 1970-01-01T00:00:00Z | pay               | outgoing  | @bob                       | $1.25  | failed | note\\n\\u{001B}[31mline\n",
     " story-transfer | 1970-01-01T00:00:00Z | transfer:standard | outgoing  | Bank\\nname (bank ••••1234) | $12.34 | issued |\n",
@@ -245,7 +245,7 @@ pub(super) const ACTIVITY_INFO_OUTPUT: &str = concat!(
 );
 
 pub(super) const REQUESTS_OUTPUT: &str = concat!(
-    " ID        | DIRECTION | COUNTERPARTY | AMOUNT | CREATED              | STATUS  | NOTE\n",
+    " Id        | Direction | Counterparty | Amount | Created              | Status  | Note\n",
     "-----------+-----------+--------------+--------+----------------------+---------+---------------------\n",
     " request-1 | incoming  | @bob         | $0.01  | 1970-01-01T00:00:00Z | pending | request\\u{202E}note\n",
 );

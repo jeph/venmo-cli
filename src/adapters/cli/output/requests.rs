@@ -79,13 +79,13 @@ pub(crate) fn write_requests<W: Write, E: Write>(
     } else {
         let mut builder = Builder::default();
         builder.push_record([
-            "ID",
-            "DIRECTION",
-            "COUNTERPARTY",
-            "AMOUNT",
-            "CREATED",
-            "STATUS",
-            "NOTE",
+            "Id",
+            "Direction",
+            "Counterparty",
+            "Amount",
+            "Created",
+            "Status",
+            "Note",
         ]);
         for request in result.requests() {
             let created = request

@@ -19,14 +19,14 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
     } else {
         let mut builder = Builder::default();
         builder.push_record([
-            "ID",
-            "TIME",
-            "ACTION",
-            "DIRECTION",
-            "COUNTERPARTY",
-            "AMOUNT",
-            "STATUS",
-            "NOTE",
+            "Id",
+            "Time",
+            "Action",
+            "Direction",
+            "Counterparty",
+            "Amount",
+            "Status",
+            "Note",
         ]);
         for activity in result.activities() {
             let timestamp = activity

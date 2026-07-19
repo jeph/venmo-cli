@@ -39,7 +39,7 @@ pub(super) fn financial_user_label(user: &User) -> String {
 
 pub(super) fn write_users_table(writer: &mut impl Write, users: &[User]) -> io::Result<()> {
     let mut builder = Builder::default();
-    builder.push_record(["ID", "USERNAME", "NAME"]);
+    builder.push_record(["Id", "Username", "Name"]);
     for user in users {
         let username = user.username().map(ToString::to_string).unwrap_or_default();
         builder.push_record([

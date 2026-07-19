@@ -16,7 +16,7 @@ pub(crate) fn write_payment_methods<W: Write>(
     }
 
     let mut builder = Builder::default();
-    builder.push_record(["ID", "NAME", "TYPE", "LAST4", "DEFAULT"]);
+    builder.push_record(["Id", "Name", "Type", "Last 4", "Default"]);
     for method in result.methods() {
         builder.push_record([
             sanitize_terminal_text(method.id().as_str()),

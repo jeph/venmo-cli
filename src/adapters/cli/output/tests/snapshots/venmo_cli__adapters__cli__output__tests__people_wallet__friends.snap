@@ -2,6 +2,6 @@
 source: src/adapters/cli/output/tests/people_wallet.rs
 expression: friends_stdout
 ---
- ID  | USERNAME | NAME
+ Id  | Username | Name
 -----+----------+-----------
  456 | @bob     | Bob\nName

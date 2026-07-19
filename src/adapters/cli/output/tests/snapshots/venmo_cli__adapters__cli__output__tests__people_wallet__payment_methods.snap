@@ -2,6 +2,6 @@
 source: src/adapters/cli/output/tests/people_wallet.rs
 expression: rendered
 ---
- ID       | NAME       | TYPE | LAST4 | DEFAULT
-----------+------------+------+-------+---------
- method-1 | Bank\nname | bank | 1234  | yes
+ Id       | Name       | Type | Last 4 | Default
+----------+------------+------+--------+---------
+ method-1 | Bank\nname | bank | 1234   | yes
