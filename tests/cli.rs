@@ -536,7 +536,7 @@ fn argument_only_validation_errors_are_clap_errors() {
 }
 
 #[test]
-fn transfer_options_and_guarded_standard_out_have_exact_grammar() {
+fn transfer_options_and_guarded_standard_transfers_have_exact_grammar() {
     let options = Cli::try_parse_from(["venmo", "transfer", "options"]);
     assert!(options.is_ok_and(|cli| matches!(
         cli.command,
@@ -562,6 +562,30 @@ fn transfer_options_and_guarded_standard_out_have_exact_grammar() {
                         if out.amount.cents() == 1_234
                             && out.speed == TransferSpeedArg::Standard
                             && out.yes == expected_yes
+                )
+        )));
+    }
+
+    for (arguments, expected_source, expected_yes) in [
+        (&["venmo", "transfer", "in", "12.34"][..], None, false),
+        (
+            &[
+                "venmo", "transfer", "in", "12.34", "--source", "bank-1", "--yes",
+            ][..],
+            Some("bank-1"),
+            true,
+        ),
+    ] {
+        let inbound = Cli::try_parse_from(arguments);
+        assert!(inbound.is_ok_and(|cli| matches!(
+            cli.command,
+            Command::Transfer(args)
+                if matches!(
+                    &args.operation,
+                    TransferOperation::In(inbound)
+                        if inbound.amount.cents() == 1_234
+                            && inbound.source.as_ref().map(|source| source.as_str()) == expected_source
+                            && inbound.yes == expected_yes
                 )
         )));
     }
@@ -613,6 +637,7 @@ fn every_command_has_a_help_snapshot() {
         ("requests_info", &["requests", "info"]),
         ("transfer", &["transfer"]),
         ("transfer_options", &["transfer", "options"]),
+        ("transfer_in", &["transfer", "in"]),
         ("transfer_out", &["transfer", "out"]),
     ];
 

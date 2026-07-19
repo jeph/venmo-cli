@@ -17,7 +17,9 @@ pub use requests::{
     AcceptArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs,
     RequestsListArgs, RequestsOperation,
 };
-pub use transfers::{TransferArgs, TransferOperation, TransferOutArgs, TransferSpeedArg};
+pub use transfers::{
+    TransferArgs, TransferInArgs, TransferOperation, TransferOutArgs, TransferSpeedArg,
+};
 pub use writes::{PayArgs, VisibilityArg};
 
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]
@@ -63,6 +65,6 @@ pub enum Command {
     /// Inspect and manage requests.
     Requests(RequestsArgs),
 
-    /// Inspect transfer eligibility or perform a confirmed standard-bank cash-out.
+    /// Inspect transfer eligibility or perform confirmed standard-bank transfers.
     Transfer(TransferArgs),
 }

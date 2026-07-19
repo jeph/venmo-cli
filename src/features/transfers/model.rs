@@ -9,6 +9,7 @@ use crate::shared::opaque_id::opaque_id;
 use crate::shared::{Account, Money};
 
 opaque_id!(TransferId, "transfer ID");
+opaque_id!(TransferPayoutId, "transfer payout ID");
 opaque_id!(TransferInstrumentId, "transfer instrument ID");
 
 const REDACTED: &str = "[REDACTED]";
@@ -332,6 +333,8 @@ pub struct TransferOptions {
     preferred_out: Option<TransferSpeed>,
     standard: TransferModeOptions,
     instant: TransferModeOptions,
+    add_funds_minimum_cents: Option<u64>,
+    add_funds_maximum_cents: Option<u64>,
 }
 
 impl fmt::Debug for TransferOptions {
@@ -342,6 +345,14 @@ impl fmt::Debug for TransferOptions {
             .field("preferred_out", &self.preferred_out)
             .field("standard", &self.standard)
             .field("instant", &self.instant)
+            .field(
+                "has_add_funds_minimum",
+                &self.add_funds_minimum_cents.is_some(),
+            )
+            .field(
+                "has_add_funds_maximum",
+                &self.add_funds_maximum_cents.is_some(),
+            )
             .finish()
     }
 }
@@ -359,7 +370,20 @@ impl TransferOptions {
             preferred_out,
             standard,
             instant,
+            add_funds_minimum_cents: None,
+            add_funds_maximum_cents: None,
         }
+    }
+
+    #[must_use]
+    pub const fn with_add_funds_limits(
+        mut self,
+        minimum_cents: Option<u64>,
+        maximum_cents: Option<u64>,
+    ) -> Self {
+        self.add_funds_minimum_cents = minimum_cents;
+        self.add_funds_maximum_cents = maximum_cents;
+        self
     }
 
     #[must_use]
@@ -381,6 +405,16 @@ impl TransferOptions {
     pub const fn instant(&self) -> &TransferModeOptions {
         &self.instant
     }
+
+    #[must_use]
+    pub const fn add_funds_minimum_cents(&self) -> Option<u64> {
+        self.add_funds_minimum_cents
+    }
+
+    #[must_use]
+    pub const fn add_funds_maximum_cents(&self) -> Option<u64> {
+        self.add_funds_maximum_cents
+    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -390,6 +424,45 @@ pub struct TransferOutPlan {
     amount: Money,
     speed: TransferSpeed,
     destination: TransferInstrument,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct TransferInPlan {
+    account: Account,
+    amount: Money,
+    source: TransferInstrument,
+}
+
+impl TransferInPlan {
+    #[must_use]
+    pub const fn new(account: Account, amount: Money, source: TransferInstrument) -> Self {
+        Self {
+            account,
+            amount,
+            source,
+        }
+    }
+
+    #[must_use]
+    pub const fn account(&self) -> &Account {
+        &self.account
+    }
+
+    #[must_use]
+    pub const fn amount(&self) -> Money {
+        self.amount
+    }
+
+    #[must_use]
+    pub const fn source(&self) -> &TransferInstrument {
+        &self.source
+    }
+}
+
+impl fmt::Debug for TransferInPlan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("TransferInPlan([REDACTED])")
+    }
 }
 
 impl TransferOutPlan {
@@ -508,6 +581,63 @@ impl fmt::Debug for CreatedTransfer {
     }
 }
 
+#[derive(Clone, Eq, PartialEq)]
+pub struct CreatedTransferIn {
+    payout_id: TransferPayoutId,
+    status: String,
+    amount: Money,
+    expected_at: OffsetDateTime,
+}
+
+impl CreatedTransferIn {
+    #[must_use]
+    pub const fn new(
+        payout_id: TransferPayoutId,
+        status: String,
+        amount: Money,
+        expected_at: OffsetDateTime,
+    ) -> Self {
+        Self {
+            payout_id,
+            status,
+            amount,
+            expected_at,
+        }
+    }
+
+    #[must_use]
+    pub const fn payout_id(&self) -> &TransferPayoutId {
+        &self.payout_id
+    }
+
+    #[must_use]
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    #[must_use]
+    pub const fn amount(&self) -> Money {
+        self.amount
+    }
+
+    #[must_use]
+    pub const fn expected_at(&self) -> OffsetDateTime {
+        self.expected_at
+    }
+}
+
+impl fmt::Debug for CreatedTransferIn {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CreatedTransferIn")
+            .field("payout_id", &REDACTED)
+            .field("status", &self.status)
+            .field("amount", &self.amount)
+            .field("expected_at", &REDACTED)
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -557,7 +687,7 @@ mod tests {
             Some("Alice".to_owned()),
         );
         let plan = TransferOutPlan::new(
-            account,
+            account.clone(),
             Balance::new(
                 crate::features::wallet::SignedUsdAmount::from_cents(500),
                 crate::features::wallet::SignedUsdAmount::from_cents(0),
@@ -573,8 +703,17 @@ mod tests {
             Money::from_cents(100)?,
             0,
         );
+        let inbound_plan =
+            TransferInPlan::new(account, Money::from_cents(100)?, instrument.clone());
+        let inbound_created = CreatedTransferIn::new(
+            TransferPayoutId::from_str("sensitive-payout-id")?,
+            "pending".to_owned(),
+            Money::from_cents(100)?,
+            OffsetDateTime::UNIX_EPOCH,
+        );
 
-        let rendered = format!("{instrument:?} {plan:?} {created:?}");
+        let rendered =
+            format!("{instrument:?} {plan:?} {created:?} {inbound_plan:?} {inbound_created:?}");
         for secret in [
             "sensitive-bank-id",
             "Sensitive bank name",
@@ -582,6 +721,7 @@ mod tests {
             "1234",
             "Sensitive estimate",
             "sensitive-transfer-id",
+            "sensitive-payout-id",
         ] {
             assert!(!rendered.contains(secret));
         }

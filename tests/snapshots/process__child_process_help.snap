@@ -15,7 +15,7 @@ Commands:
   balance          Show the Venmo wallet balance
   activity         Inspect account activity
   requests         Inspect and manage requests
-  transfer         Inspect transfer eligibility or perform a confirmed standard-bank cash-out
+  transfer         Inspect transfer eligibility or perform confirmed standard-bank transfers
   help             Print this message or the help of the given subcommand(s)
 
 Options:

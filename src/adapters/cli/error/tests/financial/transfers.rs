@@ -4,9 +4,10 @@ use super::super::{api_operation_failure, operation_failure};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::auth::PromptError;
 use crate::features::payments::FinancialValidationError;
+use crate::features::transfers::in_transfer::TransferInError;
 use crate::features::transfers::options::TransferOptionsError;
 use crate::features::transfers::out::TransferOutError;
-use crate::features::transfers::selection::TransferSelectionError;
+use crate::features::transfers::selection::{TransferInSelectionError, TransferSelectionError};
 use crate::shared::{ApiFailureKind, CredentialAccessError};
 
 #[test]
@@ -92,6 +93,24 @@ fn transfer_read_and_guarded_write_variants_have_deliberate_categories() {
         ),
         (
             AppError::from(TransferOutError::Create {
+                source: api_operation_failure(ApiFailureKind::AmbiguousWrite),
+            }),
+            ErrorCategory::AmbiguousWrite,
+        ),
+        (
+            AppError::from(TransferInError::Selection(
+                TransferInSelectionError::NoDefaultSource,
+            )),
+            ErrorCategory::Usage,
+        ),
+        (
+            AppError::from(TransferInError::Selection(
+                TransferInSelectionError::MultipleDefaults,
+            )),
+            ErrorCategory::ApiContract,
+        ),
+        (
+            AppError::from(TransferInError::Create {
                 source: api_operation_failure(ApiFailureKind::AmbiguousWrite),
             }),
             ErrorCategory::AmbiguousWrite,

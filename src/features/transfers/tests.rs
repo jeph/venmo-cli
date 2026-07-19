@@ -37,6 +37,10 @@ enum Call {
         speed: TransferSpeed,
         destination_id: String,
     },
+    CreateIn {
+        amount_cents: u64,
+        source_id: String,
+    },
 }
 
 struct FakeStore {
@@ -107,10 +111,10 @@ impl TransferOptionsApi for FakeApi {
     }
 }
 
-impl TransferCreationApi for FakeApi {
+impl TransferOutCreationApi for FakeApi {
     type Error = SyntheticApiError;
 
-    fn create_transfer<'a>(
+    fn create_transfer_out<'a>(
         &'a self,
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
@@ -130,6 +134,34 @@ impl TransferCreationApi for FakeApi {
                         OffsetDateTime::UNIX_EPOCH,
                         plan.amount(),
                         0,
+                    )
+                })
+                .map_err(|_| SyntheticApiError),
+        )
+    }
+}
+
+impl TransferInCreationApi for FakeApi {
+    type Error = SyntheticApiError;
+
+    fn create_transfer_in<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        plan: &'a TransferInPlan,
+    ) -> impl Future<Output = Result<CreatedTransferIn, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::CreateIn {
+            amount_cents: plan.amount().cents(),
+            source_id: plan.source().id().as_str().to_owned(),
+        });
+        std::future::ready(
+            TransferPayoutId::from_str("payout-1")
+                .map(|id| {
+                    CreatedTransferIn::new(
+                        id,
+                        "pending".to_owned(),
+                        plan.amount(),
+                        OffsetDateTime::UNIX_EPOCH,
                     )
                 })
                 .map_err(|_| SyntheticApiError),
@@ -321,6 +353,145 @@ async fn unsupported_speed_stops_before_credential_or_api_access() -> TestResult
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn standard_in_uses_default_source_without_balance_read_and_writes_once() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let store = FakeStore {
+        transcript: Rc::clone(&transcript),
+        user_id: "123",
+    };
+    let api = FakeApi {
+        transcript: Rc::clone(&transcript),
+        account_user_id: "123",
+        available_cents: 5_000,
+        options: options_with_sources(vec![
+            instrument("backup", false)?,
+            instrument("bank-default", true)?,
+        ]),
+    };
+    let prompt = FakePrompt {
+        transcript: Rc::clone(&transcript),
+        answer: true,
+    };
+
+    let prepared = in_transfer::prepare(&store, &api, Money::from_cents(1_234)?, None).await?;
+    let authorized = in_transfer::authorize(&prompt, prepared, false)?;
+    let result = in_transfer::execute(&api, authorized).await?;
+
+    assert_eq!(result.created().payout_id().as_str(), "payout-1");
+    assert_eq!(result.plan().source().id().as_str(), "bank-default");
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [
+            Call::ReadCredential,
+            Call::CurrentAccount,
+            Call::TransferOptions,
+            Call::PromptAvailability,
+            Call::Confirm {
+                prompt: "Add this money to the Venmo balance from the selected bank?".to_owned(),
+            },
+            Call::CreateIn {
+                amount_cents: 1_234,
+                source_id: "bank-default".to_owned(),
+            },
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn standard_in_rejects_oversized_amount_before_credential_or_api_access() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let store = FakeStore {
+        transcript: Rc::clone(&transcript),
+        user_id: "123",
+    };
+    let api = FakeApi {
+        transcript: Rc::clone(&transcript),
+        account_user_id: "123",
+        available_cents: 5_000,
+        options: options_with_sources(vec![instrument("bank-default", true)?]),
+    };
+
+    let result =
+        in_transfer::prepare(&store, &api, Money::from_cents(i32::MAX as u64 + 1)?, None).await;
+
+    assert!(matches!(
+        result,
+        Err(in_transfer::TransferInError::AmountTooLarge)
+    ));
+    assert!(transcript.borrow().is_empty());
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn standard_in_enforces_current_limits_before_selection_or_write() -> TestResult {
+    for (amount_cents, expected) in [(999, "below"), (100_001, "above")] {
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let store = FakeStore {
+            transcript: Rc::clone(&transcript),
+            user_id: "123",
+        };
+        let api = FakeApi {
+            transcript: Rc::clone(&transcript),
+            account_user_id: "123",
+            available_cents: 5_000,
+            options: options_with_sources(vec![instrument("bank-default", true)?]),
+        };
+
+        let result =
+            in_transfer::prepare(&store, &api, Money::from_cents(amount_cents)?, None).await;
+        let observed = match result {
+            Err(in_transfer::TransferInError::AmountBelowMinimum { .. }) => "below",
+            Err(in_transfer::TransferInError::AmountAboveMaximum { .. }) => "above",
+            Ok(_) | Err(_) => "unexpected",
+        };
+
+        assert_eq!(observed, expected);
+        assert_eq!(
+            transcript.borrow().as_slice(),
+            [
+                Call::ReadCredential,
+                Call::CurrentAccount,
+                Call::TransferOptions,
+            ]
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn standard_in_requires_a_current_minimum_before_preflight() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let store = FakeStore {
+        transcript: Rc::clone(&transcript),
+        user_id: "123",
+    };
+    let api = FakeApi {
+        transcript: Rc::clone(&transcript),
+        account_user_id: "123",
+        available_cents: 5_000,
+        options: options_with_sources(vec![instrument("bank-default", true)?])
+            .with_add_funds_limits(None, None),
+    };
+
+    let result = in_transfer::prepare(&store, &api, Money::from_cents(1_234)?, None).await;
+
+    assert!(matches!(
+        result,
+        Err(in_transfer::TransferInError::MissingAmountLimit)
+    ));
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [
+            Call::ReadCredential,
+            Call::CurrentAccount,
+            Call::TransferOptions,
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn options_read_uses_only_credential_and_options_capabilities() -> TestResult {
     // Setup and immutable initial state.
     let transcript = Rc::new(RefCell::new(Vec::new()));
@@ -407,6 +578,31 @@ fn options_with_destinations(destinations: Vec<TransferInstrument>) -> TransferO
             "Usually within minutes".to_owned(),
         ),
     )
+}
+
+fn options_with_sources(sources: Vec<TransferInstrument>) -> TransferOptions {
+    TransferOptions::new(
+        None,
+        Some(TransferSpeed::Standard),
+        TransferModeOptions::new(
+            sources,
+            Vec::new(),
+            TransferFeeMetadata::default(),
+            "1-3 business days".to_owned(),
+        ),
+        TransferModeOptions::new(
+            Vec::new(),
+            Vec::new(),
+            TransferFeeMetadata::new(
+                Some("25".to_owned()),
+                Some("2500".to_owned()),
+                Some("1.75".to_owned()),
+                true,
+            ),
+            "Usually within minutes".to_owned(),
+        ),
+    )
+    .with_add_funds_limits(Some(1_000), Some(100_000))
 }
 
 #[derive(Clone, Copy, Debug)]

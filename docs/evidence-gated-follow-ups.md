@@ -101,6 +101,21 @@ additionally enforces requested/net/fee arithmetic; empty, status-only, non-201,
 uncertainty remain ambiguous. Retain no live mutation test or raw response, and do not repeat the
 canary merely to broaden evidence.
 
-Settlement completion, confirmed rejection codes, inbound, instant, debit, T1 fee/limit units,
-step-up, cancellation, and expedition remain independent evidence gates. Routine work must not
-probe or mutate production to resolve them.
+Standard bank inbound is implemented from a signer-verified Venmo Android 10.31.1 Retrofit
+contract. The app defines authenticated JSON `POST /v1/funds` with integer-cent `amount`, selected
+`payment_method_id`, exact `funding_request_source: funds-in`, and `instant: false`; its direct
+`data` model contains payout ID, status, integer-cent amount/balance, and expected date. The same
+options response supplies a separately named add-funds single-transaction minimum/maximum, which
+the CLI now parses and enforces before confirmation.
+
+One separately approved $0.01 attempt on 2026-07-18 sent exactly one request and returned ambiguous
+exit code 3. Immediate balance and activity reads found no balance change or matching add-funds
+record, and one delayed activity read remained unchanged. It was not retried. No response body,
+remote status, source identifier, account detail, or credential was retained, so this attempt does
+not establish the current success contract or prove permanent non-mutation. The implementation
+therefore keeps a deliberately narrow provisional HTTP-200/direct-`pending` verifier and treats
+every mismatch as outcome unknown.
+
+Inbound successful-response validation, settlement completion, confirmed rejection codes, instant,
+debit, broader T1 fee semantics, step-up, cancellation, and expedition remain independent evidence
+gates. Routine work must not probe or mutate production to resolve them.

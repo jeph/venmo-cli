@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use super::selection::{self, TransferSelectionError};
 use super::{
-    CreatedTransfer, TransferCreationApi, TransferOptionsApi, TransferOutPlan, TransferSpeed,
+    CreatedTransfer, TransferOptionsApi, TransferOutCreationApi, TransferOutPlan, TransferSpeed,
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
 use crate::features::payments::confirmation::{self, DefaultNoConfirmationError};
@@ -204,11 +204,11 @@ pub(crate) async fn execute<A>(
     authorized: AuthorizedTransferOut,
 ) -> Result<TransferOutResult, TransferOutError>
 where
-    A: TransferCreationApi,
+    A: TransferOutCreationApi,
 {
     let AuthorizedTransferOut(prepared) = authorized;
     let created = api
-        .create_transfer(
+        .create_transfer_out(
             prepared.credential.access_token(),
             prepared.credential.device_id(),
             &prepared.plan,

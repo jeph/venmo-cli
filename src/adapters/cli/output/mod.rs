@@ -17,7 +17,8 @@ pub(super) use requests::{write_request_info, write_requests};
 pub(super) use shared::sanitize_terminal_text;
 pub(super) use timestamp::TimestampFormatter;
 pub(super) use transfers::{
-    write_transfer_options, write_transfer_out_preflight, write_transfer_out_result,
+    write_transfer_in_preflight, write_transfer_in_result, write_transfer_options,
+    write_transfer_out_preflight, write_transfer_out_result,
 };
 pub(super) use wallet::{write_balance, write_payment_methods};
 pub(super) use writes::{

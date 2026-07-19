@@ -164,6 +164,22 @@ where
                 )
                 .await
             }
+            TransferOperation::In(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                let timestamps = provider.timestamps();
+                writes::run_transfer_in_with(
+                    args,
+                    &store,
+                    &api,
+                    &prompt,
+                    &timestamps,
+                    stdout,
+                    stderr,
+                    writes::production_financial_interruption,
+                )
+                .await
+            }
         },
         Command::Pay(args) => {
             let (store, api) = provider.credential_store_and_api()?;

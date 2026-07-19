@@ -86,17 +86,39 @@ venmo transfer options
 
 uses the current bearer/device-authenticated `GET /v1/transfers/options` contract. It shows sanitized eligible source/destination rows, including each instrument's estimated completion. It moves no money. Current controlled evidence found account-specific standard bank candidates in both directions but no instant candidates; that is not a universal eligibility claim.
 
-The enabled first write shape is:
+The enabled transfer write shapes are:
 
 ```sh
 venmo transfer out <AMOUNT> [--speed standard] [--yes]
+venmo transfer in <AMOUNT> [--source <SOURCE_ID>] [--yes]
 ```
 
 Standard-out performs current-account validation, checks that available Venmo balance covers the amount, then reads fresh transfer options. Omitting `--speed` defaults to `standard`; explicit `--speed standard` remains valid, and no other speed is supported. It accepts only the standard destination branch and exact `bank` type, requires absent standard fee metadata, rejects duplicate IDs/multiple defaults/ambiguous nondefaults, and chooses the unique default or otherwise sole candidate. Users cannot provide a destination ID or select by response order. Preflight is flushed before a default-No confirmation; `--yes` skips only that confirmation.
 
 The command sends one non-retried `POST /v1/transfers` with identical positive integer-cent `amount` and `final_amount`, the selected destination ID, and `transfer_type: standard`. Success requires HTTP 201 and the controlled-live direct `data` envelope: valid transfer ID/timestamp, exact `pending` status, standard type, exact requested cents, arithmetically consistent net/fee cents, matching dollar amount, and matching destination ID/type/suffix. Output distinguishes requested amount, net amount, and fee. A separately approved one-cent canary on 2026-07-17 returned HTTP 201 with ID/time, pending/standard, exact `$0.01`, numeric requested/net/fee-cent fields, and destination data; exactly one matching pending outgoing activity record had the same transfer ID. Runtime arithmetic and destination equality are additionally enforced fail-closed. This proves accepted/pending submission, not bank settlement.
 
-Every unverified response, non-201 result, interruption, challenge, or output failure is ambiguous: **do not retry** before checking activity and the official app. Inbound, instant, debit-card, manual destination selection, OTP/challenge continuation, cancellation, and expedition remain unavailable. Fee/minimum/maximum units outside the validated standard success fields remain evidence-gated.
+Standard-in validates the current account and fresh transfer options, then uses only exact `bank`
+entries from `standard.eligible_sources`. `--source` accepts the exact instrument ID shown by
+`transfer options`; when omitted, exactly one source must be marked default, with no sole-source or
+response-order fallback. The current add-funds minimum and optional maximum from transfer options
+are enforced before confirmation. The command has no speed option: it submits the statically
+evidenced standard-bank mobile body with integer cents, `funding_request_source: funds-in`, and
+`instant: false` after flushed default-No confirmation.
+
+The inbound write contract comes from a signer-verified Venmo Android 10.31.1 APK. It sends one
+non-retried `POST /v1/funds`; the provisional success verifier requires HTTP 200 direct `data`, a
+valid payout ID and expected timestamp, exact `pending` status, and the exact requested cents. The
+response's reported balance is validated as an integer but not displayed because its semantics are
+not established for standard bank transfers. An owner-approved $0.01 attempt on 2026-07-18 exited
+with ambiguous-write code 3; immediate balance/activity reconciliation and one delayed activity
+read found no balance change or matching add-funds record. It was not retried. This does not prove
+the current success response or settlement contract, so inbound output must not claim that funds
+are available.
+
+Every unverified response, unexpected status, interruption, challenge, or output failure is
+ambiguous: **do not retry** before checking activity and the official app. Instant/debit add-funds,
+manual outbound destination selection, OTP/challenge continuation, cancellation, and expedition
+remain unavailable. Fee semantics outside the validated standard branches remain evidence-gated.
 
 ### Endpoint-native read pagination
 

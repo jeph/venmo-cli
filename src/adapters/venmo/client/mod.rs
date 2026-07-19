@@ -51,7 +51,8 @@ pub(super) const REQUEST_LIST_OPERATION: &str = "pending-request listing";
 pub(super) const USER_LOOKUP_OPERATION: &str = "user lookup";
 pub(super) const USER_SEARCH_OPERATION: &str = "user search";
 pub(super) const TRANSFER_OPTIONS_OPERATION: &str = "transfer options";
-pub(super) const TRANSFER_CREATION_OPERATION: &str = "transfer creation";
+pub(super) const TRANSFER_OUT_CREATION_OPERATION: &str = "outbound transfer creation";
+pub(super) const TRANSFER_IN_CREATION_OPERATION: &str = "inbound transfer creation";
 
 #[cfg(test)]
 mod tests;

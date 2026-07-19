@@ -2,6 +2,7 @@ use std::io::{self, Write};
 
 use tabled::builder::Builder;
 
+use crate::features::transfers::in_transfer::{PreparedTransferIn, TransferInResult};
 use crate::features::transfers::model::{TransferDirection, TransferSpeed};
 use crate::features::transfers::options::TransferOptionsResult;
 use crate::features::transfers::out::{PreparedTransferOut, TransferOutResult};
@@ -135,5 +136,70 @@ pub(crate) fn write_transfer_out_result<W: Write>(
         writer,
         "Destination ID: {}",
         sanitize_terminal_text(result.plan().destination().id().as_str())
+    )
+}
+
+pub(crate) fn write_transfer_in_preflight<W: Write>(
+    writer: &mut W,
+    prepared: &PreparedTransferIn,
+) -> io::Result<()> {
+    let plan = prepared.plan();
+    let source = plan.source();
+    writeln!(writer, "Transfer preflight:")?;
+    writeln!(
+        writer,
+        "  To account: {} (ID {})",
+        sanitize_terminal_text(&plan.account().username().to_string()),
+        plan.account().user_id()
+    )?;
+    writeln!(writer, "  Direction: in")?;
+    writeln!(writer, "  Amount: ${}", plan.amount())?;
+    writeln!(
+        writer,
+        "  Source: {} ({} ending {}, ID {})",
+        sanitize_terminal_text(source.name()),
+        sanitize_terminal_text(source.instrument_type()),
+        sanitize_terminal_text(source.last_four()),
+        sanitize_terminal_text(source.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "  Estimate: {}",
+        sanitize_terminal_text(source.transfer_to_estimate())
+    )?;
+    writeln!(writer, "  Request source: funds-in; instant: false")?;
+    writeln!(
+        writer,
+        "  Warning: this unsupported private add-funds API must never be retried after an uncertain outcome."
+    )
+}
+
+pub(crate) fn write_transfer_in_result<W: Write>(
+    writer: &mut W,
+    result: &TransferInResult,
+    timestamps: &TimestampFormatter,
+) -> io::Result<()> {
+    let expected_at = timestamps.format(result.created().expected_at())?;
+    writeln!(
+        writer,
+        "Payout ID: {}",
+        sanitize_terminal_text(result.created().payout_id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Status: {}",
+        sanitize_terminal_text(result.created().status())
+    )?;
+    writeln!(writer, "Direction: in")?;
+    writeln!(writer, "Requested amount: ${}", result.created().amount())?;
+    writeln!(writer, "Expected completion: {expected_at}")?;
+    writeln!(
+        writer,
+        "Source ID: {}",
+        sanitize_terminal_text(result.plan().source().id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Pending means accepted by Venmo, not settled or available in the balance."
     )
 }
