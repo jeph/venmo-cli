@@ -173,9 +173,10 @@ constraints, not permission to expose or execute financial tools.
 
 Follow the repository's [mutation policy](../CONTRIBUTING.md#mutation-policy). In particular,
 security-sensitive ownership transfer/zeroization, bounded accumulation, duplicate detection,
-writer or stream advancement, and the ordered financial preflight/authorization/single-write path
-may remain visibly imperative. Do not conceal those sequences behind abstractions that weaken
-bounds or make side-effect order harder to review.
+writer or stream advancement, and the ordered validated-details/authorization/interruption/
+single-write/authoritative-verification path may remain visibly imperative. This sequence protects
+both financial and externally visible relationship mutations. Do not conceal it behind
+abstractions that weaken bounds or make side-effect order harder to review.
 
 ## Related documentation
 

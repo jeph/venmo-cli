@@ -1,0 +1,20 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Remove a friend or cancel an outgoing friend request
+
+Usage: remove [OPTIONS] <USERNAME>
+
+Arguments:
+  <USERNAME>
+          Exact username with an optional leading @
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+This command follows Venmo's native relationship semantics: it removes an established friend or cancels an outgoing request. It does not decline incoming requests and never retries automatically. Exit code 3 means the friendship outcome must be verified independently.

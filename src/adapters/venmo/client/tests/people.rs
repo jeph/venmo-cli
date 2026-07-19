@@ -295,3 +295,209 @@ async fn friends_reject_duplicate_or_unexpected_continuation_fields() -> TestRes
     }
     Ok(())
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn friend_add_uses_exact_form_post_and_reconciles_the_expected_relationship() -> TestResult {
+    let add_response = scripted_response(
+        200,
+        br#"{"data":{"user":{"id":"456","username":"alice"}}}"#.to_vec(),
+    )?;
+    let detail_response = scripted_response(
+        200,
+        br#"{"data":{"user":{"id":"456","username":"alice","identity_type":"personal","friend_status":"request_sent_by_you"}}}"#.to_vec(),
+    )?;
+    let (token, device_id) = test_session()?;
+    let target = UserId::from_str("456")?;
+    let (client, transport) = scripted_client([Ok(add_response), Ok(detail_response)])?;
+    let expected = ScriptedObservation::expected(
+        Ok(Some(FriendshipStatus::RequestSent)),
+        vec![
+            authenticated_form_request("/friend-requests", &["friend-requests"], b"user_id=456"),
+            authenticated_read_request("/users/{user-id}", &["users", "456"], &[]),
+        ],
+    );
+
+    let result = client
+        .add_or_accept_friend(&token, &device_id, &target, FriendshipStatus::RequestSent)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |user| user.friendship_status()),
+        &transport,
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn friend_remove_uses_exact_bodyless_delete_and_reconciles_not_friend() -> TestResult {
+    let delete_response = scripted_response(204, Vec::new())?;
+    let detail_response = scripted_response(
+        200,
+        br#"{"data":{"user":{"id":"456","username":"alice","identity_type":"personal","friend_status":"not_friend"}}}"#.to_vec(),
+    )?;
+    let (token, device_id) = test_session()?;
+    let self_id = UserId::from_str("123")?;
+    let target = UserId::from_str("456")?;
+    let (client, transport) = scripted_client([Ok(delete_response), Ok(detail_response)])?;
+    let expected = ScriptedObservation::expected(
+        Ok(Some(FriendshipStatus::NotFriend)),
+        vec![
+            authenticated_request(
+                Method::DELETE,
+                "/users/{self-user-id}/friends/{target-user-id}",
+                &["users", "123", "friends", "456"],
+                &[],
+                None,
+                OperationClass::StateWrite,
+            ),
+            authenticated_read_request("/users/{user-id}", &["users", "456"], &[]),
+        ],
+    );
+
+    let result = client
+        .remove_or_cancel_friend(&token, &device_id, &self_id, &target)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |user| user.friendship_status()),
+        &transport,
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn friend_mutations_treat_unverified_success_as_ambiguous_without_retrying() -> TestResult {
+    for (responses, expected_requests) in [
+        (
+            vec![Ok(scripted_response(200, b"{}".to_vec())?)],
+            vec![authenticated_form_request(
+                "/friend-requests",
+                &["friend-requests"],
+                b"user_id=456",
+            )],
+        ),
+        (
+            vec![
+                Ok(scripted_response(
+                    200,
+                    br#"{"data":{"user":{"id":"456","username":"alice"}}}"#.to_vec(),
+                )?),
+                Ok(scripted_response(
+                    200,
+                    br#"{"data":{"user":{"id":"456","username":"alice","friend_status":"not_friend"}}}"#.to_vec(),
+                )?),
+            ],
+            vec![
+                authenticated_form_request(
+                    "/friend-requests",
+                    &["friend-requests"],
+                    b"user_id=456",
+                ),
+                authenticated_read_request(
+                    "/users/{user-id}",
+                    &["users", "456"],
+                    &[],
+                ),
+            ],
+        ),
+    ] {
+        let (token, device_id) = test_session()?;
+        let target = UserId::from_str("456")?;
+        let (client, transport) = scripted_client(responses)?;
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::state_unknown(FRIEND_ADD_OPERATION)),
+            expected_requests,
+        );
+
+        let result = client
+            .add_or_accept_friend(
+                &token,
+                &device_id,
+                &target,
+                FriendshipStatus::RequestSent,
+            )
+            .await;
+        let observed =
+            ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn friend_add_wire_request_has_form_content_type_and_no_json_body() -> TestResult {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/friend-requests"))
+        .and(header("authorization", "Bearer synthetic-token"))
+        .and(header("device-id", "synthetic-device"))
+        .and(header("content-type", "application/x-www-form-urlencoded"))
+        .and(body_string("user_id=456"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"data":{"user":{"id":"456","username":"alice"}}}"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/users/456"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"data":{"user":{"id":"456","username":"alice","friend_status":"request_sent_by_you"}}}"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let (token, device_id) = test_session()?;
+    let target = UserId::from_str("456")?;
+
+    let user = client
+        .add_or_accept_friend(&token, &device_id, &target, FriendshipStatus::RequestSent)
+        .await?;
+
+    assert_eq!(
+        user.friendship_status(),
+        Some(FriendshipStatus::RequestSent)
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn friend_remove_wire_request_is_exact_bodyless_delete() -> TestResult {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/v1/users/123/friends/456"))
+        .and(header("authorization", "Bearer synthetic-token"))
+        .and(header("device-id", "synthetic-device"))
+        .and(body_string(""))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/users/456"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"data":{"user":{"id":"456","username":"alice","friend_status":"not_friend"}}}"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let (token, device_id) = test_session()?;
+    let self_id = UserId::from_str("123")?;
+    let target = UserId::from_str("456")?;
+
+    let user = client
+        .remove_or_cancel_friend(&token, &device_id, &self_id, &target)
+        .await?;
+
+    assert_eq!(user.friendship_status(), Some(FriendshipStatus::NotFriend));
+    assert_request_count(&server, 2).await;
+    Ok(())
+}

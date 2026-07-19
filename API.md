@@ -87,7 +87,7 @@ All web findings below are **direct observation (static client artifact)** dated
 | **third-party call** | Plaid, Braintree, PayPal, or presigned object URL—not Venmo API. |
 
 ## 3. Complete implemented CLI action inventory
-The CLI has 18 enabled leaf actions. Operation labels resolve to the mobile wire catalog in §5.
+The CLI has 20 enabled leaf actions. Operation labels resolve to the mobile wire catalog in §5.
 Counts begin after local credential loading; failed local gates can stop earlier.
 
 | # | CLI leaf | Calls and maximum orchestration | Classification |
@@ -100,20 +100,22 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 6 | `requests accept <REQUEST_ID> [--yes]` | **A5 → R2 → P2 → W2 → F4** (5). | Financial; exactly one **F4** after default-No confirmation. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
 | 8 | `friends list [--limit N] [--offset N]` | **P3** once. | One page; stored self ID. |
-| 9 | `users search <QUERY> [--limit N] [--offset N]` | **P1** once. | One page. |
-| 10 | `users info <USERNAME>` | 1–4 × **P1** then **P2** (maximum 5). | Shared exact-username resolution followed by detail read. |
-| 11 | `pay methods` | **W1** once. | One read. |
-| 12 | `balance` | **W2** once. | One read. |
-| 13 | `activity list [--limit N] [--before-id TOKEN]` | **AC1** once. | One page; stored self ID. |
-| 14 | `activity info <ACTIVITY_ID>` | **AC2** once. | One detail read. |
-| 15 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
-| 16 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
-| 17 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
-| 18 | `transfer out <AMOUNT> [--speed standard] [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; omitted speed defaults to standard; exactly one **T2** after default-No confirmation. |
+| 9 | `friends add <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P4**, then reconciling **P2** (maximum 8). | Relationship write; sends or accepts according to authoritative state. |
+| 10 | `friends remove <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P5**, then reconciling **P2** (maximum 8). | Relationship write; unfriends or cancels an outgoing request. |
+| 11 | `users search <QUERY> [--limit N] [--offset N]` | **P1** once. | One page. |
+| 12 | `users info <USERNAME>` | 1–4 × **P1** then **P2** (maximum 5). | Shared exact-username resolution followed by detail read. |
+| 13 | `pay methods` | **W1** once. | One read. |
+| 14 | `balance` | **W2** once. | One read. |
+| 15 | `activity list [--limit N] [--before-id TOKEN]` | **AC1** once. | One page; stored self ID. |
+| 16 | `activity info <ACTIVITY_ID>` | **AC2** once. | One detail read. |
+| 17 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
+| 18 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
+| 19 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
+| 20 | `transfer out <AMOUNT> [--speed standard] [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; omitted speed defaults to standard; exactly one **T2** after default-No confirmation. |
 
 Help and version output are also service-free but are not leaf actions. There is no
 implemented generic payment list/detail, outgoing-request cancel/remind, explicit
-funding-source selection, token refresh, friend mutation, payment-method mutation,
+funding-source selection, token refresh, incoming-friend-request decline, payment-method mutation,
 remote token revocation, transfer-in command, instant transfer write, or manual
 transfer-destination selection.
 
@@ -133,7 +135,8 @@ transfer-destination selection.
   User-Agent: Venmo/7.44.0 (iPhone; iOS 13.0; Scale/2.0)
   ```
 
-- A JSON body additionally sends `Content-Type: application/json`.
+- A JSON body additionally sends `Content-Type: application/json`. P4 instead sends exact
+  `application/x-www-form-urlencoded`; P5 sends no body.
 - Query values are URL-encoded. Dynamic path segments must be nonempty, not `.` or
   `..`, contain neither slash nor backslash, and contain no control character.
 - The compatibility User-Agent is code truth; its present server necessity remains
@@ -190,7 +193,10 @@ Unless a token or financial rule below is stricter:
   restrictiveness is `private` > `friends` > `public`.
 
 A supported user has a valid string/integer `id`; optional `username`,
-`display_name`/`displayName`/`name`, `identity_type`, and `is_payable`. Where P2
+`display_name`/`displayName`/`name`, `identity_type`, `is_payable`, and exact
+`friend_status` (`friend`, `not_friend`, `request_received_by_you`, or
+`request_sent_by_you`). Unknown/missing friendship state remains readable as absent evidence but
+cannot authorize P4/P5. Where P2
 recipient detail is authoritative (`pay user`, request creation, and `accept`), the
 counterparty must be nonself, exactly personal, and `is_payable: true`. `Decline`
 does no P2 and does not prove profile type or payability. Identity types are
@@ -265,11 +271,21 @@ required. Existing-credential callers require exact equality with the stored use
 | **P1** | `GET /v1/users?query=<QUERY>&limit=<LIMIT>&offset=<OFFSET>[&type=username]` | `data` array or `data.users`; each item is a user and count ≤ limit. Server pagination is ignored; §7 synthesizes offsets. |
 | **P2** | `GET /v1/users/<USER_ID>` | `data` user or `data.user`; returned ID must exactly equal the path ID. |
 | **P3** | `GET /v1/users/<SELF_USER_ID>/friends?limit=<LIMIT>&offset=<OFFSET>` | `data` user array and optional `pagination.next`; count ≤ limit and any next URL passes §7. |
+| **P4** | `POST /v1/friend-requests`, form body `user_id=<TARGET_USER_ID>` | 2xx JSON must contain exact target `data.user`; then P2 must prove `request_sent_by_you` for send or `friend` for accept. |
+| **P5** | `DELETE /v1/users/<SELF_USER_ID>/friends/<TARGET_USER_ID>`, no body | Any complete 2xx status is provisionally accepted because signer-verified current implementations disagree on response body; then P2 must prove `not_friend`. |
 | **W2** | `GET /v1/account` | Requires direct string fields `data.balance` and `data.balance_on_hold`, each an exact signed USD decimal with ≤2 fractional digits. It never infers external balances. |
 | **AC1** | `GET /v1/stories/target-or-actor/<SELF_USER_ID>?limit=<LIMIT>&social_only=false[&before_id=<TOKEN>]` | `data` story array and optional `pagination.next`; count ≤ limit; every story is one supported class below. |
 | **AC2** | `GET /v1/stories/<ACTIVITY_ID>` | `data` story or `data.story`; top-level story ID must exactly equal the path ID. |
 | **R1** | `GET /v1/payments?action=charge&status=pending,held&limit=<LIMIT>[&before=<TOKEN>]` | `data` records and optional `pagination.next`; every record is exact `charge`, status `pending` or `held`, positive, involves self exactly once, and count ≤ limit. Direction is derived and filtered locally. |
 | **R2** | `GET /v1/payments/<REQUEST_ID>` | `data` record or `data.payment`; exact path ID. Mapper permits `charge`/`pay` and bounded status, but public `requests info` narrows to open `charge`; mutation preflight is stricter below. |
+
+P4/P5 static evidence comes from Android artifacts signed by Venmo certificate SHA-256
+`c77e2631ac0451c086f25f79ae258238afa400961e8d599db78e25eadcdcc947`: 9.26.0 APK
+`b1eaf465d791da85c1f73f84e67ce16f5cc2e9ceb81ea9c41cb199edc6335832`, 10.31.1 APK
+`31e22397a40d99ea0ea39ad3506602b1b6a7d45c98ce1528763425d2b4d9b0d6`, and 26.13.0 base
+APK `0eff4f830aa402da999631bbf7dbbf8c345a0a262b4521ae1f510ebb387ca04c`. Public and
+GitHub searches found only friend-list implementations, not an independent mutation contract.
+Android's client-4 session lineage does not prove authorization for the CLI's client-1 token.
 #### W1 — payment methods
 ```http
 GET /v1/payment-methods
@@ -493,7 +509,25 @@ audience. The CLI renders and flushes authoritative request-decline details, req
 confirmation unless `--yes`, installs interruption protection, then attempts exactly
 one F5. No P2/W1/W2/F1 runs, profile type/payability is unproved, and no money/funding
 field is sent.
-### 6.3 Reads
+### 6.3 Friendship workflows
+**Add:** A5 validates self and shared exact username resolution proves one authoritative,
+nonself personal P2 target. Exact `not_friend` selects send; exact
+`request_received_by_you` selects accept. Existing friend and outgoing-request states fail before
+output or write. The CLI flushes friendship details, requires action-specific default-No
+confirmation unless `--yes`, installs relationship-write interruption protection, and attempts
+exactly one P4.
+
+**Remove:** the same gates select unfriend only for exact `friend` and outgoing-request
+cancellation only for exact `request_sent_by_you`. `not_friend` and incoming requests fail closed;
+remove never silently declines an incoming request. After exactly one P5, P2 must prove
+`not_friend`.
+
+Both operations require post-write authoritative P2 reconciliation. A malformed/mismatched P4
+success, failed reconciliation, wrong target, unexpected final status, interruption, or result
+output failure exits 3 and must not be retried automatically. Static Android evidence establishes
+the request/state contract, but current client-1 authorization has not been live validated.
+
+### 6.4 Reads
 Every public list fetches exactly one page. Full server next URLs are never followed
 or printed. `activity list` and `requests list` do print validated raw continuation
 tokens to stderr; `friends list`, `activity list`, and `activity info` use stored self
@@ -522,8 +556,8 @@ ambiguous. No match at the bound is reported as username not found. One match at
 bound is usable only after P2 returns the same ID and username.
 
 ## 8. No-retry and ambiguous-outcome policy
-F2–F5 and T2 are enabled financial-policy writes. A1/A3 use a parallel but distinct
-authentication issuance ambiguity.
+F2–F5 and T2 are enabled financial-policy writes; P4/P5 are externally visible relationship
+writes. A1/A3 use a parallel but distinct authentication issuance ambiguity.
 
 - Proven pre-send construction/encoding failure or connect-stage DNS/TCP/TLS failure
   is ordinary and nonambiguous.
@@ -539,12 +573,16 @@ authentication issuance ambiguity.
   unknown. The §4.2 first-code precedence still applies.
 - No business-looking error is reinterpreted as success, and no unknown result is
   replayed automatically.
+- For P4/P5, complete non-2xx responses are confirmed failures. Post-transmission transport
+  uncertainty, malformed successful P4 JSON, target mismatch, failed/mismatched P2 reconciliation,
+  interruption, or result-output failure is ambiguous exit 3. P5 accepts any complete 2xx body only
+  provisionally and still requires P2 proof.
 
 After preflight/authorization and installation of interruption protection, a ready
 interrupt wins conservatively and exits 3—including before the write future is first
 polled and in a same-poll tie with a ready result. Failure to install protection is an
 ordinary pre-write internal failure. Financial exit 3 also covers failure to flush a
-successful result to the operator. Usage exits 2, ordinary failure/cancellation 1,
+successful result to the operator; relationship exit 3 has the same result-output boundary. Usage exits 2, ordinary failure/cancellation 1,
 and success 0. Token issuance ambiguity is authentication failure, not financial exit
 3, and is likewise never retried.
 
@@ -563,6 +601,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-14 | F5 | Direct observation / reconciled live validation | Private decline became exact `cancelled`, with no balance/activity movement. Non-private success is accepted by code but is not independently pinned by an exact success fixture or live validation. |
 | 2026-07-16 | T1 | Direct observation / controlled live validation | One bounded read proved current bearer/device auth, direction/speed branches, standard bank candidates in both directions on the observed account, and fee/estimate structure; values/counts were not retained. |
 | 2026-07-17 | T2 standard out | Direct observation / controlled and reconciled live validation + exact synthetic | One approved $0.01 HTTP-201 write returned direct pending standard transfer data; exactly one matching outgoing activity record had the same transfer ID. Exact body, fail-closed selection, strict response proof, and one-write ambiguity are implemented. |
+| 2026-07-19 | P4/P5 friendship mutations | Direct observation of signer-verified Android 9.26.0, 10.31.1, and 26.13.0 + exact synthetic; residual auth gap | Current native route/body/state semantics are consistent across artifacts. No public mutation implementation was found. The CLI's client-1 session has not received a controlled live mutation validation; no canary has run. |
 | Current gap | User-Agent | Existing behavior / residual gap | Literal is known; current necessity/currency is not. |
 
 ## 10. Transfers: enabled options and standard out
@@ -964,6 +1003,7 @@ of §13 rather than duplicated here.
 | Non-private decline | Audience-generic code, common supported-audience validation, and representative response-preservation tests. | An exact friends/public success fixture, independent current live proof, or every accepted envelope alternative being individually pinned. |
 | General mobile payment reads | Pending requests and activity. | `payments list`, settled PaymentId detail, or ActivityId substitution. |
 | Model limits | Existing leading-zero IDs, username matching, nonblank note, read-only role compatibility, 200-record resolution bound. | Normalization, stricter grammar/note limit, exact read-only role set, or global username uniqueness without evidence. |
+| Friendship mutations | Signer-verified current P4/P5 route/body/state semantics, exact synthetic transport/client/orchestration tests, and mandatory P2 reconciliation. | Current client-1 authorization, controlled live success, incoming decline, notification timing, or retry/idempotency. |
 | Transfers | Outbound-only T1 options view; enabled fail-closed T2 standard-bank write; exact HTTP-201 pending response; matching-ID activity reconciliation. Transfer-in is intentionally unsupported. | Settlement completion, confirmed rejection codes, instant/debit cash-out, T1 fee units, step-up, cancellation, or expedition. |
 | Web BFF/GraphQL | Captured-build emitted calls. | Current success, mobile equivalence, full schema, or retry safety. |
 | SSR reads | Consumed props/shapes. | Hidden method/path/document/variables/auth or complete response. |
@@ -985,7 +1025,7 @@ of §13 rather than duplicated here.
    prop, an API from a route string, or idempotency from a UUID.
 6. Preserve exact enum/field casing and per-flow opaque-ID roles. Never cross-use an
    ID because two UIs call it a funding instrument.
-7. Keep financial writes one-shot: never replay after an ambiguous transmission. A
+7. Keep financial and relationship writes one-shot: never replay after an ambiguous transmission. A
    second pass is allowed only when an exact protocol proves a complete challenge
    response and binds the continuation's method, correlation value, original context,
    and verification metadata. A new financial operation also requires strict response

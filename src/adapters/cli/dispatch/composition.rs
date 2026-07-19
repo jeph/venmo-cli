@@ -6,7 +6,7 @@ use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
 
 use super::super::args::{
-    Command, PayOperation, RequestsOperation, TransferOperation, UsersOperation,
+    Command, FriendsOperation, PayOperation, RequestsOperation, TransferOperation, UsersOperation,
 };
 use super::super::error::AppError;
 use super::super::output::TimestampFormatter;
@@ -72,10 +72,40 @@ where
                 reads::run_user_info(args, &store, &api, stdout).await
             }
         },
-        Command::Friends(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            reads::run_friends(args, &store, &api, stdout, stderr).await
-        }
+        Command::Friends(args) => match args.operation {
+            FriendsOperation::List(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                reads::run_friends_list(args, &store, &api, stdout, stderr).await
+            }
+            FriendsOperation::Add(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                writes::run_friend_add_with(
+                    args,
+                    &store,
+                    &api,
+                    &prompt,
+                    stdout,
+                    stderr,
+                    writes::production_state_interruption,
+                )
+                .await
+            }
+            FriendsOperation::Remove(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                writes::run_friend_remove_with(
+                    args,
+                    &store,
+                    &api,
+                    &prompt,
+                    stdout,
+                    stderr,
+                    writes::production_state_interruption,
+                )
+                .await
+            }
+        },
         Command::Balance => {
             let (store, api) = provider.credential_store_and_api()?;
             reads::run_balance(&store, &api, stdout).await

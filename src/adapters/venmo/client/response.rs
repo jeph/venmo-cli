@@ -68,6 +68,55 @@ pub(super) fn require_financial_success_json(
     Ok(value)
 }
 
+pub(super) fn require_state_write_success_json(
+    operation: &'static str,
+    response: HttpResponse,
+) -> Result<Value, VenmoApiError> {
+    let status = response.status();
+    if !status.is_success() {
+        let value = parse_response_value(operation, status, response.body())?;
+        require_success_parsed_with_authentication(operation, status, value, true)?;
+        return Err(VenmoApiError::StateMutationOutcomeUnknown {
+            operation,
+            problem: "an unsuccessful response was accepted unexpectedly",
+        });
+    }
+    if response.body().is_empty() {
+        return Err(VenmoApiError::StateMutationOutcomeUnknown {
+            operation,
+            problem: "the successful response body was empty",
+        });
+    }
+    let value = serde_json::from_slice::<Value>(response.body()).map_err(|_| {
+        VenmoApiError::StateMutationOutcomeUnknown {
+            operation,
+            problem: "the successful response body was not valid JSON",
+        }
+    })?;
+    if extract_error_code(&value)
+        .as_deref()
+        .is_some_and(is_failure_error_code)
+    {
+        return Err(VenmoApiError::StateMutationOutcomeUnknown {
+            operation,
+            problem: "the successful HTTP response contained an API error",
+        });
+    }
+    Ok(value)
+}
+
+pub(super) fn require_state_write_success(
+    operation: &'static str,
+    response: HttpResponse,
+) -> Result<(), VenmoApiError> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let value = parse_response_value(operation, status, response.body())?;
+    require_success_parsed_with_authentication(operation, status, value, true).map(|_| ())
+}
+
 fn is_confirmed_financial_rejection(operation: &str, status: u16, code: &str) -> bool {
     operation == PAYMENT_CREATION_OPERATION && status == 400 && matches!(code, "1396" | "13006")
 }

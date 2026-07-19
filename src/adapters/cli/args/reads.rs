@@ -7,29 +7,6 @@ use crate::shared::{Limit, Offset, Username};
 use super::parsers::RedactedActivityBeforeIdParser;
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct FriendsArgs {
-    #[command(subcommand)]
-    pub operation: FriendsOperation,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
-pub enum FriendsOperation {
-    /// List friends of the active account.
-    List(FriendsListArgs),
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
-pub struct FriendsListArgs {
-    /// Server request page size.
-    #[arg(long, value_name = "N", default_value = "10")]
-    pub limit: Limit,
-
-    /// Zero-based friend-list offset.
-    #[arg(long, value_name = "N", default_value = "0")]
-    pub offset: Offset,
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
 pub struct UsersArgs {
     #[command(subcommand)]
     pub operation: UsersOperation,

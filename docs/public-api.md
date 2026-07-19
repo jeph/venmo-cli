@@ -16,7 +16,8 @@ and black-box tests.
 
 - Root: `Cli`, `Command`.
 - Authentication: `AuthArgs`, `AuthOperation`.
-- Friends: `FriendsArgs`, `FriendsOperation`, `FriendsListArgs`.
+- Friends: `FriendsArgs`, `FriendsOperation`, `FriendsListArgs`, `FriendAddArgs`,
+  `FriendRemoveArgs`.
 - Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`, `UserInfoArgs`.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
@@ -59,7 +60,8 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 
 ### People
 
-- `User`, `UserProfileKind`, `UserSearchQuery`, `UserSearchQueryParseError`.
+- `User`, `UserProfileKind`, `FriendshipStatus`, `UserSearchQuery`,
+  `UserSearchQueryParseError`.
 - `RecipientInput`, `RecipientParseError`.
 - `FriendsResult`, `UserSearchResult`, `UserInfoResult`.
 

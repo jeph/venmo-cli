@@ -12,7 +12,10 @@ mod writes;
 pub(super) use activity::{write_activity_info, write_activity_list};
 pub(super) use auth::{write_auth_status, write_logout_report, write_password_login_report};
 pub use error::write_error;
-pub(super) use people::{write_friends, write_user_info, write_user_search};
+pub(super) use people::{
+    write_friends, write_friendship_details, write_friendship_result, write_user_info,
+    write_user_search,
+};
 pub(super) use requests::{write_request_info, write_requests};
 pub(super) use shared::sanitize_terminal_text;
 pub(super) use timestamp::TimestampFormatter;

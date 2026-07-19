@@ -215,6 +215,10 @@ fn classifies_every_post_send_failure_exactly_by_operation() {
             ),
             TransportError::FinancialWriteOutcomeUnknown { cause }
         );
+        assert_eq!(
+            classify_post_send_failure(OperationClass::StateWrite, failure, TEST_RESPONSE_LIMIT,),
+            TransportError::StateWriteOutcomeUnknown { cause }
+        );
     }
 }
 

@@ -116,6 +116,7 @@ pub(in crate::adapters::venmo) struct ScriptedRequest {
     path_segments: Vec<String>,
     query: Vec<(String, String)>,
     json_body: Option<ScriptedJsonBody>,
+    form_body: Option<ScriptedJsonBody>,
     operation: OperationClass,
     response_capture: ResponseCapture,
 }
@@ -138,6 +139,9 @@ impl ScriptedRequest {
                 .collect(),
             json_body: request
                 .json_body
+                .map(|body| ScriptedJsonBody { bytes: body.bytes }),
+            form_body: request
+                .form_body
                 .map(|body| ScriptedJsonBody { bytes: body.bytes }),
             operation: request.operation,
             response_capture: request.response_capture,
@@ -171,8 +175,40 @@ impl ScriptedRequest {
             json_body: json_body.map(|bytes| ScriptedJsonBody {
                 bytes: Zeroizing::new(bytes.to_vec()),
             }),
+            form_body: None,
             operation,
             response_capture,
+        }
+    }
+
+    #[must_use]
+    pub(in crate::adapters::venmo) fn for_test_form(
+        credentials: ScriptedCredentials,
+        method: Method,
+        route_template: &'static str,
+        path_segments: &[&str],
+        query: &[(&str, &str)],
+        form_body: &[u8],
+        operation: OperationClass,
+    ) -> Self {
+        Self {
+            credentials,
+            method,
+            route_template,
+            path_segments: path_segments
+                .iter()
+                .map(|segment| (*segment).to_owned())
+                .collect(),
+            query: query
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+            json_body: None,
+            form_body: Some(ScriptedJsonBody {
+                bytes: Zeroizing::new(form_body.to_vec()),
+            }),
+            operation,
+            response_capture: ResponseCapture::None,
         }
     }
 }
@@ -192,6 +228,7 @@ impl fmt::Debug for ScriptedRequest {
             .field("path_segment_count", &self.path_segments.len())
             .field("query_fields", &query_fields)
             .field("json_body", &self.json_body)
+            .field("form_body", &self.form_body)
             .field("operation", &self.operation)
             .field("response_capture", &self.response_capture)
             .finish()

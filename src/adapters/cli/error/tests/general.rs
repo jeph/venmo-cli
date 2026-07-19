@@ -7,6 +7,7 @@ use crate::features::auth::{AuthStatusError, LoginError, PromptError};
 use crate::features::payments::PeerPreflightError;
 use crate::features::payments::pay::PayError;
 use crate::features::people::friends::FriendsError;
+use crate::features::people::friendship::FriendshipMutationError;
 use crate::features::people::info::UserInfoError;
 use crate::features::people::users::UserSearchError;
 use crate::features::requests::RequestMutationPreflightError;
@@ -26,7 +27,9 @@ enum AppErrorVariant {
     LoggingInitialization,
     RuntimeInitialization,
     SignalInitialization,
+    StateSignalInitialization,
     FinancialWriteInterruptedUnknown,
+    StateWriteInterruptedUnknown,
     ApiInitialization,
     AuthLogin,
     AuthStatus,
@@ -41,6 +44,7 @@ enum AppErrorVariant {
     UserSearch,
     UserInfo,
     Friends,
+    FriendshipMutation,
     Balance,
     Activity,
     Requests,
@@ -49,6 +53,7 @@ enum AppErrorVariant {
     TransferOut,
     CommandOutput,
     FinancialResultOutput,
+    StateMutationResultOutput,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -70,7 +75,11 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         AppError::SignalInitialization {
             source: io::Error::other("synthetic signal failure"),
         },
+        AppError::StateSignalInitialization {
+            source: io::Error::other("synthetic state signal failure"),
+        },
         AppError::FinancialWriteInterruptedUnknown,
+        AppError::StateWriteInterruptedUnknown,
         AppError::ApiInitialization {
             source: TransportBuildError::ClientInitialization,
         },
@@ -105,6 +114,7 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         AppError::from(FriendsError::ResponseContract {
             problem: "synthetic response failure",
         }),
+        AppError::from(FriendshipMutationError::MissingFriendshipStatus),
         AppError::from(BalanceError::Credential(CredentialAccessError::Missing)),
         AppError::from(ActivityError::ResponseContract {
             problem: "synthetic response failure",
@@ -123,6 +133,9 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         AppError::FinancialResultOutput {
             source: io::Error::other("synthetic financial output failure"),
         },
+        AppError::StateMutationResultOutput {
+            source: io::Error::other("synthetic state output failure"),
+        },
     ];
     let expected = [
         classification(
@@ -138,7 +151,15 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
             ErrorCategory::Internal,
         ),
         classification(
+            AppErrorVariant::StateSignalInitialization,
+            ErrorCategory::Internal,
+        ),
+        classification(
             AppErrorVariant::FinancialWriteInterruptedUnknown,
+            ErrorCategory::AmbiguousWrite,
+        ),
+        classification(
+            AppErrorVariant::StateWriteInterruptedUnknown,
             ErrorCategory::AmbiguousWrite,
         ),
         classification(AppErrorVariant::ApiInitialization, ErrorCategory::Internal),
@@ -158,6 +179,10 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         classification(AppErrorVariant::UserSearch, ErrorCategory::Internal),
         classification(AppErrorVariant::UserInfo, ErrorCategory::ApiContract),
         classification(AppErrorVariant::Friends, ErrorCategory::ApiContract),
+        classification(
+            AppErrorVariant::FriendshipMutation,
+            ErrorCategory::ApiContract,
+        ),
         classification(AppErrorVariant::Balance, ErrorCategory::Credential),
         classification(AppErrorVariant::Activity, ErrorCategory::ApiContract),
         classification(AppErrorVariant::Requests, ErrorCategory::ApiContract),
@@ -167,6 +192,10 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         classification(AppErrorVariant::CommandOutput, ErrorCategory::Internal),
         classification(
             AppErrorVariant::FinancialResultOutput,
+            ErrorCategory::AmbiguousWrite,
+        ),
+        classification(
+            AppErrorVariant::StateMutationResultOutput,
             ErrorCategory::AmbiguousWrite,
         ),
     ];
@@ -193,9 +222,11 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::LoggingInitialization { .. } => AppErrorVariant::LoggingInitialization,
         AppError::RuntimeInitialization { .. } => AppErrorVariant::RuntimeInitialization,
         AppError::SignalInitialization { .. } => AppErrorVariant::SignalInitialization,
+        AppError::StateSignalInitialization { .. } => AppErrorVariant::StateSignalInitialization,
         AppError::FinancialWriteInterruptedUnknown => {
             AppErrorVariant::FinancialWriteInterruptedUnknown
         }
+        AppError::StateWriteInterruptedUnknown => AppErrorVariant::StateWriteInterruptedUnknown,
         AppError::ApiInitialization { .. } => AppErrorVariant::ApiInitialization,
         AppError::AuthLogin { .. } => AppErrorVariant::AuthLogin,
         AppError::AuthStatus { .. } => AppErrorVariant::AuthStatus,
@@ -210,6 +241,7 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::UserSearch { .. } => AppErrorVariant::UserSearch,
         AppError::UserInfo { .. } => AppErrorVariant::UserInfo,
         AppError::Friends { .. } => AppErrorVariant::Friends,
+        AppError::FriendshipMutation { .. } => AppErrorVariant::FriendshipMutation,
         AppError::Balance { .. } => AppErrorVariant::Balance,
         AppError::Activity { .. } => AppErrorVariant::Activity,
         AppError::Requests { .. } => AppErrorVariant::Requests,
@@ -218,6 +250,7 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::TransferOut { .. } => AppErrorVariant::TransferOut,
         AppError::CommandOutput { .. } => AppErrorVariant::CommandOutput,
         AppError::FinancialResultOutput { .. } => AppErrorVariant::FinancialResultOutput,
+        AppError::StateMutationResultOutput { .. } => AppErrorVariant::StateMutationResultOutput,
     }
 }
 

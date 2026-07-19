@@ -70,7 +70,8 @@ async fn user_info_handler_uses_exact_username_resolution_and_writes_sanitized_s
         Some(Username::from_bare("alice")?),
         Some("Alice\nExample".to_owned()),
     )
-    .with_financial_attributes(UserProfileKind::Personal, true);
+    .with_financial_attributes(UserProfileKind::Personal, true)
+    .with_friendship_status(FriendshipStatus::RequestSent);
 
     // Immutable initial script/state.
     let transcript = Rc::new(RefCell::new(Vec::new()));
@@ -146,7 +147,8 @@ async fn user_info_normalizes_optional_at_and_uses_shared_authoritative_lookup()
             Some(Username::from_bare("alice")?),
             Some("Alice\nExample".to_owned()),
         )
-        .with_financial_attributes(UserProfileKind::Personal, true);
+        .with_financial_attributes(UserProfileKind::Personal, true)
+        .with_friendship_status(FriendshipStatus::RequestSent);
         let transcript = Rc::new(RefCell::new(Vec::new()));
         let reader = FakeReader::standard(Rc::clone(&transcript));
         let api = UserInfoFake {
@@ -232,7 +234,7 @@ async fn friends_handler_routes_exact_page_and_continuation_streams_without_flus
     );
 
     // Execute once.
-    let result = run_friends(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let result = run_friends_list(args, &reader, &api, &mut stdout, &mut stderr).await;
     let observed = observation(
         result,
         &transcript,
@@ -301,7 +303,7 @@ async fn representative_record_output_failure_stops_continuation_without_an_extr
     );
 
     // Execute once.
-    let result = run_friends(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let result = run_friends_list(args, &reader, &api, &mut stdout, &mut stderr).await;
     let observed = observation(
         result,
         &transcript,

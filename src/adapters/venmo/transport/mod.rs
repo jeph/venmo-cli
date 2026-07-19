@@ -14,7 +14,7 @@ pub(super) use client::VenmoHttpTransport;
 #[cfg(test)]
 pub(super) use error::AmbiguousWriteCause;
 pub(crate) use error::{TransportBuildError, TransportError};
-pub(super) use request::{ApiSession, HttpRequest, JsonBody};
+pub(super) use request::{ApiSession, FormBody, HttpRequest, JsonBody};
 #[cfg(test)]
 pub(super) use request::{OperationClass, ResponseCapture};
 pub(super) use response::HttpResponse;
@@ -38,6 +38,8 @@ const OTP_SECRET_HEADER: HeaderName = HeaderName::from_static("venmo-otp-secret"
 const MAX_OTP_SECRET_HEADER_BYTES: usize = 4096;
 const JSON_ACCEPT: HeaderValue = HeaderValue::from_static("application/json");
 const JSON_CONTENT_TYPE: HeaderValue = HeaderValue::from_static("application/json");
+const FORM_CONTENT_TYPE: HeaderValue =
+    HeaderValue::from_static("application/x-www-form-urlencoded");
 
 pub(super) trait ApiTransport: Sync {
     fn execute<'a>(

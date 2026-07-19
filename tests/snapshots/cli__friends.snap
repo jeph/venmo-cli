@@ -2,13 +2,15 @@
 source: tests/cli.rs
 expression: help
 ---
-Inspect friends of the active account
+Inspect and manage friends of the active account
 
 Usage: friends <COMMAND>
 
 Commands:
-  list  List friends of the active account
-  help  Print this message or the help of the given subcommand(s)
+  list    List friends of the active account
+  add     Send or accept a friend request according to the current relationship
+  remove  Remove a friend or cancel an outgoing friend request
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help

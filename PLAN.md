@@ -115,6 +115,8 @@ venmo requests accept <REQUEST_ID> [--yes]
 venmo requests decline <REQUEST_ID> [--yes]
 
 venmo friends list [--limit <N>] [--offset <N>]
+venmo friends add <USERNAME> [--yes]
+venmo friends remove <USERNAME> [--yes]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
 venmo users info <USERNAME>
 venmo pay methods
@@ -150,7 +152,7 @@ Proposed stable exit codes:
 | `0` | Success |
 | `1` | Operational, credential, validation, API, or user-cancellation failure |
 | `2` | CLI usage/precondition error, including argument parsing or a required noninteractive `--yes` |
-| `3` | Financial write outcome is unknown and must be verified |
+| `3` | Financial or relationship write outcome is unknown and must be verified |
 | `130` | Interrupted before a write became ambiguous |
 
 ### 3.2 Authentication
@@ -310,6 +312,34 @@ Confirmation defaults to **No**. No, cancellation, prompt failure, or non-intera
 - If the trusted next link has another page, writes only its validated copyable `Next offset: <N>` value to stderr after record output succeeds.
 - Treats the invocation as one page rather than claiming that it is the complete friend list.
 
+#### `venmo friends add <USERNAME> [--yes]`
+
+- Uses shared bounded exact-username search followed by authoritative detail-by-ID; rejects self,
+  non-personal profiles, and missing or unknown `friend_status` evidence.
+- Follows current native semantics: exact `not_friend` sends a request and exact
+  `request_received_by_you` accepts it. Exact `friend` and `request_sent_by_you` fail before any
+  write.
+- Flushes exact action details and uses an action-specific default-No confirmation. `--yes` skips
+  only confirmation.
+- Sends exactly one form-urlencoded `POST /v1/friend-requests` with `user_id=<target ID>`, never
+  retries, and requires both the signer-evidenced response target and authoritative user-detail
+  reconciliation to the expected final status.
+
+#### `venmo friends remove <USERNAME> [--yes]`
+
+- Exact `friend` selects unfriend; exact `request_sent_by_you` selects outgoing-request
+  cancellation. `not_friend` fails, and an incoming request is rejected rather than silently
+  declined through the separate native endpoint.
+- Uses the same details, default-No/`--yes`, interrupt-protection, one-write, and no-retry policy.
+- Sends exactly one bodyless `DELETE /v1/users/{self}/friends/{target}` and requires an
+  authoritative detail read proving exact `not_friend` before reporting success.
+
+For either command, post-transmission transport uncertainty, malformed or mismatched success,
+failed reconciliation, interruption, or result-output failure is exit `3`. Signer-verified Android
+9.26.0, 10.31.1, and 26.13.0 consistently establish the routes and state matrix, but those apps use
+OAuth client 4 while the CLI uses client 1. Synthetic implementation does not claim live client-1
+authorization; no controlled friendship canary has run.
+
 #### `venmo users search <QUERY> [--limit <N>] [--offset <N>]`
 
 - Searches for users who may not be friends.
@@ -331,6 +361,8 @@ Confirmation defaults to **No**. No, cancellation, prompt failure, or non-intera
 - Uses the shared bounded exact-user resolver: case-insensitive exact search, ambiguity rejection,
   then authoritative detail-by-ID verification of both immutable ID and username.
 - Shares this resolution implementation and input grammar with `pay user` and `request`.
+- Displays the exact supported friendship state when the authoritative response provides one, so
+  relationship state can be inspected without invoking a mutation.
 
 All command-level username resolution is shared and fail-closed around the live-verified mobile behavior:
 
@@ -1331,7 +1363,9 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Every command and subcommand.
 - Required recipient, amount, and note.
 - Grouped `requests create`/`accept`/`decline`, rejection of the removed top-level forms, and the valid `accept` or `@accept` recipient after `requests create`.
-- `--from` rejected by `pay user` and every other command; `--yes` accepted by `pay user`, `requests accept`, and `requests decline` and rejected by `pay methods` and `requests create`.
+- `--from` rejected by `pay user` and every other command; `--yes` accepted by `pay user`,
+  `requests accept`, `requests decline`, `friends add`, and `friends remove`, and rejected by
+  `pay methods`, `friends list`, and `requests create`.
 - `--dry-run` rejected by every command.
 - Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported funding arguments.
 - Absence of compatibility aliases for the removed top-level `request`, `accept`, and `decline` forms.
@@ -1357,6 +1391,14 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Corrupt credentials can be replaced and deleted.
 - Auth status identifies the active account.
 - Friends/search output exposes copyable recipient identifiers.
+- Friendship mutation preparation applies the complete native state matrix, fails closed on
+  self/non-personal/missing or unknown relationship evidence, and selects exactly send, accept,
+  unfriend, or outgoing-request cancellation.
+- Friendship details precede action-specific default-No confirmation; `--yes` skips only the
+  prompt. Cancellation, noninteractive rejection, details-output failure, and preparation failure
+  consume no mutation response.
+- Each authorized friendship operation consumes exactly one mutation response, never retries, and
+  requires the exact target plus expected authoritative reconciled relationship before success.
 - Every public paginated feature flow makes exactly one source request, uses `--limit` as its page size, validates and buffers the page before output, preserves source continuation after local request-direction filtering, and rejects oversized/conflicting/no-progress pages.
 - The separate internal exact-recipient traversal remains limited to four 50-record pages/200 unique users and accepts no public continuation. Exhaustion is required for normal not-found; one exact match found at the bound still requires matching authoritative detail-by-ID before use.
 - Balance does not infer unsupported values.
@@ -1392,10 +1434,16 @@ For every verified operation, test:
 - Control characters in remote strings.
 - Connect/read/total timeouts.
 - Read retry count and `Retry-After` bounds.
-- Zero retries for payment creation, request creation, request acceptance, and request decline.
+- Zero retries for payment creation, request creation, request acceptance, request decline, friend
+  add/accept, and friend remove/cancel.
 - Ambiguous write classification.
+- Exact friendship form POST and bodyless DELETE contracts, both signer-evidenced successful POST
+  envelopes, permissive successful DELETE body handling followed by mandatory P2 reconciliation,
+  and every post-transmission state-write failure class.
 
-Friends, balance, activity, activity detail, pending requests, request detail, request acceptance, and request decline require dedicated sanitized fixtures before their commands are considered implemented.
+Friends list/mutations, balance, activity, activity detail, pending requests, request detail,
+request acceptance, and request decline require dedicated sanitized fixtures before their commands
+are considered implemented.
 
 ### 13.5 Native and packaged tests
 
@@ -1407,7 +1455,7 @@ Friends, balance, activity, activity detail, pending requests, request detail, r
 - Release archive contents and execution after unpacking.
 - Isolated second-executable Keychain/Secret Service smoke tests using a randomized test-only service/account; never production `venmo-cli` / `default` credentials during automated validation.
 - Packaged `venmo-mcp` initialize and `tools/list` smoke tests with no keychain or network access.
-- No live financial writes in automated validation.
+- No live financial or relationship writes in automated validation.
 
 ### 13.6 Controlled live-mutation protocol
 
@@ -1427,6 +1475,13 @@ Automated tests use fakes and mock HTTP servers; their synthetic amounts are not
 - After each mutation, verify the counterparty, amount, request/payment ID, status, audience, and funding result through the CLI reads and official Venmo application before continuing.
 - If any result is ambiguous, stop immediately. Do not retry or begin another mutation until the prior outcome is reconciled independently.
 - Never upload or commit tokens, device IDs, user IDs, notes, payment/request IDs, raw responses, screenshots containing account data, or live-test logs.
+
+A friendship canary is independently gated and does not inherit approval for a financial test. It
+requires a consenting target initially proven `not_friend`, one explicitly approved `friends add`,
+reconciliation to `request_sent_by_you` in authoritative state and the official app, then separate
+approval for one `friends remove` to revoke that outgoing request and reconciliation back to
+`not_friend`. The target may receive a notification. Never remove an established friendship for
+testing, never use an incoming request as a decline probe, and never retry an ambiguous mutation.
 - Close the dedicated browser session when testing is complete unless the prompter/project owner explicitly asks to keep that local session open; never save or commit its cookies, local storage, or authentication state.
 
 The literal test username in this protocol is the only approved personal identifier in repository documentation. It does not authorize committing any other account data or including live data in fixtures.
@@ -1639,7 +1694,7 @@ Exit criteria:
 - Pending-request output is based on complete verified records and prints IDs accepted by the planned mutation.
 - Activity and request pagination obeys the one-page endpoint-native limit, ordering, local-filtering, and continuation policy in Section 10.1.
 
-### Phase 6: Pay, request creation, request acceptance, and request decline
+### Phase 6: Guarded financial and relationship writes
 
 Deliverables:
 
@@ -1648,6 +1703,8 @@ Deliverables:
 - Authoritative incoming-request lookup and state validation.
 - Complete details and default-No confirmation rendering for `pay user`, request acceptance, and request decline; no prompt for request creation.
 - One-write execution, stale-state handling, and ambiguous-outcome handling.
+- Native-state `friends add`/`friends remove`, exact P4/P5 transport, and mandatory P2
+  reconciliation with the client-1 authorization gap documented.
 
 Exit criteria:
 
@@ -1658,6 +1715,9 @@ Exit criteria:
 - No write is automatically retried.
 - Acceptance settles the identified pending request and cannot silently become an unrelated payment.
 - Decline terminally refuses the identified pending request and cannot silently become outgoing cancellation or local dismissal.
+- Friendship add/remove selects only the four signer-evidenced native transitions, uses
+  action-specific default-No confirmation, never treats remove as incoming decline, and never
+  reports success without authoritative final-state proof.
 - No multi-recipient, split, or `charge` surface exists.
 
 ### Phase 7: Documentation and release engineering
@@ -1837,6 +1897,9 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 12. Whether future evidence justifies any independently gated instant, debit, transfer step-up,
     cancellation, or expedition command. Transfer-in is intentionally out of scope; the
     standard-bank cash-out pending-submission scope is finalized as implemented.
+13. Whether the owner can provide a consenting nonfriend for one separately approved add/revoke
+    canary proving current client-1 authorization. Until then, friendship mutations remain
+    signer-evidenced and synthetically verified but not live validated.
 
 ## 21. Immediate next steps
 
@@ -1854,3 +1917,6 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
     pending data and matched exactly one outgoing activity record by transfer ID. Do not repeat the
     canary speculatively; preserve strict response proof, one-write/no-retry handling, and the
     independently gated status of every other transfer variant.
+12. Keep friendship mutation validation service-free unless the owner separately approves the
+    consenting-target add/revoke protocol. Never use an established friendship or infer permission
+    from the implementation request alone.

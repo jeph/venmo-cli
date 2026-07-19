@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 mod auth;
+mod friends;
 mod parsers;
 mod reads;
 mod requests;
@@ -8,9 +9,12 @@ mod transfers;
 mod writes;
 
 pub use auth::{AuthArgs, AuthOperation};
+pub use friends::{
+    FriendAddArgs, FriendRemoveArgs, FriendsArgs, FriendsListArgs, FriendsOperation,
+};
 pub use reads::{
-    ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, FriendsArgs,
-    FriendsListArgs, FriendsOperation, UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
+    ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, UserInfoArgs,
+    UserSearchArgs, UsersArgs, UsersOperation,
 };
 pub use requests::{
     AcceptArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs,
@@ -44,7 +48,7 @@ pub enum Command {
     /// Pay users or inspect payment methods.
     Pay(PayArgs),
 
-    /// Inspect friends of the active account.
+    /// Inspect and manage friends of the active account.
     Friends(FriendsArgs),
 
     /// Find Venmo users.

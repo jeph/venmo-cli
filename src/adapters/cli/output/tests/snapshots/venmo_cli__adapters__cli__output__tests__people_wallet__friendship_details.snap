@@ -1,0 +1,10 @@
+---
+source: src/adapters/cli/output/tests/people_wallet.rs
+expression: details
+---
+Friendship details:
+  From account: @owner (ID 1000)
+  Target: @alice (ID 456)
+  Action: send friend request
+  Current relationship: not friend
+  Automatic retries: disabled

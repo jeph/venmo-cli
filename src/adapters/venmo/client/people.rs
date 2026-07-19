@@ -1,18 +1,23 @@
 use crate::features::people::{
-    FriendsApi, FriendsPage, FriendsPageRequest, User, UserLookupApi, UserSearchApi,
-    UserSearchPage, UserSearchPageRequest, UserSearchQuery,
+    FriendsApi, FriendsPage, FriendsPageRequest, FriendshipMutationApi, FriendshipStatus, User,
+    UserLookupApi, UserSearchApi, UserSearchPage, UserSearchPageRequest, UserSearchQuery,
 };
 use crate::shared::{AccessToken, DeviceId, Limit, Offset, UserId};
 use std::future::Future;
 
-use super::super::dto::{FriendsEnvelope, UserEnvelope, UsersEnvelope};
-use super::super::transport::{ApiSession, ApiTransport, HttpRequest};
+use super::super::dto::{FriendMutationEnvelope, FriendsEnvelope, UserEnvelope, UsersEnvelope};
+use super::super::transport::{ApiSession, ApiTransport, FormBody, HttpRequest};
 use super::error::VenmoApiError;
-use super::response::decode_success;
+use super::response::{
+    decode_success, require_state_write_success, require_state_write_success_json,
+};
 use super::support::{
     map_user, map_users, require_query_value, validate_page_count, validate_query_keys,
 };
-use super::{FRIENDS_OPERATION, USER_LOOKUP_OPERATION, USER_SEARCH_OPERATION, VenmoApiClient};
+use super::{
+    FRIEND_ADD_OPERATION, FRIEND_REMOVE_OPERATION, FRIENDS_OPERATION, USER_LOOKUP_OPERATION,
+    USER_SEARCH_OPERATION, VenmoApiClient,
+};
 
 impl<T: ApiTransport> VenmoApiClient<T> {
     pub(super) async fn fetch_friends_page(
@@ -165,6 +170,112 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         }
         Ok(user)
     }
+
+    async fn add_or_accept_friend_verified(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        target_user_id: &UserId,
+        expected_status: FriendshipStatus,
+    ) -> Result<User, VenmoApiError> {
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::state_form_post(
+                    "/friend-requests",
+                    &["friend-requests"],
+                    &[],
+                    FormBody::user_id(target_user_id),
+                ),
+            )
+            .await?;
+        let value = require_state_write_success_json(FRIEND_ADD_OPERATION, response)?;
+        let envelope: FriendMutationEnvelope = serde_json::from_value(value).map_err(|_| {
+            VenmoApiError::StateMutationOutcomeUnknown {
+                operation: FRIEND_ADD_OPERATION,
+                problem: "the response did not match a signer-evidenced friend-request envelope",
+            }
+        })?;
+        let response_user = map_user(envelope.data.user, FRIEND_ADD_OPERATION).map_err(|_| {
+            VenmoApiError::StateMutationOutcomeUnknown {
+                operation: FRIEND_ADD_OPERATION,
+                problem: "the response contained an invalid target user",
+            }
+        })?;
+        if response_user.user_id() != target_user_id {
+            return Err(VenmoApiError::StateMutationOutcomeUnknown {
+                operation: FRIEND_ADD_OPERATION,
+                problem: "the response identified a different target user",
+            });
+        }
+        self.reconcile_friendship(
+            access_token,
+            device_id,
+            target_user_id,
+            expected_status,
+            FRIEND_ADD_OPERATION,
+        )
+        .await
+    }
+
+    async fn remove_or_cancel_friend_verified(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        self_user_id: &UserId,
+        target_user_id: &UserId,
+    ) -> Result<User, VenmoApiError> {
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::state_delete(
+                    "/users/{self-user-id}/friends/{target-user-id}",
+                    &[
+                        "users",
+                        self_user_id.as_str(),
+                        "friends",
+                        target_user_id.as_str(),
+                    ],
+                    &[],
+                ),
+            )
+            .await?;
+        require_state_write_success(FRIEND_REMOVE_OPERATION, response)?;
+        self.reconcile_friendship(
+            access_token,
+            device_id,
+            target_user_id,
+            FriendshipStatus::NotFriend,
+            FRIEND_REMOVE_OPERATION,
+        )
+        .await
+    }
+
+    async fn reconcile_friendship(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        target_user_id: &UserId,
+        expected_status: FriendshipStatus,
+        operation: &'static str,
+    ) -> Result<User, VenmoApiError> {
+        let user = self
+            .fetch_user_by_id(access_token, device_id, target_user_id)
+            .await
+            .map_err(|_| VenmoApiError::StateMutationOutcomeUnknown {
+                operation,
+                problem: "the authoritative relationship read failed after the write",
+            })?;
+        if user.friendship_status() != Some(expected_status) {
+            return Err(VenmoApiError::StateMutationOutcomeUnknown {
+                operation,
+                problem: "the authoritative relationship read did not prove the expected state",
+            });
+        }
+        Ok(user)
+    }
 }
 
 impl<T: ApiTransport> UserLookupApi for VenmoApiClient<T> {
@@ -202,5 +313,29 @@ impl<T: ApiTransport> FriendsApi for VenmoApiClient<T> {
         page: FriendsPageRequest,
     ) -> impl Future<Output = Result<FriendsPage, Self::Error>> + Send + 'a {
         self.fetch_friends_page(access_token, device_id, current_user_id, page)
+    }
+}
+
+impl<T: ApiTransport> FriendshipMutationApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn add_or_accept_friend<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        target_user_id: &'a UserId,
+        expected_status: FriendshipStatus,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a {
+        self.add_or_accept_friend_verified(access_token, device_id, target_user_id, expected_status)
+    }
+
+    fn remove_or_cancel_friend<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        self_user_id: &'a UserId,
+        target_user_id: &'a UserId,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a {
+        self.remove_or_cancel_friend_verified(access_token, device_id, self_user_id, target_user_id)
     }
 }

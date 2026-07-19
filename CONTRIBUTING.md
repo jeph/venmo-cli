@@ -9,13 +9,16 @@ evidence-sensitive invariant. macOS contributors should also review the local
 
 ## Safety boundaries
 
-This project controls authentication and financial operations through unsupported private APIs. Automated development and CI must never use a live credential or invoke a real financial mutation. Financial-path tests must use in-process fakes or loopback mock servers. Tests marked `ignored` are manual contracts and must not be included in routine verification.
+This project controls authentication, relationship state, and financial operations through
+unsupported private APIs. Automated development and CI must never use a live credential or invoke a
+real remote mutation. Mutation-path tests must use in-process fakes or loopback mock servers. Tests
+marked `ignored` are manual contracts and must not be included in routine verification.
 
 Routine contributors must not run an ignored test by name, enable ignored tests, run a live schema
 probe, use the production keychain entry, or invoke a real `pay user`, request-creation, `accept`,
-`decline`, or transfer operation for development or verification. Do not turn a product command into a test
-step. Separately authorized owner/release procedures are outside routine contribution and are not
-initiated by these docs.
+`decline`, `friends add`, `friends remove`, or transfer operation for development or verification.
+Do not turn a product command into a test step. Separately authorized owner/release procedures are
+outside routine contribution and are not initiated by these docs.
 
 Changes must preserve the behavioral and safety contracts in [`PLAN.md`](PLAN.md), especially evidence requirements, one-write/no-retry behavior, bounded resource use, redaction, and ambiguous-outcome reporting.
 
@@ -52,9 +55,9 @@ Do not hide these cases behind functional abstractions that allocate more, weake
 
 Keep safety-sensitive imperative order visible where it is itself a contract: secret ownership and
 zeroization, bounded response accumulation, first-seen duplicate validation, credential
-persistence/read-back handling, and financial preflight -> authorization -> interrupt protection
--> one write -> result rendering. These are narrow exceptions, not permission for unrelated
-mutable state.
+persistence/read-back handling, and validated details -> authorization -> interrupt protection
+-> one write -> authoritative verification -> result rendering. These are narrow exceptions, not
+permission for unrelated mutable state.
 
 ## Test structure
 

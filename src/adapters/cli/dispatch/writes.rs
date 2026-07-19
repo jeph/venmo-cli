@@ -6,7 +6,8 @@ use crate::features::payments::pay;
 use crate::features::payments::{
     BlankSourceEligibilityApi, DefaultNoConfirmation, PaymentCreationApi, PeerFundingApi,
 };
-use crate::features::people::{UserLookupApi, UserSearchApi};
+use crate::features::people::friendship::{self, FriendshipIntent};
+use crate::features::people::{FriendshipMutationApi, UserLookupApi, UserSearchApi};
 use crate::features::requests::{
     RequestAcceptanceApi, RequestCreationApi, RequestDeclineApi, RequestLookupApi,
 };
@@ -16,7 +17,10 @@ use crate::features::transfers::{TransferOptionsApi, TransferOutCreationApi};
 use crate::features::wallet::BalanceApi;
 use crate::shared::{ApiFailure, ClientRequestIdGenerator, CredentialReader};
 
-use super::super::args::{AcceptArgs, DeclineArgs, PayUserArgs, RequestArgs, TransferOutArgs};
+use super::super::args::{
+    AcceptArgs, DeclineArgs, FriendAddArgs, FriendRemoveArgs, PayUserArgs, RequestArgs,
+    TransferOutArgs,
+};
 use super::super::{error::AppError, output};
 use super::write_and_flush;
 
@@ -204,6 +208,108 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_friend_add_with<R, A, P, W, E, M, S>(
+    args: FriendAddArgs,
+    store: &R,
+    api: &A,
+    prompt: &P,
+    stdout: &mut W,
+    stderr: &mut E,
+    make_interruption: M,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: CurrentAccountApi + UserLookupApi + UserSearchApi + FriendshipMutationApi,
+    <A as CurrentAccountApi>::Error: ApiFailure,
+    P: DefaultNoConfirmation,
+    W: Write,
+    E: Write,
+    M: FnOnce() -> Result<S, AppError>,
+    S: Future<Output = Result<(), AppError>>,
+{
+    run_friendship_mutation_with(
+        &args.username,
+        args.yes,
+        FriendshipIntent::Add,
+        store,
+        api,
+        prompt,
+        stdout,
+        stderr,
+        make_interruption,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_friend_remove_with<R, A, P, W, E, M, S>(
+    args: FriendRemoveArgs,
+    store: &R,
+    api: &A,
+    prompt: &P,
+    stdout: &mut W,
+    stderr: &mut E,
+    make_interruption: M,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: CurrentAccountApi + UserLookupApi + UserSearchApi + FriendshipMutationApi,
+    <A as CurrentAccountApi>::Error: ApiFailure,
+    P: DefaultNoConfirmation,
+    W: Write,
+    E: Write,
+    M: FnOnce() -> Result<S, AppError>,
+    S: Future<Output = Result<(), AppError>>,
+{
+    run_friendship_mutation_with(
+        &args.username,
+        args.yes,
+        FriendshipIntent::Remove,
+        store,
+        api,
+        prompt,
+        stdout,
+        stderr,
+        make_interruption,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_friendship_mutation_with<R, A, P, W, E, M, S>(
+    username: &crate::shared::Username,
+    assume_yes: bool,
+    intent: FriendshipIntent,
+    store: &R,
+    api: &A,
+    prompt: &P,
+    stdout: &mut W,
+    stderr: &mut E,
+    make_interruption: M,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: CurrentAccountApi + UserLookupApi + UserSearchApi + FriendshipMutationApi,
+    <A as CurrentAccountApi>::Error: ApiFailure,
+    P: DefaultNoConfirmation,
+    W: Write,
+    E: Write,
+    M: FnOnce() -> Result<S, AppError>,
+    S: Future<Output = Result<(), AppError>>,
+{
+    let prepared = friendship::prepare(store, api, username, intent).await?;
+    write_and_flush(stderr, &prepared, output::write_friendship_details)?;
+    let authorized = friendship::authorize(prompt, prepared, assume_yes)?;
+    let interruption = make_interruption()?;
+    let result =
+        protect_state_with_interruption(friendship::execute(api, authorized), interruption)
+            .await??;
+    write_and_flush(stdout, &result, output::write_friendship_result)
+        .map_err(|source| AppError::StateMutationResultOutput { source })?;
+    Ok(())
+}
+
 #[cfg(unix)]
 pub(super) fn production_financial_interruption()
 -> Result<impl Future<Output = Result<(), AppError>>, AppError> {
@@ -224,6 +330,26 @@ pub(super) fn production_financial_interruption()
     })
 }
 
+#[cfg(unix)]
+pub(super) fn production_state_interruption()
+-> Result<impl Future<Output = Result<(), AppError>>, AppError> {
+    let mut interrupts = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+        .map_err(|source| AppError::StateSignalInitialization { source })?;
+    let mut terminations =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .map_err(|source| AppError::StateSignalInitialization { source })?;
+    let mut hangups = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
+        .map_err(|source| AppError::StateSignalInitialization { source })?;
+    Ok(async move {
+        tokio::select! {
+            _ = interrupts.recv() => {}
+            _ = terminations.recv() => {}
+            _ = hangups.recv() => {}
+        }
+        Ok(())
+    })
+}
+
 #[cfg(not(unix))]
 pub(super) fn production_financial_interruption()
 -> Result<impl Future<Output = Result<(), AppError>>, AppError> {
@@ -231,6 +357,16 @@ pub(super) fn production_financial_interruption()
         tokio::signal::ctrl_c()
             .await
             .map_err(|source| AppError::SignalInitialization { source })
+    })
+}
+
+#[cfg(not(unix))]
+pub(super) fn production_state_interruption()
+-> Result<impl Future<Output = Result<(), AppError>>, AppError> {
+    Ok(async {
+        tokio::signal::ctrl_c()
+            .await
+            .map_err(|source| AppError::StateSignalInitialization { source })
     })
 }
 
@@ -247,6 +383,26 @@ where
         interrupted = &mut interruption => {
             interrupted?;
             Err(AppError::FinancialWriteInterruptedUnknown)
+        },
+        outcome = &mut future => Ok(outcome),
+    }
+}
+
+async fn protect_state_with_interruption<F, S>(
+    future: F,
+    interruption: S,
+) -> Result<F::Output, AppError>
+where
+    F: Future,
+    S: Future<Output = Result<(), AppError>>,
+{
+    let mut future = std::pin::pin!(future);
+    let mut interruption = std::pin::pin!(interruption);
+    tokio::select! {
+        biased;
+        interrupted = &mut interruption => {
+            interrupted?;
+            Err(AppError::StateWriteInterruptedUnknown)
         },
         outcome = &mut future => Ok(outcome),
     }

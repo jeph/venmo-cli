@@ -7,6 +7,7 @@ use crate::features::activity::ActivityError;
 use crate::features::auth::{AuthStatusError, LoginError};
 use crate::features::payments::pay::PayError;
 use crate::features::people::friends::FriendsError;
+use crate::features::people::friendship::FriendshipMutationError;
 use crate::features::people::info::UserInfoError;
 use crate::features::people::users::{UserSearchError, UserSearchFailureKind};
 use crate::features::requests::accept::AcceptError;
@@ -72,10 +73,21 @@ pub enum AppError {
         source: io::Error,
     },
 
+    #[error("failed to install friendship-write interrupt protection")]
+    StateSignalInitialization {
+        #[source]
+        source: io::Error,
+    },
+
     #[error(
         "the financial operation was interrupted after transmission may have begun; do not retry until its status is verified independently"
     )]
     FinancialWriteInterruptedUnknown,
+
+    #[error(
+        "the friendship mutation was interrupted after transmission may have begun; do not retry until the relationship is verified independently"
+    )]
+    StateWriteInterruptedUnknown,
 
     #[error("failed to initialize the Venmo API client")]
     ApiInitialization {
@@ -160,6 +172,12 @@ pub enum AppError {
     },
 
     #[error(transparent)]
+    FriendshipMutation {
+        #[from]
+        source: FriendshipMutationError,
+    },
+
+    #[error(transparent)]
     Balance {
         #[from]
         source: BalanceError,
@@ -208,6 +226,14 @@ pub enum AppError {
         #[source]
         source: io::Error,
     },
+
+    #[error(
+        "the friendship mutation succeeded, but its result could not be written; do not retry it and verify the relationship in the official Venmo app"
+    )]
+    StateMutationResultOutput {
+        #[source]
+        source: io::Error,
+    },
 }
 
 impl AppError {
@@ -231,6 +257,9 @@ impl AppError {
             },
             Self::UserInfo { source } => application_failure_category(source.failure_kind()),
             Self::Friends { source } => read_failure_category(source.failure_kind()),
+            Self::FriendshipMutation { source } => {
+                application_failure_category(source.failure_kind())
+            }
             Self::Balance { source } => read_failure_category(source.failure_kind()),
             Self::Activity { source } => read_failure_category(source.failure_kind()),
             Self::Requests { source } => read_failure_category(source.failure_kind()),
@@ -239,9 +268,13 @@ impl AppError {
             Self::TransferOut { source } => application_failure_category(source.failure_kind()),
             Self::FinancialWriteInterruptedUnknown => ErrorCategory::AmbiguousWrite,
             Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
+            Self::StateWriteInterruptedUnknown | Self::StateMutationResultOutput { .. } => {
+                ErrorCategory::AmbiguousWrite
+            }
             Self::LoggingInitialization { .. }
             | Self::RuntimeInitialization { .. }
             | Self::SignalInitialization { .. }
+            | Self::StateSignalInitialization { .. }
             | Self::ApiInitialization { .. }
             | Self::AuthStateOutput { .. }
             | Self::CommandOutput { .. } => ErrorCategory::Internal,

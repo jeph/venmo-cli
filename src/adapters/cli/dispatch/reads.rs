@@ -12,13 +12,13 @@ use crate::features::wallet::{BalanceApi, PaymentMethodsApi, balance, payment_me
 use crate::shared::CredentialReader;
 
 use super::super::args::{
-    ActivityArgs, ActivityOperation, FriendsArgs, FriendsOperation, RequestInfoArgs,
-    RequestsListArgs, UserInfoArgs, UserSearchArgs,
+    ActivityArgs, ActivityOperation, FriendsListArgs, RequestInfoArgs, RequestsListArgs,
+    UserInfoArgs, UserSearchArgs,
 };
 use super::super::{error::AppError, output};
 
-pub(super) async fn run_friends<R, A, W, E>(
-    args: FriendsArgs,
+pub(super) async fn run_friends_list<R, A, W, E>(
+    args: FriendsListArgs,
     store: &R,
     api: &A,
     stdout: &mut W,
@@ -30,12 +30,8 @@ where
     W: Write,
     E: Write,
 {
-    match args.operation {
-        FriendsOperation::List(args) => {
-            let result = friends::list(store, api, args.limit, args.offset).await?;
-            output::write_friends(stdout, stderr, &result)?;
-        }
-    }
+    let result = friends::list(store, api, args.limit, args.offset).await?;
+    output::write_friends(stdout, stderr, &result)?;
     Ok(())
 }
 

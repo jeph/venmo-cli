@@ -33,8 +33,8 @@ use crate::features::payments::{
     PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
 };
 use crate::features::people::{
-    FriendsApi, FriendsPageRequest, User, UserLookupApi, UserProfileKind, UserSearchApi,
-    UserSearchPageRequest, UserSearchQuery,
+    FriendsApi, FriendsPageRequest, FriendshipMutationApi, FriendshipStatus, User, UserLookupApi,
+    UserProfileKind, UserSearchApi, UserSearchPageRequest, UserSearchQuery,
 };
 use crate::features::requests::{
     AcceptRequestPlan, CreateRequestPlan, DeclineRequestPlan, PendingRequestsPageRequest,
@@ -181,6 +181,9 @@ enum ApiErrorDetail {
     FinancialOutcomeUnknown {
         operation: &'static str,
     },
+    StateMutationOutcomeUnknown {
+        operation: &'static str,
+    },
     Contract {
         operation: &'static str,
     },
@@ -219,6 +222,9 @@ impl ApiErrorSnapshot {
             VenmoApiError::FinancialOutcomeUnknown { operation, .. } => {
                 ApiErrorDetail::FinancialOutcomeUnknown { operation }
             }
+            VenmoApiError::StateMutationOutcomeUnknown { operation, .. } => {
+                ApiErrorDetail::StateMutationOutcomeUnknown { operation }
+            }
             VenmoApiError::Contract { operation, .. } => ApiErrorDetail::Contract { operation },
         };
         Self { kind, detail }
@@ -249,6 +255,13 @@ impl ApiErrorSnapshot {
         Self {
             kind: ApiFailureKind::AmbiguousWrite,
             detail: ApiErrorDetail::FinancialOutcomeUnknown { operation },
+        }
+    }
+
+    const fn state_unknown(operation: &'static str) -> Self {
+        Self {
+            kind: ApiFailureKind::AmbiguousWrite,
+            detail: ApiErrorDetail::StateMutationOutcomeUnknown { operation },
         }
     }
 
@@ -303,6 +316,22 @@ fn authenticated_request(
         json_body,
         operation,
         ResponseCapture::None,
+    )
+}
+
+fn authenticated_form_request(
+    route_template: &'static str,
+    path_segments: &[&str],
+    form_body: &[u8],
+) -> ScriptedRequest {
+    ScriptedRequest::for_test_form(
+        ScriptedCredentials::authenticated_for_test(SYNTHETIC_ACCESS_TOKEN, SYNTHETIC_DEVICE_ID),
+        Method::POST,
+        route_template,
+        path_segments,
+        &[],
+        form_body,
+        OperationClass::StateWrite,
     )
 }
 

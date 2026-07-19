@@ -54,6 +54,14 @@ pub(crate) enum VenmoApiError {
         problem: &'static str,
     },
 
+    #[error(
+        "the {operation} outcome is unknown and must be reconciled before retrying because {problem}"
+    )]
+    StateMutationOutcomeUnknown {
+        operation: &'static str,
+        problem: &'static str,
+    },
+
     #[error("cannot use the {operation} response because {problem}")]
     Contract {
         operation: &'static str,
@@ -72,6 +80,8 @@ impl ApiFailure for VenmoApiError {
             ) => ApiFailureKind::Network,
             Self::Transport(TransportError::FinancialWriteOutcomeUnknown { .. })
             | Self::FinancialOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
+            Self::Transport(TransportError::StateWriteOutcomeUnknown { .. })
+            | Self::StateMutationOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
             Self::Transport(TransportError::AuthenticationOutcomeUnknown { .. }) => {
                 ApiFailureKind::Internal
             }

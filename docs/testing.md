@@ -1,7 +1,8 @@
 # Testing strategy
 
 > **Routine contributor tests are service-free. Do not run ignored/manual tests, live probes, or
-> real financial commands, including transfers. Do not supply a real credential to test code.** Follow
+> real remote mutations, including friendship, payment, request, and transfer writes. Do not
+> supply a real credential to test code.** Follow
 > [`CONTRIBUTING.md`](../CONTRIBUTING.md#safety-boundaries) and use only the routine verification
 > commands documented there.
 
@@ -98,6 +99,12 @@ checks are themselves the HTTP integration contract. They may retain exact reque
 assertions instead of being wrapped in an artificial fake-state snapshot. This exception does not
 apply to `ScriptedTransport` or another mutable scripted fake, and it never permits a production
 service call.
+
+Friendship mutation coverage follows the same zero/one-write rules as financial workflows while
+remaining a distinct state-write class. Exact tests pin form-urlencoded P4, bodyless P5, native
+relationship-state selection, default-No and `--yes`, interruption ties, post-transmission
+ambiguity, and authoritative user-detail reconciliation. Tests must leave an unexpected second
+mutation response unconsumed to prove there is no retry.
 
 ## Secret and error snapshots
 

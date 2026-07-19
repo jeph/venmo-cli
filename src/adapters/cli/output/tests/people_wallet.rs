@@ -3,16 +3,20 @@ use std::io::{self, Write};
 use std::str::FromStr;
 
 use super::super::{
-    write_balance, write_friends, write_payment_methods, write_user_info, write_user_search,
+    write_balance, write_friends, write_friendship_details, write_friendship_result,
+    write_payment_methods, write_user_info, write_user_search,
 };
 use crate::features::people::friends::FriendsResult;
+use crate::features::people::friendship::{
+    FriendshipAction, FriendshipMutationResult, FriendshipPlan, PreparedFriendshipMutation,
+};
 use crate::features::people::info::UserInfoResult;
 use crate::features::people::users::UserSearchResult;
-use crate::features::people::{User, UserProfileKind};
+use crate::features::people::{FriendshipStatus, User, UserProfileKind};
 use crate::features::wallet::balance::BalanceResult;
 use crate::features::wallet::payment_methods::PaymentMethodsResult;
 use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
-use crate::shared::{Offset, UserId, Username};
+use crate::shared::{AccessToken, Account, CredentialEnvelope, DeviceId, Offset, UserId, Username};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -24,7 +28,8 @@ fn user_info_output_preserves_known_fields_sanitizes_text_and_marks_absence() ->
             Some(Username::from_bare("alice")?),
             Some("Alice\n\u{1b}[31mExample".to_owned()),
         )
-        .with_financial_attributes(UserProfileKind::Personal, true),
+        .with_financial_attributes(UserProfileKind::Personal, true)
+        .with_friendship_status(FriendshipStatus::RequestSent),
     );
     let minimal = UserInfoResult::new(User::new(UserId::from_str("456")?, None, None));
     let mut complete_output = Vec::new();
@@ -137,6 +142,63 @@ fn empty_people_and_payment_method_lists_have_exact_messages() -> TestResult {
     assert_eq!(friends_stdout, b"No friends found.\n");
     assert_eq!(friends_stderr, b"");
     assert_eq!(methods_stdout, b"No payment methods found.\n");
+    Ok(())
+}
+
+#[test]
+fn friendship_details_and_result_are_exact_and_sanitized() -> TestResult {
+    let account = Account::new(
+        UserId::from_str("1000")?,
+        Username::from_bare("owner")?,
+        Some("Owner".to_owned()),
+    );
+    let target = User::new(
+        UserId::from_str("456")?,
+        Some(Username::from_bare("alice")?),
+        Some("Alice\nName".to_owned()),
+    )
+    .with_financial_attributes(UserProfileKind::Personal, true)
+    .with_friendship_status(FriendshipStatus::NotFriend);
+    let plan = FriendshipPlan::new(
+        account,
+        target,
+        FriendshipStatus::NotFriend,
+        FriendshipAction::SendRequest,
+    );
+    let credential = CredentialEnvelope::new(
+        AccessToken::from_str("synthetic-token")?,
+        DeviceId::from_str("synthetic-device")?,
+        UserId::from_str("1000")?,
+        Username::from_bare("owner")?,
+        Some("Owner".to_owned()),
+        time::OffsetDateTime::UNIX_EPOCH,
+    );
+    let prepared = PreparedFriendshipMutation::new(credential, plan);
+    let mut details = Vec::new();
+    write_friendship_details(&mut details, &prepared)?;
+    let details = String::from_utf8(details)?;
+    insta::assert_snapshot!("friendship_details", details);
+
+    let result = FriendshipMutationResult::new(
+        FriendshipPlan::new(
+            Account::new(
+                UserId::from_str("1000")?,
+                Username::from_bare("owner")?,
+                None,
+            ),
+            User::new(
+                UserId::from_str("456")?,
+                Some(Username::from_bare("alice")?),
+                None,
+            ),
+            FriendshipStatus::NotFriend,
+            FriendshipAction::SendRequest,
+        ),
+        FriendshipStatus::RequestSent,
+    );
+    let mut output = Vec::new();
+    write_friendship_result(&mut output, &result)?;
+    insta::assert_snapshot!("friendship_result", String::from_utf8(output)?);
     Ok(())
 }
 

@@ -1,0 +1,20 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Send or accept a friend request according to the current relationship
+
+Usage: add [OPTIONS] <USERNAME>
+
+Arguments:
+  <USERNAME>
+          Exact username with an optional leading @
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+This command follows Venmo's native relationship semantics: it sends a request for a nonfriend and accepts an incoming request. It never retries automatically. Exit code 3 means the friendship outcome must be verified independently.

@@ -61,6 +61,7 @@ pub(in crate::adapters::venmo) enum RequestCredentials<'a> {
 pub(in crate::adapters::venmo) enum OperationClass {
     Read,
     NonFinancialWrite,
+    StateWrite,
     AuthenticationWrite,
     FinancialWrite,
 }
@@ -100,6 +101,39 @@ impl fmt::Debug for JsonBody {
     }
 }
 
+pub(in crate::adapters::venmo) struct FormBody {
+    pub(super) bytes: Zeroizing<Vec<u8>>,
+}
+
+impl FormBody {
+    pub(in crate::adapters::venmo) fn user_id(user_id: &crate::shared::UserId) -> Self {
+        let mut bytes = Zeroizing::new(Vec::with_capacity(
+            "user_id=".len() + user_id.as_str().len(),
+        ));
+        bytes.extend_from_slice(b"user_id=");
+        bytes.extend_from_slice(user_id.as_str().as_bytes());
+        Self { bytes }
+    }
+
+    pub(super) fn try_into_reqwest_copy(
+        self,
+    ) -> Result<Vec<u8>, std::collections::TryReserveError> {
+        let mut copy = Vec::new();
+        copy.try_reserve_exact(self.bytes.len())?;
+        copy.extend_from_slice(self.bytes.as_slice());
+        Ok(copy)
+    }
+}
+
+impl fmt::Debug for FormBody {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FormBody")
+            .field("bytes", &self.bytes.len())
+            .finish()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::adapters::venmo) enum ResponseCapture {
     None,
@@ -112,13 +146,40 @@ pub(in crate::adapters::venmo) struct HttpRequest<'a> {
     pub(super) path_segments: &'a [&'a str],
     pub(super) query: &'a [(&'a str, &'a str)],
     pub(super) json_body: Option<JsonBody>,
+    pub(super) form_body: Option<FormBody>,
     pub(super) operation: OperationClass,
     pub(super) response_capture: ResponseCapture,
 }
 
+struct RequestBodies {
+    json: Option<JsonBody>,
+    form: Option<FormBody>,
+}
+
+impl RequestBodies {
+    const NONE: Self = Self {
+        json: None,
+        form: None,
+    };
+
+    const fn json(body: JsonBody) -> Self {
+        Self {
+            json: Some(body),
+            form: None,
+        }
+    }
+
+    const fn form(body: FormBody) -> Self {
+        Self {
+            json: None,
+            form: Some(body),
+        }
+    }
+}
+
 impl<'a> HttpRequest<'a> {
     #[must_use]
-    pub(in crate::adapters::venmo) const fn read(
+    pub(in crate::adapters::venmo) fn read(
         route_template: &'static str,
         path_segments: &'a [&'a str],
         query: &'a [(&'a str, &'a str)],
@@ -128,7 +189,7 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            None,
+            RequestBodies::NONE,
             OperationClass::Read,
             ResponseCapture::None,
         )
@@ -146,7 +207,7 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            Some(json_body),
+            RequestBodies::json(json_body),
             OperationClass::FinancialWrite,
             ResponseCapture::None,
         )
@@ -164,7 +225,7 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            Some(json_body),
+            RequestBodies::json(json_body),
             OperationClass::FinancialWrite,
             ResponseCapture::None,
         )
@@ -181,7 +242,7 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            Some(json_body),
+            RequestBodies::json(json_body),
             OperationClass::AuthenticationWrite,
             ResponseCapture::OtpSecret,
         )
@@ -198,13 +259,13 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            Some(json_body),
+            RequestBodies::json(json_body),
             OperationClass::NonFinancialWrite,
             ResponseCapture::None,
         )
     }
 
-    pub(in crate::adapters::venmo) const fn non_financial_post(
+    pub(in crate::adapters::venmo) fn non_financial_post(
         route_template: &'static str,
         path_segments: &'a [&'a str],
         query: &'a [(&'a str, &'a str)],
@@ -214,13 +275,13 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            None,
+            RequestBodies::NONE,
             OperationClass::NonFinancialWrite,
             ResponseCapture::None,
         )
     }
 
-    pub(in crate::adapters::venmo) const fn authentication_post(
+    pub(in crate::adapters::venmo) fn authentication_post(
         route_template: &'static str,
         path_segments: &'a [&'a str],
         query: &'a [(&'a str, &'a str)],
@@ -230,18 +291,53 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            None,
+            RequestBodies::NONE,
             OperationClass::AuthenticationWrite,
             ResponseCapture::None,
         )
     }
 
-    const fn new(
+    #[must_use]
+    pub(in crate::adapters::venmo) fn state_form_post(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+        form_body: FormBody,
+    ) -> Self {
+        Self::new(
+            Method::POST,
+            route_template,
+            path_segments,
+            query,
+            RequestBodies::form(form_body),
+            OperationClass::StateWrite,
+            ResponseCapture::None,
+        )
+    }
+
+    #[must_use]
+    pub(in crate::adapters::venmo) fn state_delete(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+    ) -> Self {
+        Self::new(
+            Method::DELETE,
+            route_template,
+            path_segments,
+            query,
+            RequestBodies::NONE,
+            OperationClass::StateWrite,
+            ResponseCapture::None,
+        )
+    }
+
+    fn new(
         method: Method,
         route_template: &'static str,
         path_segments: &'a [&'a str],
         query: &'a [(&'a str, &'a str)],
-        json_body: Option<JsonBody>,
+        bodies: RequestBodies,
         operation: OperationClass,
         response_capture: ResponseCapture,
     ) -> Self {
@@ -250,7 +346,8 @@ impl<'a> HttpRequest<'a> {
             route_template,
             path_segments,
             query,
-            json_body,
+            json_body: bodies.json,
+            form_body: bodies.form,
             operation,
             response_capture,
         }

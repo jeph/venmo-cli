@@ -546,6 +546,8 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
                 venmo_cli::cli::FriendsOperation::List(list) => {
                     Some((list.limit.get(), list.offset.get()))
                 }
+                venmo_cli::cli::FriendsOperation::Add(_)
+                | venmo_cli::cli::FriendsOperation::Remove(_) => None,
             },
             _ => None,
         },
@@ -562,6 +564,35 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
         "--offset",
         "4294967296",
     ]);
+}
+
+#[test]
+fn friend_mutation_commands_have_exact_grouped_grammar() {
+    let add = Cli::try_parse_from(["venmo", "friends", "add", "@alice", "--yes"]);
+    assert!(add.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Friends(args)
+            if matches!(&args.operation, venmo_cli::cli::FriendsOperation::Add(args)
+                if args.username.as_str() == "alice" && args.yes)
+    )));
+
+    let remove = Cli::try_parse_from(["venmo", "friends", "remove", "alice"]);
+    assert!(remove.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Friends(args)
+            if matches!(&args.operation, venmo_cli::cli::FriendsOperation::Remove(args)
+                if args.username.as_str() == "alice" && !args.yes)
+    )));
+
+    for arguments in [
+        &["venmo", "friend", "add", "alice"][..],
+        &["venmo", "friends", "add"][..],
+        &["venmo", "friends", "remove"][..],
+        &["venmo", "friends", "add", "alice", "--limit", "1"][..],
+        &["venmo", "friends", "list", "--yes"][..],
+    ] {
+        assert_rejected(arguments);
+    }
 }
 
 #[test]
@@ -639,6 +670,8 @@ fn every_command_has_a_help_snapshot() {
         ("pay_user", &["pay", "user"]),
         ("friends", &["friends"]),
         ("friends_list", &["friends", "list"]),
+        ("friends_add", &["friends", "add"]),
+        ("friends_remove", &["friends", "remove"]),
         ("users", &["users"]),
         ("users_search", &["users", "search"]),
         ("users_info", &["users", "info"]),

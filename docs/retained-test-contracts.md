@@ -1,15 +1,16 @@
 # Retained test contracts
 
 > These are retained contract descriptions, not routine test instructions. Contributors must not
-> execute ignored tests, access a live credential or Venmo service, or invoke a real financial
-> command. Use only the service-free checks in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+> execute ignored tests, access a live credential or Venmo service, or invoke a real remote
+> mutation. Use only the service-free checks in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ## Service-free process coverage
 
 `tests/process.rs` intentionally retains child-process coverage for help, version, invalid input,
 noninteractive confirmation rejection, and manpage generation. Each
-path is deterministic and must complete without keychain or network access. Financial behavior is
-covered below the process boundary with fakes and synthetic HTTP contracts, not a real command.
+path is deterministic and must complete without keychain or network access. Financial and
+relationship-mutation behavior is covered below the process boundary with fakes and synthetic HTTP
+contracts, not a real command.
 
 ## Interactive PTY behavior
 
@@ -20,10 +21,10 @@ terminal sizing, input, signal delivery, output normalization, cancellation, and
 macOS and Linux CI before these tests can become required.
 
 Current automated coverage deliberately stops at deterministic boundaries: terminal-capability
-gating, prompt error classification, automatic fail-closed funding policy, injected financial
-interruption behavior, non-interactive child-process rejection, and exact sanitized renderer
-output. This retention is not permission to add a test-only environment switch or to exercise a
-live credential, keychain prompt, Venmo service, or financial operation.
+gating, prompt error classification, automatic fail-closed funding policy, injected financial and
+relationship-write interruption behavior, non-interactive child-process rejection, and exact
+sanitized renderer output. This retention is not permission to add a test-only environment switch or to exercise a
+live credential, keychain prompt, Venmo service, or remote mutation.
 
 ## Global tracing subscriber
 
@@ -74,10 +75,16 @@ native credential and production endpoint, so routine contributors and CI must n
 even though they contain no write operation. Exact sanitized synthetic transport and loopback
 tests are the maintained regression contract.
 
-The probes are not a general discovery harness and must never be extended to a financial route.
+The probes are not a general discovery harness and must never be extended to a mutation route.
 Evidence-gated questions remain recorded in
 [`evidence-gated-follow-ups.md`](evidence-gated-follow-ups.md), not assigned to contributors as live
 experiments.
+
+There is deliberately no ignored live friendship mutation test. Signer-verified Android artifacts
+and service-free synthetic contracts retain the route, form body, state matrix, reconciliation, and
+ambiguity rules. They do not prove that the CLI's client-1 session is authorized for the writes.
+Any separately approved add/revoke canary is an owner procedure outside this suite and must never
+become routine development or CI.
 
 ## No retained live financial test
 

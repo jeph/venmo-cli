@@ -16,6 +16,14 @@ pub enum UserProfileKind {
     Unknown,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FriendshipStatus {
+    Friend,
+    NotFriend,
+    RequestReceived,
+    RequestSent,
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub struct User {
     user_id: UserId,
@@ -23,6 +31,7 @@ pub struct User {
     display_name: Option<String>,
     profile_kind: Option<UserProfileKind>,
     is_payable: Option<bool>,
+    friendship_status: Option<FriendshipStatus>,
 }
 
 impl User {
@@ -34,6 +43,7 @@ impl User {
             display_name,
             profile_kind: None,
             is_payable: None,
+            friendship_status: None,
         }
     }
 
@@ -64,6 +74,25 @@ impl User {
     }
 
     #[must_use]
+    pub fn with_friendship_status(self, friendship_status: FriendshipStatus) -> Self {
+        Self {
+            friendship_status: Some(friendship_status),
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_optional_friendship_status(
+        self,
+        friendship_status: Option<FriendshipStatus>,
+    ) -> Self {
+        Self {
+            friendship_status,
+            ..self
+        }
+    }
+
+    #[must_use]
     pub fn user_id(&self) -> &UserId {
         &self.user_id
     }
@@ -87,6 +116,11 @@ impl User {
     pub const fn is_payable(&self) -> Option<bool> {
         self.is_payable
     }
+
+    #[must_use]
+    pub const fn friendship_status(&self) -> Option<FriendshipStatus> {
+        self.friendship_status
+    }
 }
 
 impl fmt::Debug for User {
@@ -98,6 +132,7 @@ impl fmt::Debug for User {
             .field("display_name", &REDACTED)
             .field("profile_kind", &self.profile_kind)
             .field("is_payable", &self.is_payable)
+            .field("friendship_status", &self.friendship_status)
             .finish()
     }
 }
@@ -198,6 +233,7 @@ mod tests {
         assert!(minimal.display_name().is_none());
         assert_eq!(minimal.profile_kind(), None);
         assert_eq!(minimal.is_payable(), None);
+        assert_eq!(minimal.friendship_status(), None);
 
         let complete = User::new(
             UserId::from_str("456")?,
@@ -209,6 +245,8 @@ mod tests {
         assert_eq!(complete.display_name(), Some("Élise Example"));
         assert_eq!(complete.profile_kind(), Some(UserProfileKind::Personal));
         assert_eq!(complete.is_payable(), Some(true));
+        let complete = complete.with_friendship_status(FriendshipStatus::Friend);
+        assert_eq!(complete.friendship_status(), Some(FriendshipStatus::Friend));
         let rendered = format!("{complete:?}");
         assert!(!rendered.contains("456"));
         assert!(!rendered.contains("élise"));

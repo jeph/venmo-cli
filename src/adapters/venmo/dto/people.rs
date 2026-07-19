@@ -32,6 +32,18 @@ pub(crate) struct UserDto {
     pub identity_type: Option<String>,
     #[serde(default)]
     pub is_payable: Option<bool>,
+    #[serde(default)]
+    pub friend_status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct FriendMutationEnvelope {
+    pub data: FriendMutationData,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct FriendMutationData {
+    pub user: UserDto,
 }
 
 #[derive(Debug, Deserialize)]

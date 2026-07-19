@@ -336,7 +336,9 @@ pub(super) enum ErrorVariant {
     Accept,
     Decline,
     FinancialWriteInterruptedUnknown,
+    StateWriteInterruptedUnknown,
     SignalInitialization,
+    StateSignalInitialization,
     FinancialResultOutput,
     Unexpected,
 }
@@ -586,6 +588,54 @@ async fn financial_protection_covers_normal_interrupt_tie_and_signal_failure_out
     );
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn state_protection_covers_normal_interrupt_tie_and_signal_failure_outcomes() {
+    let normal =
+        protect_state_with_interruption(ready("confirmed"), pending::<Result<(), AppError>>())
+            .await
+            .map_err(snapshot_error);
+    let interrupted = protect_state_with_interruption(pending::<()>(), ready(Ok(())))
+        .await
+        .map_err(snapshot_error);
+    let tie = protect_state_with_interruption(ready("confirmed"), ready(Ok(())))
+        .await
+        .map_err(snapshot_error);
+    let signal_failure = protect_state_with_interruption(
+        pending::<()>(),
+        ready(Err(state_signal_initialization_error(
+            "synthetic state signal stream failure",
+        ))),
+    )
+    .await
+    .map_err(snapshot_error);
+
+    assert_eq!(normal, Ok("confirmed"));
+    assert_eq!(
+        interrupted,
+        Err(failure_snapshot(
+            ErrorVariant::StateWriteInterruptedUnknown,
+            ErrorCategory::AmbiguousWrite,
+            "the friendship mutation was interrupted after transmission may have begun; do not retry until the relationship is verified independently",
+        ))
+    );
+    assert_eq!(
+        tie,
+        Err(failure_snapshot(
+            ErrorVariant::StateWriteInterruptedUnknown,
+            ErrorCategory::AmbiguousWrite,
+            "the friendship mutation was interrupted after transmission may have begun; do not retry until the relationship is verified independently",
+        ))
+    );
+    assert_eq!(
+        signal_failure,
+        Err(failure_snapshot(
+            ErrorVariant::StateSignalInitialization,
+            ErrorCategory::Internal,
+            "failed to install friendship-write interrupt protection",
+        ))
+    );
+}
+
 pub(super) fn snapshot_result(result: Result<(), AppError>) -> ResultSnapshot {
     match result {
         Ok(()) => ResultSnapshot::Success,
@@ -603,7 +653,9 @@ fn snapshot_error(error: AppError) -> ResultSnapshot {
             AppError::FinancialWriteInterruptedUnknown => {
                 ErrorVariant::FinancialWriteInterruptedUnknown
             }
+            AppError::StateWriteInterruptedUnknown => ErrorVariant::StateWriteInterruptedUnknown,
             AppError::SignalInitialization { .. } => ErrorVariant::SignalInitialization,
+            AppError::StateSignalInitialization { .. } => ErrorVariant::StateSignalInitialization,
             AppError::FinancialResultOutput { .. } => ErrorVariant::FinancialResultOutput,
             _ => ErrorVariant::Unexpected,
         },
@@ -665,6 +717,12 @@ fn writer_state(text: &str, flush_count: u32) -> WriterState {
 
 fn signal_initialization_error(detail: &str) -> AppError {
     AppError::SignalInitialization {
+        source: io::Error::other(detail.to_owned()),
+    }
+}
+
+fn state_signal_initialization_error(detail: &str) -> AppError {
+    AppError::StateSignalInitialization {
         source: io::Error::other(detail.to_owned()),
     }
 }

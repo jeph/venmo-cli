@@ -9,7 +9,9 @@ use std::str::FromStr;
 use clap::Parser;
 
 use super::*;
-use crate::adapters::cli::args::{Cli, Command, RequestsOperation, UsersOperation};
+use crate::adapters::cli::args::{
+    Cli, Command, FriendsListArgs, FriendsOperation, RequestsOperation, UsersOperation,
+};
 use crate::adapters::cli::error::ErrorCategory;
 use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::activity::{
@@ -17,8 +19,8 @@ use crate::features::activity::{
     ActivityId, ActivityPage, ActivityPageRequest, ActivityStatus,
 };
 use crate::features::people::{
-    FriendsPage, FriendsPageRequest, User, UserProfileKind, UserSearchPage, UserSearchPageRequest,
-    UserSearchQuery,
+    FriendsPage, FriendsPageRequest, FriendshipStatus, User, UserProfileKind, UserSearchPage,
+    UserSearchPageRequest, UserSearchQuery,
 };
 use crate::features::requests::{
     PendingRequestsPage, PendingRequestsPageRequest, RequestAction, RequestDirection, RequestId,

@@ -20,7 +20,7 @@ pub use crate::features::people::friends::FriendsResult;
 pub use crate::features::people::info::UserInfoResult;
 pub use crate::features::people::recipient::{RecipientInput, RecipientParseError};
 pub use crate::features::people::user::{
-    User, UserProfileKind, UserSearchQuery, UserSearchQueryParseError,
+    FriendshipStatus, User, UserProfileKind, UserSearchQuery, UserSearchQueryParseError,
 };
 pub use crate::features::people::users::UserSearchResult;
 pub use crate::features::requests::accept::AcceptResult;

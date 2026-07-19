@@ -14,9 +14,9 @@ use super::error::{
 use super::request::{HttpRequest, RequestCredentials, ResponseCapture};
 use super::response::{HttpResponse, read_bounded_body};
 use super::{
-    ApiTransport, CONNECT_TIMEOUT, DEVICE_ID_HEADER, JSON_ACCEPT, JSON_CONTENT_TYPE,
-    MAX_OTP_SECRET_HEADER_BYTES, MAX_RESPONSE_BYTES, OTP_CODE_HEADER, OTP_SECRET_HEADER,
-    PRODUCTION_API_BASE, READ_TIMEOUT, REQUEST_TIMEOUT,
+    ApiTransport, CONNECT_TIMEOUT, DEVICE_ID_HEADER, FORM_CONTENT_TYPE, JSON_ACCEPT,
+    JSON_CONTENT_TYPE, MAX_OTP_SECRET_HEADER_BYTES, MAX_RESPONSE_BYTES, OTP_CODE_HEADER,
+    OTP_SECRET_HEADER, PRODUCTION_API_BASE, READ_TIMEOUT, REQUEST_TIMEOUT,
 };
 
 pub struct VenmoHttpTransport {
@@ -130,6 +130,13 @@ impl VenmoHttpTransport {
                 .map_err(|_| TransportError::RequestConstruction)?;
             builder = builder
                 .header(CONTENT_TYPE, JSON_CONTENT_TYPE)
+                .body(reqwest_body);
+        } else if let Some(form_body) = request.form_body {
+            let reqwest_body = form_body
+                .try_into_reqwest_copy()
+                .map_err(|_| TransportError::RequestConstruction)?;
+            builder = builder
+                .header(CONTENT_TYPE, FORM_CONTENT_TYPE)
                 .body(reqwest_body);
         }
 

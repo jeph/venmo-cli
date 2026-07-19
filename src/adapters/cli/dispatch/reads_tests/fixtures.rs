@@ -117,11 +117,16 @@ pub(super) fn user_info_args() -> TestResult<UserInfoArgs> {
     }
 }
 
-pub(super) fn friends_args() -> TestResult<FriendsArgs> {
+pub(super) fn friends_args() -> TestResult<FriendsListArgs> {
     match Cli::try_parse_from(["venmo", "friends", "list", "--limit", "1", "--offset", "20"])?
         .command
     {
-        Command::Friends(args) => Ok(args),
+        Command::Friends(args) => match args.operation {
+            FriendsOperation::List(args) => Ok(args),
+            FriendsOperation::Add(_) | FriendsOperation::Remove(_) => {
+                Err(io::Error::other("friend-list arguments parsed as mutation arguments").into())
+            }
+        },
         _ => Err(io::Error::other("friend arguments parsed as another command").into()),
     }
 }
@@ -210,6 +215,7 @@ pub(super) const USER_INFO_OUTPUT: &str = concat!(
     "Display name: Alice\\nExample\n",
     "Profile kind: personal\n",
     "Payable: yes\n",
+    "Friendship: outgoing request\n",
 );
 
 pub(super) const FRIENDS_OUTPUT: &str = concat!(

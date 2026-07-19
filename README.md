@@ -78,6 +78,28 @@ venmo requests create alice 0.01 --note "Dinner" --visibility public
 
 User-taking commands accept exact usernames with or without a leading `@`; they do not expose user-ID arguments. Each command resolves the normalized username through the shared bounded username search, requires a case-insensitive exact match, and verifies the resulting user through authoritative detail-by-ID before continuing. Omitting `--visibility` preserves the private default. Venmo's participant privacy settings may make the effective audience more restrictive than requested. The flag does not apply to `requests accept` or `requests decline`; those action-only mutations preserve and validate the audience of the existing request.
 
+Friendship mutations are grouped with friend listing:
+
+```sh
+venmo friends add <USERNAME> [--yes]
+venmo friends remove <USERNAME> [--yes]
+```
+
+Both commands perform the same exact-username and authoritative-detail validation before showing
+friendship details and asking for default-No confirmation. They follow the current native app's
+state semantics: `add` sends a request from `not friend` or accepts an incoming request; `remove`
+unfriends an established friend or cancels an outgoing request. `remove` never silently declines
+an incoming request. Each command sends at most one non-retried write and then requires an
+authoritative user-detail read to prove the resulting relationship. A successful HTTP response
+without matching reconciliation, an interruption, or post-transmission transport uncertainty exits
+`3`; do not retry until the relationship is checked in the official Venmo app.
+
+The request shapes are pinned by signer-verified Android 9.26.0, 10.31.1, and 26.13.0 artifacts,
+but no independent public mutation implementation was found. Those Android clients authenticate as
+OAuth client 4 while this CLI retains its historical client-1 session. The implementation is
+therefore synthetically verified but has not yet received a controlled live canary proving that the
+current service authorizes these writes for the CLI's session family.
+
 Direct request creation writes immediately after its account and recipient validation; it has no confirmation prompt and does not accept `--yes`. Decline instead always displays authoritative request details, then requires default-No confirmation unless `--yes` carries noninteractive authorization, while remaining protected as an ambiguous state mutation after possible transmission. If any mutation exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
 
 ### Transfer options and standard cash-out
@@ -126,7 +148,8 @@ The non-paginated `users info <USERNAME>`, `activity info <ACTIVITY_ID>`, and
 `requests info <REQUEST_ID>` commands inspect one user, activity, or open request. User info accepts a
 username with an optional leading `@` and uses the same shared, fail-closed exact search and authoritative
 detail verification as financial recipient resolution; `users info alice` and `users info @alice` are
-equivalent. It never accepts a user ID as a distinct argument type. Request detail uses the
+equivalent. It displays a supported friendship state when P2 supplies one and marks missing or
+unknown evidence as not provided. It never accepts a user ID as a distinct argument type. Request detail uses the
 broad payment/request lookup internally but exposes only `action=charge` records whose status is
 exactly `pending` or `held`, in either direction. Payment (`action=pay`) and terminal request
 records are rejected as usage errors rather than displayed as open requests.

@@ -15,7 +15,9 @@ pub(super) use payments::{
     BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentRequest,
     CreatedPaymentEnvelope, PaymentEnvelope, PaymentRecordDto, PaymentsEnvelope,
 };
-pub(super) use people::{FriendsEnvelope, UserDto, UserEnvelope, UsersEnvelope};
+pub(super) use people::{
+    FriendMutationEnvelope, FriendsEnvelope, UserDto, UserEnvelope, UsersEnvelope,
+};
 pub(super) use requests::{CreateRequestRequest, UpdatePaymentRequest};
 pub(super) use transfers::{
     CreateTransferRequest, CreatedTransferEnvelope, PreferredTransferTypeDto,

@@ -73,6 +73,10 @@ pub enum TransportError {
         "financial write outcome is unknown: {cause}; do not retry until activity or requests and the official app verify the result"
     )]
     FinancialWriteOutcomeUnknown { cause: AmbiguousWriteCause },
+    #[error(
+        "state-changing write outcome is unknown: {cause}; do not retry until the remote state is verified"
+    )]
+    StateWriteOutcomeUnknown { cause: AmbiguousWriteCause },
     #[error("authentication outcome is unknown: {cause}; a remote token may have been issued")]
     AuthenticationOutcomeUnknown { cause: AmbiguousWriteCause },
 }
@@ -106,6 +110,9 @@ pub(super) fn classify_send_error(
         OperationClass::FinancialWrite => {
             return TransportError::FinancialWriteOutcomeUnknown { cause };
         }
+        OperationClass::StateWrite => {
+            return TransportError::StateWriteOutcomeUnknown { cause };
+        }
         OperationClass::AuthenticationWrite => {
             return TransportError::AuthenticationOutcomeUnknown { cause };
         }
@@ -134,6 +141,9 @@ pub(super) fn classify_post_send_failure(
     match operation {
         OperationClass::FinancialWrite => {
             return TransportError::FinancialWriteOutcomeUnknown { cause };
+        }
+        OperationClass::StateWrite => {
+            return TransportError::StateWriteOutcomeUnknown { cause };
         }
         OperationClass::AuthenticationWrite => {
             return TransportError::AuthenticationOutcomeUnknown { cause };

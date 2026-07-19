@@ -1,4 +1,4 @@
-use super::{User, UserSearchQuery};
+use super::{FriendshipStatus, User, UserSearchQuery};
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, Offset, UserId};
 use std::future::Future;
 
@@ -117,4 +117,24 @@ pub trait FriendsApi {
         current_user_id: &'a UserId,
         page: FriendsPageRequest,
     ) -> impl Future<Output = Result<FriendsPage, Self::Error>> + Send + 'a;
+}
+
+pub trait FriendshipMutationApi {
+    type Error: ApiFailure;
+
+    fn add_or_accept_friend<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        target_user_id: &'a UserId,
+        expected_status: FriendshipStatus,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a;
+
+    fn remove_or_cancel_friend<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        self_user_id: &'a UserId,
+        target_user_id: &'a UserId,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a;
 }

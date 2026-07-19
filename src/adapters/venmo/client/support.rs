@@ -4,7 +4,7 @@ use std::str::FromStr;
 use time::format_description::well_known::Rfc3339;
 use time::{OffsetDateTime, PrimitiveDateTime};
 
-use crate::features::people::{User, UserProfileKind};
+use crate::features::people::{FriendshipStatus, User, UserProfileKind};
 use crate::shared::{Limit, UserId, Username};
 
 use super::super::dto::UserDto;
@@ -35,6 +35,13 @@ pub(super) fn map_user(user: UserDto, operation: &'static str) -> Result<User, V
         }
     });
     let is_payable = user.is_payable;
+    let friendship_status = user.friend_status.as_deref().and_then(|value| match value {
+        "friend" => Some(FriendshipStatus::Friend),
+        "not_friend" => Some(FriendshipStatus::NotFriend),
+        "request_received_by_you" => Some(FriendshipStatus::RequestReceived),
+        "request_sent_by_you" => Some(FriendshipStatus::RequestSent),
+        _ => None,
+    });
     let user_id =
         UserId::from_str(&user.id.into_string()).map_err(|_| VenmoApiError::Contract {
             operation,
@@ -57,7 +64,8 @@ pub(super) fn map_user(user: UserDto, operation: &'static str) -> Result<User, V
         username,
         user.display_name.filter(|value| !value.is_empty()),
     )
-    .with_optional_financial_attributes(profile_kind, is_payable))
+    .with_optional_financial_attributes(profile_kind, is_payable)
+    .with_optional_friendship_status(friendship_status))
 }
 
 pub(super) fn parse_required_timestamp(

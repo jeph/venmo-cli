@@ -45,7 +45,7 @@ upgraded to `ProvenZero`. Method-level fee evidence does not gate selection: zer
 and unknown-fee peer methods may all be submitted under the automatic policy. That policy validates
 duplicate IDs and multiple defaults, chooses the unique default regardless of fee, otherwise chooses
 only a sole eligible method, and fails closed when multiple non-default methods remain; it never uses
-response order or fee as a tiebreaker and exposes no user override. Preflight reports the method
+response order or fee as a tiebreaker and exposes no user override. Payment details report the method
 evidence and eligibility fee separately and warns that the final fee may differ. Binding the proof to a method
 requires a controlled capture showing the request field, token, response, and resulting payment all
 refer to that exact method.
@@ -61,12 +61,29 @@ absence of another exact match beyond the bounded search.
 
 ## Request-acceptance funding and fee evidence
 
-Request acceptance retains a residual evidence gap. Preflight requires an available Venmo balance
+Request acceptance retains a residual evidence gap. Validation requires an available Venmo balance
 snapshot covering the full request, and the approval submits no external funding-method
 identifier. The mutation does not bind that
 snapshot, however, and its response proves neither the final funding source nor the fee. Output
 must disclose that limitation and must not claim wallet funding or a `$0.00` fee. Changing those
 claims requires transaction-bound source and fee evidence from the acceptance operation itself.
+
+## Friendship mutation session authorization
+
+`friends add` and `friends remove` retain exact synthetic contracts derived from signer-verified
+Venmo Android 9.26.0, 10.31.1, and 26.13.0. The artifacts agree on form-urlencoded
+`POST /v1/friend-requests` for send/accept, bodyless
+`DELETE /v1/users/{self}/friends/{target}` for unfriend/outgoing-request cancellation, and the four
+closed relationship states. Public-source research found friend listing but no independent mutation
+implementation.
+
+Every inspected Android generation authenticates as OAuth client 4, while this CLI intentionally
+retains its historical client-1 credential profile. Exact request construction and response
+reconciliation therefore do not prove current server authorization. Keep post-transmission
+uncertainty ambiguous, never retry a write, and do not add an ignored live test. A controlled
+add-then-revoke canary requires separate owner approval, a consenting target initially proven
+`not_friend`, and separate reconciliation/authorization before the revoke. Never remove an
+established friendship merely to broaden evidence.
 
 ## Peer-payment list and detail reads
 
