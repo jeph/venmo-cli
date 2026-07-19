@@ -1,19 +1,19 @@
-use super::{Activity, ActivityDetailApi, ActivityError, ActivityId};
+use super::{ActivityDetail, ActivityDetailApi, ActivityError, ActivityId};
 use crate::shared::{ApiOperationFailure, CredentialReader, require_credential};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct ActivityInfoResult {
-    activity: Activity,
+    activity: ActivityDetail,
 }
 
 impl ActivityInfoResult {
     #[must_use]
-    pub(crate) const fn new(activity: Activity) -> Self {
+    pub(crate) const fn new(activity: ActivityDetail) -> Self {
         Self { activity }
     }
 
     #[must_use]
-    pub const fn activity(&self) -> &Activity {
+    pub const fn activity(&self) -> &ActivityDetail {
         &self.activity
     }
 }

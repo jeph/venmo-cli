@@ -7,6 +7,9 @@ List recent activity
 Usage: list [OPTIONS]
 
 Options:
+      --user <USERNAME>
+          Exact personal-profile username whose visible activity should be listed
+
       --limit <N>
           Server request page size
 

@@ -5,8 +5,8 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::features::people::User;
-use crate::shared::Money;
 use crate::shared::opaque_id::opaque_id;
+use crate::shared::{Money, UserId, Username};
 
 opaque_id!(ActivityId, "activity ID");
 
@@ -79,6 +79,82 @@ pub enum ActivityLabelParseError {
 pub enum ActivityDirection {
     Incoming,
     Outgoing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityFeedKind {
+    CurrentUser,
+    OtherPersonalUser,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActivityFeedScope {
+    viewer_user_id: UserId,
+    subject_user_id: UserId,
+    kind: ActivityFeedKind,
+}
+
+impl ActivityFeedScope {
+    #[must_use]
+    pub const fn new(
+        viewer_user_id: UserId,
+        subject_user_id: UserId,
+        kind: ActivityFeedKind,
+    ) -> Self {
+        Self {
+            viewer_user_id,
+            subject_user_id,
+            kind,
+        }
+    }
+
+    #[must_use]
+    pub const fn viewer_user_id(&self) -> &UserId {
+        &self.viewer_user_id
+    }
+
+    #[must_use]
+    pub const fn subject_user_id(&self) -> &UserId {
+        &self.subject_user_id
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> ActivityFeedKind {
+        self.kind
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActivitySubject {
+    user_id: UserId,
+    username: Username,
+    kind: ActivityFeedKind,
+}
+
+impl ActivitySubject {
+    #[must_use]
+    pub const fn new(user_id: UserId, username: Username, kind: ActivityFeedKind) -> Self {
+        Self {
+            user_id,
+            username,
+            kind,
+        }
+    }
+
+    #[must_use]
+    pub const fn user_id(&self) -> &UserId {
+        &self.user_id
+    }
+
+    #[must_use]
+    pub const fn username(&self) -> &Username {
+        &self.username
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> ActivityFeedKind {
+        self.kind
+    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -240,6 +316,160 @@ impl fmt::Debug for Activity {
             .field("action", &self.action)
             .field("direction", &self.direction)
             .field("counterparty", &"[REDACTED]")
+            .field("amount", &"[REDACTED]")
+            .field("status", &self.status)
+            .field("note", &"[REDACTED]")
+            .field("audience", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum ActivityDetailParties {
+    Payment {
+        actor: User,
+        target: User,
+    },
+    Relative {
+        direction: ActivityDirection,
+        counterparty: ActivityCounterparty,
+    },
+}
+
+impl ActivityDetailParties {
+    #[must_use]
+    pub const fn payment_parties(&self) -> Option<(&User, &User)> {
+        match self {
+            Self::Payment { actor, target } => Some((actor, target)),
+            Self::Relative { .. } => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn relative_parts(&self) -> Option<(ActivityDirection, &ActivityCounterparty)> {
+        match self {
+            Self::Payment { .. } => None,
+            Self::Relative {
+                direction,
+                counterparty,
+            } => Some((*direction, counterparty)),
+        }
+    }
+}
+
+impl fmt::Debug for ActivityDetailParties {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Payment { .. } => "ActivityDetailParties::Payment([REDACTED])",
+            Self::Relative { .. } => "ActivityDetailParties::Relative([REDACTED])",
+        })
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ActivityDetail {
+    id: ActivityId,
+    occurred_at: OffsetDateTime,
+    action: ActivityAction,
+    parties: ActivityDetailParties,
+    amount: Money,
+    status: ActivityStatus,
+    note: Option<String>,
+    audience: Option<String>,
+}
+
+impl ActivityDetail {
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub fn payment(
+        id: ActivityId,
+        occurred_at: OffsetDateTime,
+        action: ActivityAction,
+        actor: User,
+        target: User,
+        amount: Money,
+        status: ActivityStatus,
+        note: Option<String>,
+        audience: Option<String>,
+    ) -> Self {
+        Self {
+            id,
+            occurred_at,
+            action,
+            parties: ActivityDetailParties::Payment { actor, target },
+            amount,
+            status,
+            note,
+            audience,
+        }
+    }
+
+    #[must_use]
+    pub fn relative(activity: Activity) -> Self {
+        Self {
+            id: activity.id,
+            occurred_at: activity.occurred_at,
+            action: activity.action,
+            parties: ActivityDetailParties::Relative {
+                direction: activity.direction,
+                counterparty: activity.counterparty,
+            },
+            amount: activity.amount,
+            status: activity.status,
+            note: activity.note,
+            audience: activity.audience,
+        }
+    }
+
+    #[must_use]
+    pub fn id(&self) -> &ActivityId {
+        &self.id
+    }
+
+    #[must_use]
+    pub const fn occurred_at(&self) -> OffsetDateTime {
+        self.occurred_at
+    }
+
+    #[must_use]
+    pub const fn action(&self) -> &ActivityAction {
+        &self.action
+    }
+
+    #[must_use]
+    pub const fn parties(&self) -> &ActivityDetailParties {
+        &self.parties
+    }
+
+    #[must_use]
+    pub const fn amount(&self) -> Money {
+        self.amount
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> &ActivityStatus {
+        &self.status
+    }
+
+    #[must_use]
+    pub fn note(&self) -> Option<&str> {
+        self.note.as_deref()
+    }
+
+    #[must_use]
+    pub fn audience(&self) -> Option<&str> {
+        self.audience.as_deref()
+    }
+}
+
+impl fmt::Debug for ActivityDetail {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ActivityDetail")
+            .field("id", &"[REDACTED]")
+            .field("occurred_at", &"[REDACTED]")
+            .field("action", &self.action)
+            .field("parties", &self.parties)
             .field("amount", &"[REDACTED]")
             .field("status", &self.status)
             .field("note", &"[REDACTED]")

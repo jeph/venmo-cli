@@ -106,7 +106,7 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 12 | `users info <USERNAME>` | 1–4 × **P1** then **P2** (maximum 5). | Shared exact-username resolution followed by detail read. |
 | 13 | `pay methods` | **W1** once. | One read. |
 | 14 | `balance` | **W2** once. | One read. |
-| 15 | `activity list [--limit N] [--before-id TOKEN]` | **AC1** once. | One page; stored self ID. |
+| 15 | `activity list [--user USERNAME] [--limit N] [--before-id TOKEN]` | Self: **AC1** once. Other: 1–4 × **P1**, then **P2 → AC1** (maximum 6). | One page; direction relative to selected personal subject. |
 | 16 | `activity info <ACTIVITY_ID>` | **AC2** once. | One detail read. |
 | 17 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
 | 18 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
@@ -274,10 +274,17 @@ required. Existing-credential callers require exact equality with the stored use
 | **P4** | `POST /v1/friend-requests`, form body `user_id=<TARGET_USER_ID>` | 2xx JSON must contain exact target `data.user`; then P2 must prove `request_sent_by_you` for send or `friend` for accept. |
 | **P5** | `DELETE /v1/users/<SELF_USER_ID>/friends/<TARGET_USER_ID>`, no body | Any complete 2xx status is provisionally accepted because signer-verified current implementations disagree on response body; then P2 must prove `not_friend`. |
 | **W2** | `GET /v1/account` | Requires direct string fields `data.balance` and `data.balance_on_hold`, each an exact signed USD decimal with ≤2 fractional digits. It never infers external balances. |
-| **AC1** | `GET /v1/stories/target-or-actor/<SELF_USER_ID>?limit=<LIMIT>&social_only=false[&before_id=<TOKEN>]` | `data` story array and optional `pagination.next`; count ≤ limit; every story is one supported class below. |
+| **AC1** | Self: `GET /v1/stories/target-or-actor/<SELF_USER_ID>?limit=<LIMIT>&social_only=false[&before_id=<TOKEN>]`. Other personal user: same path with `<SUBJECT_USER_ID>`, `limit`, and optional `before_id`, without a public-only filter. | `data` story array and optional `pagination.next`; count ≤ limit. Self accepts the three supported classes below. Other-user pages accept only payment stories with exactly one subject party and strict audience checks. |
 | **AC2** | `GET /v1/stories/<ACTIVITY_ID>` | `data` story or `data.story`; top-level story ID must exactly equal the path ID. |
 | **R1** | `GET /v1/payments?action=charge&status=pending,held&limit=<LIMIT>[&before=<TOKEN>]` | `data` records and optional `pagination.next`; every record is exact `charge`, status `pending` or `held`, positive, involves self exactly once, and count ≤ limit. Direction is derived and filtered locally. |
 | **R2** | `GET /v1/payments/<REQUEST_ID>` | `data` record or `data.payment`; exact path ID. Mapper permits `charge`/`pay` and bounded status, but public `requests info` narrows to open `charge`; mutation preflight is stricter below. |
+
+Other-user AC1 is documented by the historical unofficial iOS/client-1 API inventory and its
+companion wrapper as `/stories/target-or-actor/{user_id}` with `limit`/`before_id`. Current
+signer-verified Android 10.31.1 and 26.13.0 independently retain that route for normal personal
+profile feeds. Android uses a separate `only_public_stories=true` call path for business/public
+profiles, which is why the CLI fails those profile types closed rather than reusing the personal
+contract.
 
 P4/P5 static evidence comes from Android artifacts signed by Venmo certificate SHA-256
 `c77e2631ac0451c086f25f79ae258238afa400961e8d599db78e25eadcdcc947`: 9.26.0 APK
@@ -312,11 +319,12 @@ The `pay user` consumer is stricter:
    none is default, only a sole eligible external method is selected; multiple
    no-default candidates are ambiguous. Multiple eligible external defaults fail.
    Response order and fee never choose a source, and no CLI override exists.
-#### Activity story classes
+#### Activity story classes and viewed-user scope
 An activity has a valid top-level ID and exactly one non-null class:
 
-- **payment:** nested status/action/positive amount/actor/target, exactly one self
-  party; nested creation time, note, and audience with documented top-level
+- **payment:** nested status/action/positive amount/actor/target. A list page requires exactly one
+  selected feed subject party; detail preserves the absolute actor/target. Nested creation time,
+  note, and audience use the documented top-level
   fallbacks. Time uses `payment.date_created`, then story `date_created`. Nested
   `payment.id` must deserialize as a string/integer but is discarded without opaque-ID
   validation and is not the activity ID;
@@ -327,6 +335,21 @@ An activity has a valid top-level ID and exactly one non-null class:
 - **authorization:** valid authorization ID, status, positive amount,
   `merchant.display_name`, and user exactly self; always outgoing; time uses
   `created_at`, then story `date_created`.
+
+Without `--user`, AC1 retains the stored-self contract above. An exact own username is optimized to
+that same path without search. Another username uses bounded exact P1 traversal and authoritative
+P2 equality validation, requires exact personal profile type, and then requests one normal native
+profile-feed page. Direction and counterparty are derived relative to that selected subject.
+Other-user pages reject transfer/authorization records, missing or unknown audiences, and any
+payment where exactly one actor/target is not the subject. Public/friends records rely on server
+visibility; private records additionally require the authenticated viewer to be the other party.
+The continuation remains bound to the exact subject path, limit, effective false filters, and one
+opaque progressing `before_id`.
+
+AC2 remains globally keyed by story ID and accepts no subject argument. Payment detail preserves and
+renders absolute actor and target identities, so it does not invent a viewer-relative direction.
+An external private payment must include the authenticated viewer; transfers and authorizations
+continue to require current-account ownership.
 
 Pending, failed, or another bounded remote status remains readable data rather than
 being converted to command failure.
@@ -530,8 +553,9 @@ the request/state contract, but current client-1 authorization has not been live
 ### 6.4 Reads
 Every public list fetches exactly one page. Full server next URLs are never followed
 or printed. `activity list` and `requests list` do print validated raw continuation
-tokens to stderr; `friends list`, `activity list`, and `activity info` use stored self
-ID without A5. Request direction is local, so a displayed page can be empty and still
+tokens to stderr; `friends list` and default `activity list` use stored self ID without A5.
+Other-user activity uses exact P1/P2 resolution but no A5. `activity info` uses the unique story ID.
+Request direction is local, so a displayed page can be empty and still
 have a continuation.
 
 ## 7. Implemented pagination and recipient resolution
@@ -542,7 +566,7 @@ fragment, duplicate/disallowed query keys, and invalid values are rejected.
 | Family | Allowed next query and progress rules |
 |---|---|
 | Friends | Only `limit`, `offset`; same limit; offset valid `u32` and strictly increases. Empty page plus next is rejected. |
-| Activity | Only `before_id`, `limit`, `only_public_stories`, `social_only`; same limit; `social_only=false`; optional `only_public_stories=false`; required new valid token. Empty page plus next is rejected. |
+| Activity | Only `before_id`, `limit`, `only_public_stories`, `social_only`; exact subject path and same limit. Self requires `social_only=false`; other-user continuations may omit it, but any supplied visibility/social flag must remain false. `only_public_stories=true` is always rejected. A new valid token is required, and empty page plus next is rejected. |
 | Requests | Only `action`, `before`, `limit`, `status`; exact `action=charge`, `status=pending,held`, same limit, required new valid token. Empty source page plus progressing next is allowed. |
 
 P1 ignores server pagination. A nonempty page exactly equal to limit synthesizes
@@ -602,6 +626,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-16 | T1 | Direct observation / controlled live validation | One bounded read proved current bearer/device auth, direction/speed branches, standard bank candidates in both directions on the observed account, and fee/estimate structure; values/counts were not retained. |
 | 2026-07-17 | T2 standard out | Direct observation / controlled and reconciled live validation + exact synthetic | One approved $0.01 HTTP-201 write returned direct pending standard transfer data; exactly one matching outgoing activity record had the same transfer ID. Exact body, fail-closed selection, strict response proof, and one-write ambiguity are implemented. |
 | 2026-07-19 | P4/P5 friendship mutations | Direct observation of signer-verified Android 9.26.0, 10.31.1, and 26.13.0 + exact synthetic; residual auth gap | Current native route/body/state semantics are consistent across artifacts. No public mutation implementation was found. The CLI's client-1 session has not received a controlled live mutation validation; no canary has run. |
+| 2026-07-19 | AC1 other-user personal feed | Historical public client-1 documentation/wrapper + signer-verified Android 10.31.1 and 26.13.0 + exact synthetic | The single-user `target-or-actor` route is long-lived and current. Normal personal feeds use the unfiltered route; business/public-only feeds are a distinct branch and remain unsupported. No new live smoke was run. |
 | Current gap | User-Agent | Existing behavior / residual gap | Literal is known; current necessity/currency is not. |
 
 ## 10. Transfers: enabled options and standard out

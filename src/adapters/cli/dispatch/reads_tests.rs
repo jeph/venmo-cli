@@ -15,8 +15,9 @@ use crate::adapters::cli::args::{
 use crate::adapters::cli::error::ErrorCategory;
 use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::activity::{
-    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDirection,
-    ActivityId, ActivityPage, ActivityPageRequest, ActivityStatus,
+    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDetail,
+    ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId, ActivityPage,
+    ActivityPageRequest, ActivityStatus,
 };
 use crate::features::people::{
     FriendsPage, FriendsPageRequest, FriendshipStatus, User, UserProfileKind, UserSearchPage,
@@ -95,7 +96,7 @@ enum ReadCall {
     },
     ActivityList {
         session: SessionCall,
-        current_user_id: UserId,
+        scope: ActivityFeedScope,
         page: ActivityPageRequest,
     },
     ActivityInfo {
@@ -389,7 +390,7 @@ impl BalanceApi for BalanceFake {
 
 struct ActivityFake {
     list_responses: ResponseQueue<ActivityPage>,
-    info_responses: ResponseQueue<Activity>,
+    info_responses: ResponseQueue<ActivityDetail>,
     transcript: Transcript,
 }
 
@@ -400,12 +401,12 @@ impl ActivityListApi for ActivityFake {
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
+        scope: &'a ActivityFeedScope,
         page: ActivityPageRequest,
     ) -> impl Future<Output = Result<ActivityPage, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(ReadCall::ActivityList {
             session: session_call(access_token, device_id),
-            current_user_id: current_user_id.clone(),
+            scope: scope.clone(),
             page,
         });
         ready(self.list_responses.take())
@@ -421,13 +422,40 @@ impl ActivityDetailApi for ActivityFake {
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<Activity, Self::Error>> + Send + 'a {
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(ReadCall::ActivityInfo {
             session: session_call(access_token, device_id),
             current_user_id: current_user_id.clone(),
             activity_id: activity_id.clone(),
         });
         ready(self.info_responses.take())
+    }
+}
+
+impl UserLookupApi for ActivityFake {
+    type Error = FakeApiError;
+
+    fn user_by_id<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _user_id: &'a UserId,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError))
+    }
+}
+
+impl UserSearchApi for ActivityFake {
+    type Error = FakeApiError;
+
+    fn search_users<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _query: &'a UserSearchQuery,
+        _page: UserSearchPageRequest,
+    ) -> impl Future<Output = Result<UserSearchPage, Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError))
     }
 }
 

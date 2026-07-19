@@ -60,6 +60,10 @@ pub enum ActivityOperation {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 pub struct ActivityListArgs {
+    /// Exact personal-profile username whose visible activity should be listed.
+    #[arg(long, value_name = "USERNAME")]
+    pub user: Option<Username>,
+
     /// Server request page size.
     #[arg(long, value_name = "N", default_value = "10")]
     pub limit: Limit,

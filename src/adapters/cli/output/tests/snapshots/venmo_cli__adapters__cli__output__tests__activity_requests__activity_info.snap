@@ -5,8 +5,8 @@ expression: info_stdout
 Activity ID: story-1
 Time: 1969-12-31T16:00:00
 Action: pay
-Direction: outgoing
-Counterparty: @bob
+Actor: @alice
+Target: @bob
 Amount: $1.25
 Status: failed
 Note: note\n\u{001B}[31mline

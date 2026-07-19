@@ -15,6 +15,12 @@ available-balance snapshots, rejects zero/negative values before options or a wr
 action-specific confirmation and disclosure output, and proves that T2 receives only the resolved
 integer cents. It never performs a live transfer.
 
+Other-user activity coverage is also service-free. Feature tests pin own-username optimization,
+bounded exact personal-profile resolution, subject retention, and unsupported-profile rejection.
+Scripted transport tests pin the selected-user path, native unfiltered query, subject-relative
+direction, scope-aware continuation, supported audiences, private viewer participation, and
+rejection of nonpayment records. Detail tests preserve absolute payment actor/target identities.
+
 ## Test layers
 
 | Layer | Primary contract |

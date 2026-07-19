@@ -2,9 +2,9 @@ use std::future::Future;
 use std::str::FromStr;
 
 use crate::features::activity::{
-    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDetailApi,
-    ActivityDirection, ActivityId, ActivityListApi, ActivityPage, ActivityPageRequest,
-    ActivityStatus,
+    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDetail,
+    ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId,
+    ActivityListApi, ActivityPage, ActivityPageRequest, ActivityStatus,
 };
 use crate::features::people::User;
 use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
@@ -22,35 +22,25 @@ use super::support::{
 };
 use super::{ACTIVITY_DETAIL_OPERATION, ACTIVITY_LIST_OPERATION, VenmoApiClient};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ActivityMappingContext {
-    List,
-    Detail,
-}
-
-impl ActivityMappingContext {
-    const fn operation(self) -> &'static str {
-        match self {
-            Self::List => ACTIVITY_LIST_OPERATION,
-            Self::Detail => ACTIVITY_DETAIL_OPERATION,
-        }
-    }
-}
-
 impl<T: ApiTransport> VenmoApiClient<T> {
     pub(super) async fn fetch_activity_page(
         &self,
         access_token: &AccessToken,
         device_id: &DeviceId,
-        current_user_id: &UserId,
+        scope: &ActivityFeedScope,
         page: ActivityPageRequest,
     ) -> Result<ActivityPage, VenmoApiError> {
         let limit_value = page.page_size().get().to_string();
-        let query = [("limit", limit_value.as_str()), ("social_only", "false")]
-            .into_iter()
-            .chain(page.before_id().map(|id| ("before_id", id.as_str())))
-            .collect::<Vec<_>>();
-        let path_segments = ["stories", "target-or-actor", current_user_id.as_str()];
+        let mut query = vec![("limit", limit_value.as_str())];
+        if scope.kind() == ActivityFeedKind::CurrentUser {
+            query.push(("social_only", "false"));
+        }
+        query.extend(page.before_id().map(|id| ("before_id", id.as_str())));
+        let path_segments = [
+            "stories",
+            "target-or-actor",
+            scope.subject_user_id().as_str(),
+        ];
         let response = self
             .transport
             .send_authenticated(
@@ -66,13 +56,19 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         let activities = envelope
             .data
             .into_iter()
-            .map(|story| map_activity(story, current_user_id, ActivityMappingContext::List))
+            .map(|story| match scope.kind() {
+                ActivityFeedKind::CurrentUser => map_activity(story, scope.subject_user_id()),
+                ActivityFeedKind::OtherPersonalUser => {
+                    map_other_user_activity(story, scope.viewer_user_id(), scope.subject_user_id())
+                }
+            })
             .collect::<Result<Vec<_>, _>>()?;
         validate_page_count(ACTIVITY_LIST_OPERATION, activities.len(), page.page_size())?;
         let next_token = self.parse_activity_next_link(
             envelope.pagination.next.as_deref(),
             &path_segments,
             page.page_size(),
+            scope.kind(),
         )?;
         Ok(ActivityPage::new(activities, next_token))
     }
@@ -82,6 +78,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         raw: Option<&str>,
         path_segments: &[&str],
         page_size: Limit,
+        kind: ActivityFeedKind,
     ) -> Result<Option<ActivityBeforeId>, VenmoApiError> {
         let Some(raw) = raw else {
             return Ok(None);
@@ -98,12 +95,24 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             "limit",
             &page_size.get().to_string(),
         )?;
-        require_query_value_case_insensitive(
-            ACTIVITY_LIST_OPERATION,
-            &query,
-            "social_only",
-            "false",
-        )?;
+        match kind {
+            ActivityFeedKind::CurrentUser => require_query_value_case_insensitive(
+                ACTIVITY_LIST_OPERATION,
+                &query,
+                "social_only",
+                "false",
+            )?,
+            ActivityFeedKind::OtherPersonalUser => {
+                if let Some(value) = query.get("social_only")
+                    && !value.eq_ignore_ascii_case("false")
+                {
+                    return Err(VenmoApiError::Contract {
+                        operation: ACTIVITY_LIST_OPERATION,
+                        problem: "the activity continuation changed the social filter",
+                    });
+                }
+            }
+        }
         if let Some(value) = query.get("only_public_stories")
             && !value.eq_ignore_ascii_case("false")
         {
@@ -130,7 +139,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         device_id: &DeviceId,
         current_user_id: &UserId,
         activity_id: &ActivityId,
-    ) -> Result<Activity, VenmoApiError> {
+    ) -> Result<ActivityDetail, VenmoApiError> {
         let response = self
             .transport
             .send_authenticated(
@@ -147,11 +156,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             response,
             "the activity-detail response did not match the supported envelope",
         )?;
-        let activity = map_activity(
-            envelope.data.into_story(),
-            current_user_id,
-            ActivityMappingContext::Detail,
-        )?;
+        let activity = map_activity_detail(envelope.data.into_story(), current_user_id)?;
         if activity.id() != activity_id {
             return Err(VenmoApiError::Contract {
                 operation: ACTIVITY_DETAIL_OPERATION,
@@ -168,10 +173,10 @@ impl<T: ApiTransport> ActivityListApi for VenmoApiClient<T> {
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
+        scope: &'a ActivityFeedScope,
         page: ActivityPageRequest,
     ) -> impl Future<Output = Result<ActivityPage, Self::Error>> + Send + 'a {
-        self.fetch_activity_page(access_token, device_id, current_user_id, page)
+        self.fetch_activity_page(access_token, device_id, scope, page)
     }
 }
 
@@ -183,7 +188,7 @@ impl<T: ApiTransport> ActivityDetailApi for VenmoApiClient<T> {
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<Activity, Self::Error>> + Send + 'a {
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
         self.fetch_activity_by_id(access_token, device_id, current_user_id, activity_id)
     }
 }
@@ -191,9 +196,8 @@ impl<T: ApiTransport> ActivityDetailApi for VenmoApiClient<T> {
 pub(super) fn map_activity(
     story: StoryDto,
     current_user_id: &UserId,
-    context: ActivityMappingContext,
 ) -> Result<Activity, VenmoApiError> {
-    let operation = context.operation();
+    let operation = ACTIVITY_LIST_OPERATION;
     let StoryDto {
         id,
         date_created: story_created,
@@ -223,6 +227,92 @@ pub(super) fn map_activity(
         }
         _ => Err(VenmoApiError::Contract {
             operation,
+            problem: "the activity response contained an unsupported or ambiguous record type",
+        }),
+    }
+}
+
+fn map_other_user_activity(
+    story: StoryDto,
+    viewer_user_id: &UserId,
+    subject_user_id: &UserId,
+) -> Result<Activity, VenmoApiError> {
+    let StoryDto {
+        id,
+        date_created,
+        note,
+        audience,
+        payment,
+        transfer,
+        authorization,
+    } = story;
+    let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
+        operation: ACTIVITY_LIST_OPERATION,
+        problem: "the activity response contained an invalid activity ID",
+    })?;
+    match (payment, transfer, authorization) {
+        (Some(payment), None, None) => map_payment_activity_for_scope(
+            StoryMetadata {
+                id,
+                created_at: date_created,
+                note,
+                audience,
+            },
+            payment,
+            subject_user_id,
+            Some(viewer_user_id),
+            ACTIVITY_LIST_OPERATION,
+        ),
+        _ => Err(VenmoApiError::Contract {
+            operation: ACTIVITY_LIST_OPERATION,
+            problem: "another user's activity feed contained a nonpayment or ambiguous record",
+        }),
+    }
+}
+
+fn map_activity_detail(
+    story: StoryDto,
+    current_user_id: &UserId,
+) -> Result<ActivityDetail, VenmoApiError> {
+    let StoryDto {
+        id,
+        date_created,
+        note,
+        audience,
+        payment,
+        transfer,
+        authorization,
+    } = story;
+    let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
+        operation: ACTIVITY_DETAIL_OPERATION,
+        problem: "the activity response contained an invalid activity ID",
+    })?;
+    let metadata = StoryMetadata {
+        id,
+        created_at: date_created,
+        note,
+        audience,
+    };
+    match (payment, transfer, authorization) {
+        (Some(payment), None, None) => map_payment_detail(
+            metadata,
+            payment,
+            current_user_id,
+            ACTIVITY_DETAIL_OPERATION,
+        ),
+        (None, Some(transfer), None) => {
+            map_transfer_activity(metadata, transfer, ACTIVITY_DETAIL_OPERATION)
+                .map(ActivityDetail::relative)
+        }
+        (None, None, Some(authorization)) => map_authorization_activity(
+            metadata,
+            authorization,
+            current_user_id,
+            ACTIVITY_DETAIL_OPERATION,
+        )
+        .map(ActivityDetail::relative),
+        _ => Err(VenmoApiError::Contract {
+            operation: ACTIVITY_DETAIL_OPERATION,
             problem: "the activity response contained an unsupported or ambiguous record type",
         }),
     }
@@ -313,6 +403,95 @@ fn map_payment_activity(
     current_user_id: &UserId,
     operation: &'static str,
 ) -> Result<Activity, VenmoApiError> {
+    map_payment_activity_for_scope(story, payment, current_user_id, None, operation)
+}
+
+fn map_payment_activity_for_scope(
+    story: StoryMetadata,
+    payment: PaymentRecordDto,
+    subject_user_id: &UserId,
+    viewer_user_id: Option<&UserId>,
+    operation: &'static str,
+) -> Result<Activity, VenmoApiError> {
+    let payment = map_payment_fields(story, payment, operation)?;
+    if let Some(viewer_user_id) = viewer_user_id {
+        validate_visible_other_user_payment(
+            payment.audience.as_deref(),
+            &payment.actor,
+            &payment.target,
+            viewer_user_id,
+            operation,
+        )?;
+    }
+    let (direction, counterparty) =
+        relative_parties(payment.actor, payment.target, subject_user_id, operation)?;
+    Ok(Activity::new(
+        payment.id,
+        payment.occurred_at,
+        payment.action,
+        direction,
+        counterparty,
+        payment.amount,
+        payment.status,
+        payment.note,
+        payment.audience,
+    ))
+}
+
+fn map_payment_detail(
+    story: StoryMetadata,
+    payment: PaymentRecordDto,
+    viewer_user_id: &UserId,
+    operation: &'static str,
+) -> Result<ActivityDetail, VenmoApiError> {
+    let payment = map_payment_fields(story, payment, operation)?;
+    if payment.actor.user_id() == payment.target.user_id() {
+        return Err(VenmoApiError::Contract {
+            operation,
+            problem: "the payment activity did not identify two distinct parties",
+        });
+    }
+    let viewer_participates =
+        payment.actor.user_id() == viewer_user_id || payment.target.user_id() == viewer_user_id;
+    if !viewer_participates {
+        validate_visible_other_user_payment(
+            payment.audience.as_deref(),
+            &payment.actor,
+            &payment.target,
+            viewer_user_id,
+            operation,
+        )?;
+    }
+    Ok(ActivityDetail::payment(
+        payment.id,
+        payment.occurred_at,
+        payment.action,
+        payment.actor,
+        payment.target,
+        payment.amount,
+        payment.status,
+        payment.note,
+        payment.audience,
+    ))
+}
+
+struct MappedPayment {
+    id: ActivityId,
+    occurred_at: time::OffsetDateTime,
+    action: ActivityAction,
+    actor: User,
+    target: User,
+    amount: Money,
+    status: ActivityStatus,
+    note: Option<String>,
+    audience: Option<String>,
+}
+
+fn map_payment_fields(
+    story: StoryMetadata,
+    payment: PaymentRecordDto,
+    operation: &'static str,
+) -> Result<MappedPayment, VenmoApiError> {
     let PaymentRecordDto {
         id: _,
         status,
@@ -326,7 +505,6 @@ fn map_payment_activity(
     } = payment;
     let actor = map_user(actor, operation)?;
     let target = map_user(target.user, operation)?;
-    let (direction, counterparty) = relative_parties(actor, target, current_user_id, operation)?;
     let amount = Money::from_str(&amount.into_string()).map_err(|_| VenmoApiError::Contract {
         operation,
         problem: "the activity response contained an invalid positive USD amount",
@@ -354,17 +532,52 @@ fn map_payment_activity(
         operation,
         "the activity response contained an invalid audience",
     )?;
-    Ok(Activity::new(
-        story.id,
+    Ok(MappedPayment {
+        id: story.id,
         occurred_at,
         action,
-        direction,
-        counterparty,
+        actor,
+        target,
         amount,
         status,
         note,
         audience,
-    ))
+    })
+}
+
+fn validate_visible_other_user_payment(
+    audience: Option<&str>,
+    actor: &User,
+    target: &User,
+    viewer_user_id: &UserId,
+    operation: &'static str,
+) -> Result<(), VenmoApiError> {
+    if actor.user_id() == target.user_id() {
+        return Err(VenmoApiError::Contract {
+            operation,
+            problem: "the payment activity did not identify two distinct parties",
+        });
+    }
+    match audience {
+        Some("public" | "friends") => Ok(()),
+        Some("private")
+            if actor.user_id() == viewer_user_id || target.user_id() == viewer_user_id =>
+        {
+            Ok(())
+        }
+        Some("private") => Err(VenmoApiError::Contract {
+            operation,
+            problem: "a private activity did not include the authenticated viewer",
+        }),
+        Some(_) => Err(VenmoApiError::Contract {
+            operation,
+            problem: "another user's activity contained an unsupported audience",
+        }),
+        None => Err(VenmoApiError::Contract {
+            operation,
+            problem: "another user's activity omitted its audience",
+        }),
+    }
 }
 
 fn map_transfer_activity(

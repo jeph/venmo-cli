@@ -85,6 +85,16 @@ add-then-revoke canary requires separate owner approval, a consenting target ini
 `not_friend`, and separate reconciliation/authorization before the revoke. Never remove an
 established friendship merely to broaden evidence.
 
+## Non-personal activity profiles
+
+`activity list --user` initially supports authoritative personal profiles only. Signer-verified
+Android uses the same base story path for business/public profiles but a distinct
+`only_public_stories=true` method and presenter path. That separate filter contract, profile
+taxonomy, continuation behavior, and output semantics are not inferred from personal feeds.
+Business, charity, unknown, and missing profile types therefore fail before AC1. Reopening this
+scope requires exact synthetic and static evidence for each supported profile class; a generic
+personal-feed fallback is not acceptable.
+
 ## Peer-payment list and detail reads
 
 `payments list` and `payments info <PAYMENT_ID>` remain unavailable. The only current list contract

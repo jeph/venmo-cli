@@ -261,7 +261,7 @@ impl AppError {
                 application_failure_category(source.failure_kind())
             }
             Self::Balance { source } => read_failure_category(source.failure_kind()),
-            Self::Activity { source } => read_failure_category(source.failure_kind()),
+            Self::Activity { source } => application_failure_category(source.failure_kind()),
             Self::Requests { source } => read_failure_category(source.failure_kind()),
             Self::RequestInfo { source } => application_failure_category(source.failure_kind()),
             Self::TransferOptions { source } => read_failure_category(source.failure_kind()),

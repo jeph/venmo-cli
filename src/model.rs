@@ -8,8 +8,9 @@ pub use crate::features::activity::continuation::ActivityBeforeId;
 pub use crate::features::activity::info::ActivityInfoResult;
 pub use crate::features::activity::list::ActivityListResult;
 pub use crate::features::activity::model::{
-    Activity, ActivityAction, ActivityCounterparty, ActivityDirection, ActivityId,
-    ActivityLabelParseError, ActivityStatus,
+    Activity, ActivityAction, ActivityCounterparty, ActivityDetail, ActivityDetailParties,
+    ActivityDirection, ActivityFeedKind, ActivityId, ActivityLabelParseError, ActivityStatus,
+    ActivitySubject,
 };
 pub use crate::features::payments::model::{
     CreatedPayment, FinancialStatus, PayPlan, PaymentId, PeerFundingFee, PeerFundingMethod,

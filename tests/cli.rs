@@ -1,7 +1,8 @@
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
-    AuthOperation, Cli, Command, PayOperation, RequestDirectionArg, RequestsOperation,
-    TransferAmountArg, TransferOperation, TransferSpeedArg, UsersOperation, VisibilityArg,
+    ActivityOperation, AuthOperation, Cli, Command, PayOperation, RequestDirectionArg,
+    RequestsOperation, TransferAmountArg, TransferOperation, TransferSpeedArg, UsersOperation,
+    VisibilityArg,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -461,6 +462,28 @@ fn each_paginated_command_accepts_only_its_endpoint_native_inputs() {
     ] {
         assert_rejected(arguments);
     }
+}
+
+#[test]
+fn activity_list_user_is_optional_and_normalizes_at_prefix() {
+    let current = Cli::try_parse_from(["venmo", "activity", "list"]);
+    assert!(current.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Activity(args)
+            if matches!(&args.operation, ActivityOperation::List(args) if args.user.is_none())
+    )));
+
+    for username in ["alice", "@alice"] {
+        let parsed = Cli::try_parse_from(["venmo", "activity", "list", "--user", username]);
+        assert!(parsed.is_ok_and(|cli| matches!(
+            cli.command,
+            Command::Activity(args)
+                if matches!(&args.operation, ActivityOperation::List(args)
+                    if args.user.as_ref().is_some_and(|value| value.as_str() == "alice"))
+        )));
+    }
+
+    assert_rejected(&["venmo", "activity", "info", "story-1", "--user", "alice"]);
 }
 
 #[test]

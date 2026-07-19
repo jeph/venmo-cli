@@ -9,11 +9,14 @@ use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
 use super::*;
-use crate::features::people::User;
+use crate::features::people::{
+    User, UserLookupApi, UserProfileKind, UserSearchApi, UserSearchPage, UserSearchPageRequest,
+    UserSearchQuery,
+};
 use crate::shared::{
     AccessToken, ApiFailure, ApiFailureKind, CredentialAccessError, CredentialCapability,
     CredentialEnvelope, CredentialFailureKind, CredentialFormat, CredentialReader,
-    CredentialStoreFailure, DeviceId, Limit, LoadedCredential, Money, UserId, Username,
+    CredentialStoreFailure, DeviceId, Limit, LoadedCredential, Money, Offset, UserId, Username,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -59,13 +62,22 @@ enum Call {
     ReadCredential,
     ActivityList {
         session: SessionCall,
-        current_user_id: UserId,
+        scope: ActivityFeedScope,
         request: ActivityPageRequest,
     },
     ActivityDetail {
         session: SessionCall,
         current_user_id: UserId,
         activity_id: ActivityId,
+    },
+    SearchUsers {
+        session: SessionCall,
+        query: UserSearchQuery,
+        request: UserSearchPageRequest,
+    },
+    UserDetail {
+        session: SessionCall,
+        user_id: UserId,
     },
 }
 
@@ -90,7 +102,7 @@ struct ListResponse {
 
 struct DetailResponse {
     id: ResponseId,
-    result: Result<Activity, FakeApiError>,
+    result: Result<ActivityDetail, FakeApiError>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -110,6 +122,11 @@ impl From<ActivityError> for ErrorSnapshot {
             }
             ActivityError::Api { source } => Self::ApiFailure(source.kind()),
             ActivityError::ResponseContract { problem } => Self::ResponseContract(problem),
+            ActivityError::UserLookup { .. }
+            | ActivityError::MissingProfileType
+            | ActivityError::UnsupportedProfileType => {
+                Self::ResponseContract("unexpected activity-subject failure in self-feed test")
+            }
         }
     }
 }
@@ -250,12 +267,12 @@ impl ActivityListApi for FakeApi {
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
+        scope: &'a ActivityFeedScope,
         request: ActivityPageRequest,
     ) -> impl Future<Output = Result<ActivityPage, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(Call::ActivityList {
             session: session_call(access_token, device_id),
-            current_user_id: current_user_id.clone(),
+            scope: scope.clone(),
             request,
         });
         let result = self
@@ -278,7 +295,7 @@ impl ActivityDetailApi for FakeApi {
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<Activity, Self::Error>> + Send + 'a {
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(Call::ActivityDetail {
             session: session_call(access_token, device_id),
             current_user_id: current_user_id.clone(),
@@ -292,6 +309,42 @@ impl ActivityDetailApi for FakeApi {
                 response.result
             });
         ready(result)
+    }
+}
+
+impl UserSearchApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn search_users<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        query: &'a UserSearchQuery,
+        request: UserSearchPageRequest,
+    ) -> impl Future<Output = Result<UserSearchPage, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::SearchUsers {
+            session: session_call(access_token, device_id),
+            query: query.clone(),
+            request,
+        });
+        ready(subject_user().map(|user| UserSearchPage::new(vec![user], None)))
+    }
+}
+
+impl UserLookupApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn user_by_id<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        user_id: &'a UserId,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::UserDetail {
+            session: session_call(access_token, device_id),
+            user_id: user_id.clone(),
+        });
+        ready(subject_user())
     }
 }
 
@@ -321,7 +374,7 @@ fn list_response(id: ResponseId, result: Result<ActivityPage, FakeApiError>) -> 
     ListResponse { id, result }
 }
 
-fn detail_response(id: ResponseId, result: Result<Activity, FakeApiError>) -> DetailResponse {
+fn detail_response(id: ResponseId, result: Result<ActivityDetail, FakeApiError>) -> DetailResponse {
     DetailResponse { id, result }
 }
 
@@ -364,7 +417,11 @@ fn expected_list_call(
 ) -> Result<Call, Box<dyn Error>> {
     Ok(Call::ActivityList {
         session: fixture_session(),
-        current_user_id: UserId::from_str(FIXTURE_USER_ID)?,
+        scope: ActivityFeedScope::new(
+            UserId::from_str(FIXTURE_USER_ID)?,
+            UserId::from_str(FIXTURE_USER_ID)?,
+            ActivityFeedKind::CurrentUser,
+        ),
         request: ActivityPageRequest::new(limit, before_id),
     })
 }
@@ -375,6 +432,15 @@ fn expected_detail_call(activity_id: &ActivityId) -> Result<Call, Box<dyn Error>
         current_user_id: UserId::from_str(FIXTURE_USER_ID)?,
         activity_id: activity_id.clone(),
     })
+}
+
+fn subject_user() -> Result<User, FakeApiError> {
+    Ok(User::new(
+        UserId::from_str("2000").map_err(|_| FakeApiError(ApiFailureKind::Internal))?,
+        Some(Username::from_bare("alice").map_err(|_| FakeApiError(ApiFailureKind::Internal))?),
+        Some("Alice".to_owned()),
+    )
+    .with_financial_attributes(UserProfileKind::Personal, true))
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -426,6 +492,98 @@ async fn list_fetches_one_exact_page_and_returns_native_before_id() -> TestResul
     let observed = list_snapshot(result, &reader, &api, &transcript);
 
     assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn list_for_user_resolves_exact_personal_subject_before_one_feed_page() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderOutcome::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(
+        vec![list_response(
+            ResponseId::Primary,
+            Ok(ActivityPage::new(Vec::new(), None)),
+        )],
+        Vec::new(),
+        Rc::clone(&transcript),
+    );
+    let username = Username::from_bare("alice")?;
+
+    let result = list_for_user(&reader, &api, &username, Limit::MIN, None).await?;
+
+    let subject = result
+        .subject()
+        .ok_or_else(|| std::io::Error::other("missing resolved activity subject"))?;
+    assert_eq!(subject.username().as_str(), "alice");
+    assert_eq!(subject.user_id().as_str(), "2000");
+    assert_eq!(subject.kind(), ActivityFeedKind::OtherPersonalUser);
+    let calls = transcript.borrow();
+    assert!(matches!(calls.as_slice(), [
+        Call::ReadCredential,
+        Call::SearchUsers { request, .. },
+        Call::UserDetail { user_id, .. },
+        Call::ActivityList { scope, request: activity_request, .. }
+    ] if request == &UserSearchPageRequest::new(Limit::try_from(50)?, Offset::default())
+        && user_id.as_str() == "2000"
+        && scope.viewer_user_id().as_str() == "1000"
+        && scope.subject_user_id().as_str() == "2000"
+        && scope.kind() == ActivityFeedKind::OtherPersonalUser
+        && activity_request == &ActivityPageRequest::new(Limit::MIN, None)));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn list_for_own_username_uses_credential_identity_without_lookup() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderOutcome::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(
+        vec![list_response(
+            ResponseId::Primary,
+            Ok(ActivityPage::new(Vec::new(), None)),
+        )],
+        Vec::new(),
+        Rc::clone(&transcript),
+    );
+    let username = Username::from_bare("TESTER")?;
+
+    let result = list_for_user(&reader, &api, &username, Limit::MIN, None).await?;
+
+    assert!(result.subject().is_none());
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [Call::ReadCredential, expected_list_call(Limit::MIN, None)?]
+    );
+    Ok(())
+}
+
+#[test]
+fn other_user_activity_subject_requires_authoritative_personal_profile() -> TestResult {
+    let missing = User::new(
+        UserId::from_str("2000")?,
+        Some(Username::from_bare("alice")?),
+        None,
+    );
+    assert!(matches!(
+        super::list::subject_from_user(missing),
+        Err(ActivityError::MissingProfileType)
+    ));
+
+    for kind in [
+        UserProfileKind::Business,
+        UserProfileKind::Charity,
+        UserProfileKind::Unknown,
+    ] {
+        let user = User::new(
+            UserId::from_str("2000")?,
+            Some(Username::from_bare("alice")?),
+            None,
+        )
+        .with_financial_attributes(kind, true);
+        assert!(matches!(
+            super::list::subject_from_user(user),
+            Err(ActivityError::UnsupportedProfileType)
+        ));
+    }
     Ok(())
 }
 
@@ -619,7 +777,7 @@ async fn list_api_failure_kind_matrix_is_preserved() -> TestResult {
 async fn info_returns_only_the_exact_requested_activity() -> TestResult {
     // Setup.
     let requested = ActivityId::from_str("story-1")?;
-    let returned = activity(1, "complete detail")?;
+    let returned = activity_detail(1, "complete detail")?;
     let expected_activity = returned.clone();
 
     // Immutable initial state.
@@ -671,7 +829,7 @@ async fn info_rejects_a_different_response_activity_id() -> TestResult {
         Vec::new(),
         vec![detail_response(
             ResponseId::Primary,
-            Ok(activity(2, "wrong activity")?),
+            Ok(activity_detail(2, "wrong activity")?),
         )],
         Rc::clone(&transcript),
     );
@@ -718,7 +876,7 @@ async fn info_credential_load_matrix_stops_before_detail_api() -> TestResult {
             Vec::new(),
             vec![detail_response(
                 ResponseId::Primary,
-                Ok(activity(1, "unused")?),
+                Ok(activity_detail(1, "unused")?),
             )],
             Rc::clone(&transcript),
         );
@@ -812,4 +970,8 @@ fn activity(id: u32, note: &str) -> Result<Activity, Box<dyn Error>> {
         Some(note.to_owned()),
         Some("friends".to_owned()),
     ))
+}
+
+fn activity_detail(id: u32, note: &str) -> Result<ActivityDetail, Box<dyn Error>> {
+    Ok(ActivityDetail::relative(activity(id, note)?))
 }

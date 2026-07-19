@@ -14,15 +14,15 @@ use super::super::transport::{
     ResponseCapture, ScriptedCredentials, ScriptedRequest, ScriptedResultSnapshot,
     ScriptedTransport, ScriptedTransportSnapshot, TransportError, VenmoHttpTransport,
 };
-use super::activity::{ActivityMappingContext, map_activity};
+use super::activity::map_activity;
 use super::error::VenmoApiError;
 use super::payments::{PeerCreation, money_json_number};
 use super::response::sanitize_api_code;
 use super::support::parse_timestamp_value;
 use super::*;
 use crate::features::activity::{
-    ActivityBeforeId, ActivityDetailApi, ActivityDirection, ActivityId, ActivityListApi,
-    ActivityPageRequest,
+    ActivityBeforeId, ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope,
+    ActivityId, ActivityListApi, ActivityPageRequest,
 };
 use crate::features::auth::{
     AccountPassword, CurrentAccountApi, LoginIdentifier, OtpCode, OtpSecret, PasswordLoginApi,

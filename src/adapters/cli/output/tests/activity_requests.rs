@@ -3,8 +3,9 @@ use std::str::FromStr;
 
 use super::super::{write_activity_info, write_activity_list, write_request_info, write_requests};
 use crate::features::activity::{
-    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDirection,
-    ActivityId, ActivityInfoResult, ActivityListResult, ActivityStatus,
+    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDetail,
+    ActivityDirection, ActivityFeedKind, ActivityId, ActivityInfoResult, ActivityListResult,
+    ActivityStatus, ActivitySubject,
 };
 use crate::features::people::User;
 use crate::features::requests::list::RequestsResult;
@@ -69,7 +70,17 @@ fn activity_list_and_info_render_authoritative_status_as_data() -> TestResult {
         vec![activity.clone(), transfer],
         Some(ActivityBeforeId::from_str("story-next")?),
     );
-    let info = ActivityInfoResult::new(activity);
+    let info = ActivityInfoResult::new(ActivityDetail::payment(
+        activity.id().clone(),
+        activity.occurred_at(),
+        activity.action().clone(),
+        synthetic_user("123", "alice")?,
+        synthetic_user("456", "bob")?,
+        activity.amount(),
+        activity.status().clone(),
+        activity.note().map(str::to_owned),
+        activity.audience().map(str::to_owned),
+    ));
     let mut list_stdout = Vec::new();
     let mut list_stderr = Vec::new();
     let mut info_stdout = Vec::new();
@@ -88,6 +99,30 @@ fn activity_list_and_info_render_authoritative_status_as_data() -> TestResult {
     assert!(!list_stdout.contains('\u{1b}'));
     insta::assert_snapshot!("activity_info", info_stdout);
     assert!(!info_stdout.contains('\u{1b}'));
+    Ok(())
+}
+
+#[test]
+fn other_user_activity_output_names_its_subject_and_perspective() -> TestResult {
+    let subject = ActivitySubject::new(
+        UserId::from_str("456")?,
+        Username::from_bare("alice")?,
+        ActivityFeedKind::OtherPersonalUser,
+    );
+    let activity = synthetic_activity("settled", "visible note")?;
+    let result = ActivityListResult::for_subject(subject, vec![activity], None);
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    write_activity_list(
+        &mut stdout,
+        &mut stderr,
+        &result,
+        &super::local_timestamps(),
+    )?;
+
+    insta::assert_snapshot!("other_user_activity", String::from_utf8(stdout)?);
+    assert!(stderr.is_empty());
     Ok(())
 }
 
@@ -124,9 +159,20 @@ fn pending_request_output_preserves_ids_and_sanitizes_notes() -> TestResult {
 #[test]
 fn empty_activity_and_request_lists_have_exact_messages_and_no_continuations() -> TestResult {
     let activity = ActivityListResult::new(Vec::new(), None);
+    let other_activity = ActivityListResult::for_subject(
+        ActivitySubject::new(
+            UserId::from_str("456")?,
+            Username::from_bare("alice")?,
+            ActivityFeedKind::OtherPersonalUser,
+        ),
+        Vec::new(),
+        None,
+    );
     let requests = RequestsResult::new(Vec::new(), RequestDirectionFilter::All, None);
     let mut activity_stdout = Vec::new();
     let mut activity_stderr = Vec::new();
+    let mut other_activity_stdout = Vec::new();
+    let mut other_activity_stderr = Vec::new();
     let mut requests_stdout = Vec::new();
     let mut requests_stderr = Vec::new();
     let timestamps = super::local_timestamps();
@@ -143,9 +189,20 @@ fn empty_activity_and_request_lists_have_exact_messages_and_no_continuations() -
         &requests,
         &timestamps,
     )?;
+    write_activity_list(
+        &mut other_activity_stdout,
+        &mut other_activity_stderr,
+        &other_activity,
+        &timestamps,
+    )?;
 
     assert_eq!(activity_stdout, b"No activity found.\n");
     assert_eq!(activity_stderr, b"");
+    assert_eq!(
+        other_activity_stdout,
+        b"Activity for @alice\nDirection and counterparty are relative to @alice.\nNo visible activity found for @alice.\n"
+    );
+    assert_eq!(other_activity_stderr, b"");
     assert_eq!(requests_stdout, b"No pending requests found.\n");
     assert_eq!(requests_stderr, b"");
     Ok(())

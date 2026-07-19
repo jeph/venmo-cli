@@ -221,14 +221,7 @@ async fn live_activity_contract_failure_probe() -> TestResult {
         for record in records {
             let supported = serde_json::from_value::<StoryDto>(record.clone())
                 .ok()
-                .is_some_and(|story| {
-                    map_activity(
-                        story,
-                        loaded.envelope.user_id(),
-                        ActivityMappingContext::List,
-                    )
-                    .is_ok()
-                });
+                .is_some_and(|story| map_activity(story, loaded.envelope.user_id()).is_ok());
             if !supported {
                 eprintln!(
                     "schema-probe unsupported activity record on bounded page {}:",
@@ -246,6 +239,7 @@ async fn live_activity_contract_failure_probe() -> TestResult {
             value.pointer("/pagination/next").and_then(Value::as_str),
             &path_segments,
             page_size,
+            ActivityFeedKind::CurrentUser,
         )?;
         if token.is_none() {
             eprintln!("schema-probe activity contract: all bounded records were supported");

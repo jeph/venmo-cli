@@ -75,7 +75,9 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 
 - `Activity`, `ActivityId`, `ActivityAction`, `ActivityCounterparty`, `ActivityDirection`,
   `ActivityStatus`, `ActivityLabelParseError`.
-- `ActivityBeforeId`, `ActivityListResult`, `ActivityInfoResult`.
+- `ActivityDetail`, `ActivityDetailParties`, `ActivityFeedKind`, `ActivitySubject`.
+- `ActivityBeforeId`, `ActivityListResult`, `ActivityInfoResult`. Other-user list results expose the
+  resolved subject; current-user results retain the existing unscoped presentation.
 
 ### Payments
 

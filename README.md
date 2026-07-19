@@ -148,11 +148,20 @@ Four read-only commands expose the continuation fields used by their source endp
 ```sh
 venmo friends list [--limit N] [--offset N]
 venmo users search <QUERY> [--limit N] [--offset N]
-venmo activity list [--limit N] [--before-id TOKEN]
+venmo activity list [--user USERNAME] [--limit N] [--before-id TOKEN]
 venmo requests list [--direction all|incoming|outgoing] [--limit N] [--before TOKEN]
 ```
 
 Each of these four invocations requests exactly one source API page, validates and buffers that complete page, and then renders its records. `--limit` is the server request page size; it defaults to 10 and cannot exceed 50. Friend listing and user search use a typed nonnegative `--offset` that defaults to 0. Activity uses its opaque `--before-id`, while pending requests use their opaque `--before`. There is no universal continuation input, universal offset, page number, or public multi-page collector. A single-token user search is normalized as a username search, so `users search alice` and `users search @alice` are equivalent; multi-word input remains a general fuzzy search.
+
+Activity listing defaults to the authenticated user's existing feed. Optional `--user alice` and
+`--user @alice` are equivalent: they use the shared bounded exact-username search and authoritative
+user detail, require a personal profile, and fetch the normal personal-profile feed visible to the
+authenticated viewer. Directions and counterparties are then relative to the selected user.
+Business, charity, unknown, and missing profile types fail before the feed request; current Android
+uses a separate public-only business-feed contract. Other-user pages accept only payment stories
+with a supported audience, and private stories must include the authenticated viewer. A malformed
+or privacy-inconsistent page fails closed rather than silently dropping records.
 
 The non-paginated `users info <USERNAME>`, `activity info <ACTIVITY_ID>`, and
 `requests info <REQUEST_ID>` commands inspect one user, activity, or open request. User info accepts a
@@ -163,6 +172,10 @@ unknown evidence as not provided. It never accepts a user ID as a distinct argum
 broad payment/request lookup internally but exposes only `action=charge` records whose status is
 exactly `pending` or `held`, in either direction. Payment (`action=pay`) and terminal request
 records are rejected as usage errors rather than displayed as open requests.
+Activity IDs are globally unique, so `activity info` has no `--user` flag. Payment details render
+the absolute actor and target and can therefore represent a server-visible story involving two
+other users; private external stories are rejected. Transfer and authorization details retain
+their current-account ownership checks.
 
 Peer-payment reads are intentionally not exposed yet. The request-specific `/payments` contracts do
 not establish a safe general payment list, and a dated settled-PaymentId detail probe returned HTTP

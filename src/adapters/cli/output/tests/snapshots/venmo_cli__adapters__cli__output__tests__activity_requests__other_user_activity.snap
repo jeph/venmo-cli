@@ -1,0 +1,9 @@
+---
+source: src/adapters/cli/output/tests/activity_requests.rs
+expression: String::from_utf8(stdout)?
+---
+Activity for @alice
+Direction and counterparty are relative to @alice.
+ Id      | Time                | Action | Direction | Counterparty | Amount | Status  | Note
+---------+---------------------+--------+-----------+--------------+--------+---------+--------------
+ story-1 | 1969-12-31T16:00:00 | pay    | outgoing  | @bob         | $1.25  | settled | visible note

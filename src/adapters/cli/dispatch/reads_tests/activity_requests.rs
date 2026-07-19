@@ -17,7 +17,7 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = ActivityFake {
         list_responses: ResponseQueue::successful(response),
-        info_responses: ResponseQueue::successful(primary),
+        info_responses: ResponseQueue::successful(ActivityDetail::relative(primary)),
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
@@ -30,7 +30,11 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
                 ReadCall::ReadCredential,
                 ReadCall::ActivityList {
                     session: fixture_session(),
-                    current_user_id: UserId::from_str("1000")?,
+                    scope: ActivityFeedScope::new(
+                        UserId::from_str("1000")?,
+                        UserId::from_str("1000")?,
+                        ActivityFeedKind::CurrentUser,
+                    ),
                     page: ActivityPageRequest::new(limit, Some(current)),
                 },
                 ReadCall::StdoutWrite,
@@ -77,7 +81,7 @@ async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = ActivityFake {
         list_responses: ResponseQueue::successful(ActivityPage::new(Vec::new(), None)),
-        info_responses: ResponseQueue::successful(primary),
+        info_responses: ResponseQueue::successful(ActivityDetail::relative(primary)),
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));

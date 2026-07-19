@@ -1,4 +1,4 @@
-use super::{Activity, ActivityBeforeId, ActivityId};
+use super::{Activity, ActivityBeforeId, ActivityDetail, ActivityFeedScope, ActivityId};
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, UserId};
 use std::future::Future;
 
@@ -56,7 +56,7 @@ pub trait ActivityListApi {
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
+        scope: &'a ActivityFeedScope,
         page: ActivityPageRequest,
     ) -> impl Future<Output = Result<ActivityPage, Self::Error>> + Send + 'a;
 }
@@ -70,5 +70,5 @@ pub trait ActivityDetailApi {
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<Activity, Self::Error>> + Send + 'a;
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
 }

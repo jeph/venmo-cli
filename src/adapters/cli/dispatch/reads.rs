@@ -56,13 +56,25 @@ pub(super) async fn run_activity<R, A, W, E>(
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
-    A: ActivityListApi + ActivityDetailApi,
+    A: ActivityListApi + ActivityDetailApi + UserLookupApi + UserSearchApi,
     W: Write,
     E: Write,
 {
     match args.operation {
         ActivityOperation::List(args) => {
-            let result = activity::list(store, api, args.limit, args.before_id.as_ref()).await?;
+            let result = match args.user.as_ref() {
+                Some(username) => {
+                    activity::list_for_user(
+                        store,
+                        api,
+                        username,
+                        args.limit,
+                        args.before_id.as_ref(),
+                    )
+                    .await?
+                }
+                None => activity::list(store, api, args.limit, args.before_id.as_ref()).await?,
+            };
             output::write_activity_list(stdout, stderr, &result, timestamps)?;
         }
         ActivityOperation::Info(args) => {

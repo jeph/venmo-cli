@@ -122,7 +122,7 @@ venmo users info <USERNAME>
 venmo pay methods
 venmo balance
 
-venmo activity list [--limit <N>] [--before-id <TOKEN>]
+venmo activity list [--user <USERNAME>] [--limit <N>] [--before-id <TOKEN>]
 venmo activity info <ACTIVITY_ID>
 venmo requests list [--direction <DIRECTION>] [--limit <N>] [--before <TOKEN>]
 venmo requests info <REQUEST_ID>
@@ -425,17 +425,20 @@ All command-level username resolution is shared and fail-closed around the live-
 
 ### 3.7 Activity
 
-#### `venmo activity list [--limit <N>] [--before-id <TOKEN>]`
+#### `venmo activity list [--user <USERNAME>] [--limit <N>] [--before-id <TOKEN>]`
 
-- Lists recent activity visible to the authenticated account.
+- Without `--user`, lists the authenticated account's existing feed with no behavior change.
+- With `--user`, resolves an optional-`@` exact username through bounded search and authoritative detail, requires a personal profile, and lists the native personal-profile feed visible to the authenticated viewer. Business/public-only profile feeds remain a separate unsupported contract.
 - Shows activity ID, timestamp, action/direction, counterparty, amount when available, status, and sanitized note.
+- Interprets direction and counterparty relative to the viewed user. Other-user pages accept only payment stories, require exactly one viewed-user party and a supported audience, and accept private records only when the authenticated viewer is the other participant.
 - Fetches exactly one source page using `--limit` as the server page size, with default 10 and maximum 50.
 - Accepts the endpoint-native bounded opaque `before_id` value through `--before-id` and reports a validated `Next before-id: <TOKEN>` value after successful record output.
-- Does not expose a public or friends feed.
+- Does not expose a generic public/friends feed or silently discard unsupported records.
 
 #### `venmo activity info <ACTIVITY_ID>`
 
 - Shows all understood fields for one activity record.
+- Uses the globally unique story ID without `--user`. Payment details render absolute actor and target identities; transfer and authorization details retain current-account ownership validation.
 - Is the primary recovery tool after an ambiguous payment, request creation, request-acceptance, or transfer outcome; request reads and the official app are also required for ambiguous decline state.
 - Clearly distinguishes absent, inaccessible, malformed, pending, failed, and completed records.
 
@@ -503,7 +506,7 @@ Initial tool catalog:
 | `venmo_friends_list` | `limit` 1–50 (default 10), `offset` `u32` (default 0) | User records and always-present nullable `next_offset` | Same one-page friends use case |
 | `venmo_users_search` | Validated `query`, `limit` 1–50 (default 10), `offset` `u32` (default 0) | User records and always-present nullable provisional `next_offset` | Same one-page public search, not internal recipient resolution |
 | `venmo_payment_methods_list` | Empty object | Safe method IDs, labels/types, optional last four, default marker | Same payment-method list |
-| `venmo_activity_list` | `limit` 1–50 (default 10), nullable `before_id` (default null) | Tagged activity records and always-present nullable `next_before_id` | Same one-page activity list |
+| `venmo_activity_list` | nullable exact `username`, `limit` 1–50 (default 10), nullable `before_id` (default null) | Tagged activity records, nullable resolved subject, and always-present nullable `next_before_id` | Same one-page self or personal-profile activity list |
 | `venmo_activity_info` | Validated `activity_id` | One tagged activity record | Same activity detail lookup |
 | `venmo_requests_list` | `direction` (default `all`), `limit` 1–50 (default 10), nullable `before` (default null) | Pending-request records, applied direction, always-present nullable `next_before` | Same one source page and local direction filtering |
 

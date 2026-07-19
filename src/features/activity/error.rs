@@ -1,11 +1,24 @@
 use thiserror::Error;
 
-use crate::shared::{ApiOperationFailure, CredentialAccessError, ReadFailureKind};
+use crate::features::people::lookup::UserLookupError;
+use crate::shared::{ApiOperationFailure, ApplicationFailureKind, CredentialAccessError};
 
 #[derive(Debug, Error)]
 pub enum ActivityError {
     #[error(transparent)]
     Credential(#[from] CredentialAccessError),
+
+    #[error("failed to resolve the activity subject: {source}")]
+    UserLookup {
+        #[source]
+        source: UserLookupError,
+    },
+
+    #[error("the selected activity subject did not provide a profile type")]
+    MissingProfileType,
+
+    #[error("activity listing currently supports only personal Venmo profiles")]
+    UnsupportedProfileType,
 
     #[error("failed to read Venmo activity: {source}")]
     Api {
@@ -19,11 +32,15 @@ pub enum ActivityError {
 
 impl ActivityError {
     #[must_use]
-    pub const fn failure_kind(&self) -> ReadFailureKind {
+    pub const fn failure_kind(&self) -> ApplicationFailureKind {
         match self {
-            Self::Credential(_) => ReadFailureKind::Credential,
-            Self::Api { source } => ReadFailureKind::Api(source.kind()),
-            Self::ResponseContract { .. } => ReadFailureKind::ResponseContract,
+            Self::Credential(_) => ApplicationFailureKind::Credential,
+            Self::UserLookup { source } => source.application_failure_kind(),
+            Self::MissingProfileType | Self::UnsupportedProfileType => {
+                ApplicationFailureKind::Usage
+            }
+            Self::Api { source } => ApplicationFailureKind::Api(source.kind()),
+            Self::ResponseContract { .. } => ApplicationFailureKind::ApiContract,
         }
     }
 }

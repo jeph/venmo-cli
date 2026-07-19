@@ -10,8 +10,9 @@ mod tests;
 pub(crate) use continuation::ActivityBeforeId;
 pub(crate) use error::ActivityError;
 pub(crate) use info::{ActivityInfoResult, info};
-pub(crate) use list::{ActivityListResult, list};
+pub(crate) use list::{ActivityListResult, list, list_for_user};
 pub(crate) use model::{
-    Activity, ActivityAction, ActivityCounterparty, ActivityDirection, ActivityId, ActivityStatus,
+    Activity, ActivityAction, ActivityCounterparty, ActivityDetail, ActivityDirection,
+    ActivityFeedKind, ActivityFeedScope, ActivityId, ActivityStatus, ActivitySubject,
 };
 pub(crate) use ports::{ActivityDetailApi, ActivityListApi, ActivityPage, ActivityPageRequest};

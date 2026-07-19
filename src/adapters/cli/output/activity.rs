@@ -15,8 +15,24 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
     result: &ActivityListResult,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    if let Some(subject) = result.subject() {
+        writeln!(stdout, "Activity for {}", subject.username())?;
+        writeln!(
+            stdout,
+            "Direction and counterparty are relative to {}.",
+            subject.username()
+        )?;
+    }
     if result.activities().is_empty() {
-        writeln!(stdout, "No activity found.")?;
+        if let Some(subject) = result.subject() {
+            writeln!(
+                stdout,
+                "No visible activity found for {}.",
+                subject.username()
+            )?;
+        } else {
+            writeln!(stdout, "No activity found.")?;
+        }
     } else {
         let mut builder = Builder::default();
         builder.push_record([
@@ -65,12 +81,25 @@ pub(crate) fn write_activity_info<W: Write>(
         "Action: {}",
         sanitize_terminal_text(activity.action().as_str())
     )?;
-    writeln!(writer, "Direction: {}", activity.direction())?;
-    writeln!(
-        writer,
-        "Counterparty: {}",
-        sanitize_terminal_text(&activity_counterparty_label(activity.counterparty()))
-    )?;
+    if let Some((actor, target)) = activity.parties().payment_parties() {
+        writeln!(
+            writer,
+            "Actor: {}",
+            sanitize_terminal_text(&user_label(actor))
+        )?;
+        writeln!(
+            writer,
+            "Target: {}",
+            sanitize_terminal_text(&user_label(target))
+        )?;
+    } else if let Some((direction, counterparty)) = activity.parties().relative_parts() {
+        writeln!(writer, "Direction: {direction}")?;
+        writeln!(
+            writer,
+            "Counterparty: {}",
+            sanitize_terminal_text(&activity_counterparty_label(counterparty))
+        )?;
+    }
     writeln!(writer, "Amount: ${}", activity.amount())?;
     writeln!(
         writer,
