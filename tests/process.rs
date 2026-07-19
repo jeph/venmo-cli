@@ -103,7 +103,7 @@ fn invalid_request_mutation_ids_are_redacted_and_service_free() -> TestResult {
 #[test]
 fn removed_top_level_request_actions_are_usage_errors() -> TestResult {
     for arguments in [
-        &["request", "alice", "0.01", "--note", "Test"][..],
+        &["request", "alice", "0.01", "Test"][..],
         &["accept", "request-1"][..],
         &["decline", "request-1"][..],
     ] {

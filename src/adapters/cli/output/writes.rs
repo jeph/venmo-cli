@@ -52,18 +52,6 @@ pub(crate) fn write_pay_details<W: Write>(
         format_usd_cents(
             u128::from(plan.amount().cents()) + u128::from(plan.eligibility_fee_cents())
         )
-    )?;
-    writeln!(
-        writer,
-        "  Warning: Venmo may use available balance before the submitted backup method."
-    )?;
-    writeln!(
-        writer,
-        "  Warning: eligibility is not bound to the submitted backup method; the final fee may differ."
-    )?;
-    writeln!(
-        writer,
-        "  Warning: Venmo may apply a more restrictive audience based on participant privacy settings."
     )
 }
 
@@ -94,10 +82,6 @@ pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> 
         writer,
         "Submitted backup method ID: {}",
         sanitize_terminal_text(result.plan().backup_method().method().id().as_str())
-    )?;
-    writeln!(
-        writer,
-        "The response does not prove the final funding source or fee; Venmo may have used available balance before the submitted backup method."
     )
 }
 

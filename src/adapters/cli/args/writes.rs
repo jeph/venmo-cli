@@ -50,7 +50,7 @@ pub struct PayUserArgs {
     pub amount: Money,
 
     /// Non-empty payment note.
-    #[arg(long, value_name = "NOTE")]
+    #[arg(value_name = "NOTE")]
     pub note: Note,
 
     /// Visibility of the created payment.

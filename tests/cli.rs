@@ -50,9 +50,7 @@ fn removed_auth_surfaces_are_rejected() {
 
 #[test]
 fn direct_request_creation_dispatches_to_create() {
-    let parsed = Cli::try_parse_from([
-        "venmo", "requests", "create", "@alice", "12.50", "--note", "Dinner",
-    ]);
+    let parsed = Cli::try_parse_from(["venmo", "requests", "create", "@alice", "12.50", "Dinner"]);
     let dispatches_to_create = parsed.is_ok_and(|cli| {
         matches!(
             cli.command,
@@ -61,6 +59,22 @@ fn direct_request_creation_dispatches_to_create() {
         )
     });
     assert!(dispatches_to_create);
+}
+
+#[test]
+fn required_payment_and_request_notes_are_positional() {
+    for prefix in [
+        &["venmo", "pay", "user"][..],
+        &["venmo", "requests", "create"][..],
+    ] {
+        let mut missing = prefix.to_vec();
+        missing.extend(["@alice", "1.00"]);
+        assert_rejected(&missing);
+
+        let mut former_flag = prefix.to_vec();
+        former_flag.extend(["@alice", "1.00", "--note", "Dinner"]);
+        assert_rejected(&former_flag);
+    }
 }
 
 #[test]
@@ -127,7 +141,7 @@ fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
         &["venmo", "requests", "create"][..],
     ] {
         let mut arguments = prefix.to_vec();
-        arguments.extend(["@alice", "0.01", "--note", "Synthetic note"]);
+        arguments.extend(["@alice", "0.01", "Synthetic note"]);
         let defaults = Cli::try_parse_from(arguments);
         let default_visibility = defaults.ok().and_then(request_visibility);
         assert_eq!(default_visibility, Some(VisibilityArg::Private));
@@ -138,14 +152,7 @@ fn pay_and_request_visibility_defaults_and_explicit_values_are_typed() {
             ("public", VisibilityArg::Public),
         ] {
             let mut arguments = prefix.to_vec();
-            arguments.extend([
-                "@alice",
-                "0.01",
-                "--note",
-                "Synthetic note",
-                "--visibility",
-                value,
-            ]);
+            arguments.extend(["@alice", "0.01", "Synthetic note", "--visibility", value]);
             let visibility = Cli::try_parse_from(arguments)
                 .ok()
                 .and_then(request_visibility);
@@ -164,7 +171,6 @@ fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
         arguments.extend([
             "@alice",
             "0.01",
-            "--note",
             "Synthetic note",
             "--visibility",
             "contacts",
@@ -208,7 +214,7 @@ fn invalid_or_unrelated_visibility_is_rejected_by_clap() {
 #[test]
 fn pay_rejects_removed_from_option() {
     assert_rejected(&[
-        "venmo", "pay", "user", "@alice", "12.50", "--note", "Dinner", "--from", "method-1",
+        "venmo", "pay", "user", "@alice", "12.50", "Dinner", "--from", "method-1",
     ]);
 }
 
@@ -220,22 +226,22 @@ fn pay_methods_and_user_have_exact_grouped_grammar() {
         Command::Pay(args) if matches!(args.operation, PayOperation::Methods)
     )));
 
-    let user = Cli::try_parse_from([
-        "venmo", "pay", "user", "@alice", "12.34", "--note", "Dinner", "--yes",
-    ]);
+    let user = Cli::try_parse_from(["venmo", "pay", "user", "@alice", "12.34", "Dinner", "--yes"]);
     assert!(user.is_ok_and(|cli| matches!(
         cli.command,
         Command::Pay(args)
             if matches!(
                 &args.operation,
                 PayOperation::User(user)
-                    if user.amount.cents() == 1_234 && user.yes
+                    if user.amount.cents() == 1_234
+                        && user.note.as_str() == "Dinner"
+                        && user.yes
             )
     )));
 
     for arguments in [
         &["venmo", "payment-methods", "list"][..],
-        &["venmo", "pay", "@alice", "1.00", "--note", "Dinner"][..],
+        &["venmo", "pay", "@alice", "1.00", "Dinner"][..],
         &["venmo", "pay", "methods", "list"][..],
     ] {
         assert_rejected(arguments);
@@ -244,9 +250,7 @@ fn pay_methods_and_user_have_exact_grouped_grammar() {
 
 #[test]
 fn accept_username_is_not_the_accept_subcommand() {
-    let parsed = Cli::try_parse_from([
-        "venmo", "requests", "create", "@accept", "0.01", "--note", "Test",
-    ]);
+    let parsed = Cli::try_parse_from(["venmo", "requests", "create", "@accept", "0.01", "Test"]);
     let dispatches_to_create = parsed.is_ok_and(|cli| {
         matches!(
             cli.command,
@@ -300,7 +304,6 @@ fn optional_at_usernames_and_global_option_placement_are_supported() {
             "create",
             username,
             "0.01",
-            "--note",
             "Test",
         ]);
         let dispatches_to_create = match parsed {
@@ -329,14 +332,13 @@ fn request_and_request_mutation_forms_cannot_be_mixed() {
         "accept",
         "request-123",
         "12.50",
-        "--note",
         "Dinner",
     ]);
     assert_rejected(&[
-        "venmo", "requests", "create", "@alice", "12.50", "--note", "Dinner", "--yes",
+        "venmo", "requests", "create", "@alice", "12.50", "Dinner", "--yes",
     ]);
     assert_rejected(&[
-        "venmo", "requests", "create", "@alice", "12.50", "--note", "Dinner", "--from", "method-1",
+        "venmo", "requests", "create", "@alice", "12.50", "Dinner", "--from", "method-1",
     ]);
 }
 
@@ -348,21 +350,18 @@ fn removed_and_deferred_forms_are_rejected() {
         &["venmo", "doctor"][..],
         &["venmo", "completions", "bash"][..],
         &["venmo", "charge", "@alice", "1.00", "note"][..],
-        &[
-            "venmo", "request", "create", "@alice", "1.00", "--note", "note",
-        ][..],
-        &["venmo", "request", "@alice", "1.00", "--note", "note"][..],
+        &["venmo", "request", "create", "@alice", "1.00", "note"][..],
+        &["venmo", "request", "@alice", "1.00", "note"][..],
         &["venmo", "accept", "request-1"][..],
         &["venmo", "decline", "request-1"][..],
         &["venmo", "payment-methods", "list"][..],
-        &["venmo", "pay", "@alice", "1.00", "--note", "note"][..],
+        &["venmo", "pay", "@alice", "1.00", "note"][..],
         &[
             "venmo",
             "pay",
             "user",
             "@alice",
             "1.00",
-            "--note",
             "note",
             "--dry-run",
         ][..],
@@ -372,7 +371,6 @@ fn removed_and_deferred_forms_are_rejected() {
             "create",
             "@alice",
             "1.00",
-            "--note",
             "note",
             "--dry-run",
         ][..],
@@ -620,11 +618,10 @@ fn friend_mutation_commands_have_exact_grouped_grammar() {
 
 #[test]
 fn argument_only_validation_errors_are_clap_errors() {
-    assert_rejected(&["venmo", "pay", "user", "@alice", "0", "--note", "Dinner"]);
-    assert_rejected(&[
-        "venmo", "pay", "user", "@alice", "1.001", "--note", "Dinner",
-    ]);
-    assert_rejected(&["venmo", "pay", "user", "@alice", "1.00", "--note", "   "]);
+    assert_rejected(&["venmo", "pay", "user", "@alice", "0", "Dinner"]);
+    assert_rejected(&["venmo", "pay", "user", "@alice", "1.001", "Dinner"]);
+    assert_rejected(&["venmo", "pay", "user", "@alice", "1.00", "   "]);
+    assert_rejected(&["venmo", "requests", "create", "@alice", "1.00", "   "]);
     assert_rejected(&["venmo", "requests", "accept"]);
     assert_rejected(&["venmo", "users", "search", "   "]);
     assert_rejected(&["venmo", "users", "search", "@"]);

@@ -292,22 +292,13 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
                 "user",
                 "@alice",
                 "0.01",
-                "--note",
                 "Synthetic",
                 "--yes",
             ][..],
             TerminalCapabilities::new(false, false),
         ),
         (
-            &[
-                "venmo",
-                "requests",
-                "create",
-                "456",
-                "0.01",
-                "--note",
-                "Synthetic",
-            ][..],
+            &["venmo", "requests", "create", "456", "0.01", "Synthetic"][..],
             TerminalCapabilities::new(false, false),
         ),
         (

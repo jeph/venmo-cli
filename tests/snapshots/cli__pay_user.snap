@@ -4,7 +4,7 @@ expression: help
 ---
 Pay one person
 
-Usage: user [OPTIONS] --note <NOTE> <USERNAME> <AMOUNT>
+Usage: user [OPTIONS] <USERNAME> <AMOUNT> <NOTE>
 
 Arguments:
   <USERNAME>
@@ -13,10 +13,10 @@ Arguments:
   <AMOUNT>
           Positive USD amount with at most two fractional digits
 
-Options:
-      --note <NOTE>
+  <NOTE>
           Non-empty payment note
 
+Options:
       --visibility <VISIBILITY>
           Visibility of the created payment
 

@@ -734,7 +734,6 @@ fn request_args() -> Result<RequestArgs, Box<dyn Error>> {
         "create",
         "recipient",
         "0.01",
-        "--note",
         "Synthetic request",
     ])?;
     match cli.command {

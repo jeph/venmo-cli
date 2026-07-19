@@ -95,8 +95,8 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 1 | `auth login` | Password: **A1 → A5**. OTP: **A1 → A2 → A3 → A5**, verified local save, then **A4** (maximum 5). | Remote auth plus hidden identifier/password/fresh-device prompts and optional hidden OTP. |
 | 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
-| 4 | `pay user <USERNAME> <AMOUNT> --note <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
-| 5 | `requests create <USERNAME> <AMOUNT> --note <NOTE> [--visibility ...]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3**; no prompt. |
+| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
+| 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3**; no prompt. |
 | 6 | `requests accept <REQUEST_ID> [--yes]` | **A5 → R2 → P2 → W2 → F4** (5). | Financial; exactly one **F4** after default-No confirmation. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
 | 8 | `friends list [--limit N] [--offset N]` | **P3** once. | One page; stored self ID. |

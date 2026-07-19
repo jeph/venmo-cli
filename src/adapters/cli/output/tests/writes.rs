@@ -26,9 +26,6 @@ use crate::shared::{
 
 type TestResult = Result<(), Box<dyn Error>>;
 
-const AUDIENCE_WARNING: &str =
-    "Venmo may apply a more restrictive audience based on participant privacy settings.";
-
 #[test]
 fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used() -> TestResult {
     let prepared = PreparedPay::new(synthetic_credential()?, synthetic_pay_plan()?);
@@ -38,7 +35,7 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
 
     let details = String::from_utf8(details)?;
     insta::assert_snapshot!("pay_details", details);
-    assert!(details.contains(AUDIENCE_WARNING));
+    assert!(!details.contains("Warning:"));
     assert!(!details.contains("Synthetic\nrecipient"));
     for hidden in [
         "synthetic-token",
@@ -58,7 +55,7 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
     let pay_output = String::from_utf8(pay_output)?;
     insta::assert_snapshot!("pay_result", pay_output);
     assert!(!pay_output.contains("Actual funding"));
-    assert!(!pay_output.contains(AUDIENCE_WARNING));
+    assert!(!pay_output.contains("does not prove"));
 
     let request = RequestCreateResult::new(
         synthetic_request_plan()?,
@@ -71,7 +68,7 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
     write_request_create_result(&mut request_output, &request)?;
     let request_output = String::from_utf8(request_output)?;
     insta::assert_snapshot!("request_create_result", request_output);
-    assert!(!request_output.contains(AUDIENCE_WARNING));
+    assert!(!request_output.contains("Warning:"));
     Ok(())
 }
 

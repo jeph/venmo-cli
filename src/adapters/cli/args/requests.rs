@@ -78,7 +78,7 @@ pub struct RequestArgs {
     pub amount: Money,
 
     /// Non-empty request note.
-    #[arg(long, value_name = "NOTE")]
+    #[arg(value_name = "NOTE")]
     pub note: Note,
 
     /// Visibility of the created request.

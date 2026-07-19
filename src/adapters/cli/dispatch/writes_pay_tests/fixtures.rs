@@ -1,15 +1,7 @@
 use super::*;
 
 pub(super) fn pay_args() -> TestResult<PayUserArgs> {
-    let cli = Cli::try_parse_from([
-        "venmo",
-        "pay",
-        "user",
-        "bob",
-        "0.01",
-        "--note",
-        "Synthetic payment",
-    ])?;
+    let cli = Cli::try_parse_from(["venmo", "pay", "user", "bob", "0.01", "Synthetic payment"])?;
     match cli.command {
         Command::Pay(args) => match args.operation {
             PayOperation::User(args) => Ok(args),
@@ -99,9 +91,6 @@ pub(super) const PAY_DETAILS: &str = concat!(
     "  Submitted method fee: unknown\n",
     "  Eligibility-reported fee: $0.00\n",
     "  Eligibility-reported total: $0.01\n",
-    "  Warning: Venmo may use available balance before the submitted backup method.\n",
-    "  Warning: eligibility is not bound to the submitted backup method; the final fee may differ.\n",
-    "  Warning: Venmo may apply a more restrictive audience based on participant privacy settings.\n",
 );
 
 pub(super) const PAY_RESULT: &str = concat!(
@@ -112,5 +101,4 @@ pub(super) const PAY_RESULT: &str = concat!(
     "Requested audience: private\n",
     "Eligibility-reported fee: $0.00\n",
     "Submitted backup method ID: bank-1\n",
-    "The response does not prove the final funding source or fee; Venmo may have used available balance before the submitted backup method.\n",
 );
