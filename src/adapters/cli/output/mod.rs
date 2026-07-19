@@ -4,6 +4,7 @@ mod error;
 mod people;
 mod requests;
 mod shared;
+mod timestamp;
 mod transfers;
 mod wallet;
 mod writes;
@@ -14,6 +15,7 @@ pub use error::write_error;
 pub(super) use people::{write_friends, write_user_info, write_user_search};
 pub(super) use requests::{write_request_info, write_requests};
 pub(super) use shared::sanitize_terminal_text;
+pub(super) use timestamp::TimestampFormatter;
 pub(super) use transfers::{
     write_transfer_options, write_transfer_out_preflight, write_transfer_out_result,
 };

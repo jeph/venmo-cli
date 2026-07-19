@@ -1,18 +1,19 @@
 use std::io::{self, Write};
 
 use tabled::builder::Builder;
-use time::format_description::well_known::Rfc3339;
 
 use crate::features::activity::{
     ActivityBeforeId, ActivityCounterparty, ActivityInfoResult, ActivityListResult,
 };
 
+use super::TimestampFormatter;
 use super::shared::{sanitize_terminal_text, user_label, write_table};
 
 pub(crate) fn write_activity_list<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
     result: &ActivityListResult,
+    timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     if result.activities().is_empty() {
         writeln!(stdout, "No activity found.")?;
@@ -29,10 +30,7 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
             "Note",
         ]);
         for activity in result.activities() {
-            let timestamp = activity
-                .occurred_at()
-                .format(&Rfc3339)
-                .map_err(io::Error::other)?;
+            let timestamp = timestamps.format(activity.occurred_at())?;
             builder.push_record([
                 sanitize_terminal_text(activity.id().as_str()),
                 timestamp,
@@ -52,12 +50,10 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
 pub(crate) fn write_activity_info<W: Write>(
     writer: &mut W,
     result: &ActivityInfoResult,
+    timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     let activity = result.activity();
-    let timestamp = activity
-        .occurred_at()
-        .format(&Rfc3339)
-        .map_err(io::Error::other)?;
+    let timestamp = timestamps.format(activity.occurred_at())?;
     writeln!(
         writer,
         "Activity ID: {}",

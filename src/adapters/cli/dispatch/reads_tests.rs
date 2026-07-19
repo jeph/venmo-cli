@@ -11,6 +11,7 @@ use clap::Parser;
 use super::*;
 use crate::adapters::cli::args::{Cli, Command, RequestsOperation, UsersOperation};
 use crate::adapters::cli::error::ErrorCategory;
+use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDirection,
     ActivityId, ActivityPage, ActivityPageRequest, ActivityStatus,
@@ -50,6 +51,10 @@ type Transcript = Rc<RefCell<Vec<ReadCall>>>;
 
 const TOKEN: &str = "synthetic-read-token";
 const DEVICE: &str = "synthetic-read-device";
+
+fn timestamps() -> TimestampFormatter {
+    TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SensitiveArgument {

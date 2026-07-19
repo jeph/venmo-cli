@@ -1,13 +1,12 @@
 use std::io::{self, Write};
 
-use time::format_description::well_known::Rfc3339;
-
 use crate::features::auth::{
     AuthStatus, DeviceTrustOutcome, LocalDeletionOutcome, LoginDisposition, LoginResult,
     LogoutReport, PasswordLoginReport,
 };
 use crate::shared::CredentialFormat;
 
+use super::TimestampFormatter;
 use super::shared::sanitize_terminal_text;
 
 pub(crate) fn write_login_result<W: Write>(writer: &mut W, result: &LoginResult) -> io::Result<()> {
@@ -43,11 +42,12 @@ pub(crate) fn write_password_login_report<W: Write, E: Write>(
     }
 }
 
-pub(crate) fn write_auth_status<W: Write>(writer: &mut W, status: &AuthStatus) -> io::Result<()> {
-    let saved_at = status
-        .saved_at()
-        .format(&Rfc3339)
-        .map_err(io::Error::other)?;
+pub(crate) fn write_auth_status<W: Write>(
+    writer: &mut W,
+    status: &AuthStatus,
+    timestamps: &TimestampFormatter,
+) -> io::Result<()> {
+    let saved_at = timestamps.format(status.saved_at())?;
     let display_name = status.account().display_name().unwrap_or("(not provided)");
     let format = match status.credential_format() {
         CredentialFormat::Version1 => "version 1",

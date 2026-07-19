@@ -17,7 +17,7 @@ terminal behavior against captured writers or service-free child processes.
 | Feature tests | Orchestration, capability use, ordered calls, zero/one-write behavior, no retry, and complete outcomes |
 | Venmo adapter tests | Exact request shape, credential mode, response mapping, bounds, fixed-origin continuation validation, and transport error classification |
 | Credential adapter tests | Exact codec compatibility and native-adapter behavior through a scripted backend |
-| CLI adapter tests | Argument grammar, dispatch, logging/precondition order, private terminal seams, prompts, interruption handling, rendering, error categories, and output failures |
+| CLI adapter tests | Argument grammar, dispatch, logging/precondition order, private terminal seams, prompts, interruption handling, deterministic time-zone conversion and UTC fallback, rendering, error categories, and output failures |
 | `tests/*.rs` and facade compile-fail doctests | Public `cli`/`model` facade usability and service-free compiled-process contracts |
 
 Use synthetic values only. `ScriptedTransport` proves the typed client request without opening a

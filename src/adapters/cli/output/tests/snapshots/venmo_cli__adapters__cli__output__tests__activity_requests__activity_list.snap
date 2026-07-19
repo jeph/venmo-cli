@@ -2,7 +2,7 @@
 source: src/adapters/cli/output/tests/activity_requests.rs
 expression: list_stdout
 ---
- Id             | Time                 | Action            | Direction | Counterparty               | Amount | Status | Note
-----------------+----------------------+-------------------+-----------+----------------------------+--------+--------+------------------------
- story-1        | 1970-01-01T00:00:00Z | pay               | outgoing  | @bob                       | $1.25  | failed | note\n\u{001B}[31mline
- story-transfer | 1970-01-01T00:00:00Z | transfer:standard | outgoing  | Bank\nname (bank ••••1234) | $12.34 | issued |
+ Id             | Time                | Action            | Direction | Counterparty               | Amount | Status | Note
+----------------+---------------------+-------------------+-----------+----------------------------+--------+--------+------------------------
+ story-1        | 1969-12-31T16:00:00 | pay               | outgoing  | @bob                       | $1.25  | failed | note\n\u{001B}[31mline
+ story-transfer | 1969-12-31T16:00:00 | transfer:standard | outgoing  | Bank\nname (bank ••••1234) | $12.34 | issued |

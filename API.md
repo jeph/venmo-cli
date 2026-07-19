@@ -203,7 +203,10 @@ IDs and amount may be JSON integer/number alternatives. A payment activity requi
 nested `payment.id` to be present as a string/integer, but its mapper otherwise
 discards and does not validate it; only the top-level story ID is the activity ID.
 Timestamps accept RFC 3339 with offset or offsetless `YYYY-MM-DDTHH:MM:SS`, the
-latter interpreted as UTC. Mutation comparisons preserve the exact instant.
+latter interpreted as UTC. Mutation comparisons preserve the exact instant. This
+wire interpretation is independent of CLI display: typed instants are converted to
+the system-configured time zone for terminal output, with UTC used when zone
+discovery fails.
 
 ## 5. Exact implemented mobile `/v1` wire catalog
 Unless stated otherwise, calls are authenticated, have no query/body, and use the

@@ -1,16 +1,17 @@
 use std::io::{self, Write};
 
 use tabled::builder::Builder;
-use time::format_description::well_known::Rfc3339;
 
 use crate::features::requests::list::RequestsResult;
 use crate::features::requests::{RequestAction, RequestInfoResult, RequestsBefore};
 
+use super::TimestampFormatter;
 use super::shared::{sanitize_terminal_text, user_label, write_table};
 
 pub(crate) fn write_request_info(
     writer: &mut impl Write,
     result: &RequestInfoResult,
+    timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     let request = result.request();
     let counterparty = request.counterparty();
@@ -20,9 +21,8 @@ pub(crate) fn write_request_info(
     };
     let created = request
         .created_at()
-        .map(|value| value.format(&Rfc3339))
-        .transpose()
-        .map_err(io::Error::other)?
+        .map(|value| timestamps.format(value))
+        .transpose()?
         .unwrap_or_else(|| "(not provided)".to_owned());
     let username = counterparty
         .username()
@@ -73,6 +73,7 @@ pub(crate) fn write_requests<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
     result: &RequestsResult,
+    timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     if result.requests().is_empty() {
         writeln!(stdout, "No pending requests found.")?;
@@ -90,9 +91,8 @@ pub(crate) fn write_requests<W: Write, E: Write>(
         for request in result.requests() {
             let created = request
                 .created_at()
-                .map(|value| value.format(&Rfc3339))
-                .transpose()
-                .map_err(io::Error::other)?
+                .map(|value| timestamps.format(value))
+                .transpose()?
                 .unwrap_or_default();
             builder.push_record([
                 sanitize_terminal_text(request.id().as_str()),

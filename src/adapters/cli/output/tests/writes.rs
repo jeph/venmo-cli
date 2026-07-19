@@ -79,7 +79,8 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
 fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult {
     let prepared = PreparedAccept::new(synthetic_credential()?, synthetic_accept_plan()?);
     let mut preflight = Vec::new();
-    write_accept_preflight(&mut preflight, &prepared)?;
+    let timestamps = super::local_timestamps();
+    write_accept_preflight(&mut preflight, &prepared, &timestamps)?;
     let preflight = String::from_utf8(preflight)?;
     insta::assert_snapshot!("accept_preflight", preflight);
     assert!(!preflight.contains("synthetic-token"));
@@ -96,7 +97,7 @@ fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult 
 
     let decline_prepared = PreparedDecline::new(synthetic_credential()?, synthetic_decline_plan()?);
     let mut decline_preflight = Vec::new();
-    write_decline_preflight(&mut decline_preflight, &decline_prepared)?;
+    write_decline_preflight(&mut decline_preflight, &decline_prepared, &timestamps)?;
     let decline_preflight = String::from_utf8(decline_preflight)?;
     insta::assert_snapshot!("decline_preflight", decline_preflight);
     assert!(!decline_preflight.contains("Synthetic\nrequest"));

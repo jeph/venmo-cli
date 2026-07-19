@@ -7,6 +7,7 @@ use crate::adapters::venmo::VenmoApiClient;
 
 use super::super::args::{Command, RequestsOperation, TransferOperation, UsersOperation};
 use super::super::error::AppError;
+use super::super::output::TimestampFormatter;
 use super::super::prompt::{DialoguerPrompt, TerminalCapabilities};
 
 /// A deliberately small, stateless production factory. Each method is called only from the
@@ -39,6 +40,10 @@ impl ProductionProvider {
 
     pub(super) fn prompt(self) -> DialoguerPrompt {
         DialoguerPrompt::new(self.terminal_capabilities)
+    }
+
+    pub(super) fn timestamps(self) -> TimestampFormatter {
+        TimestampFormatter::system_or_utc()
     }
 }
 
@@ -79,12 +84,14 @@ where
         }
         Command::Activity(args) => {
             let (store, api) = provider.credential_store_and_api()?;
-            reads::run_activity(args, &store, &api, stdout, stderr).await
+            let timestamps = provider.timestamps();
+            reads::run_activity(args, &store, &api, &timestamps, stdout, stderr).await
         }
         Command::Requests(args) => match args.operation {
             RequestsOperation::List(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
-                reads::run_requests_list(args, &store, &api, stdout, stderr).await
+                let timestamps = provider.timestamps();
+                reads::run_requests_list(args, &store, &api, &timestamps, stdout, stderr).await
             }
             RequestsOperation::Create(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
@@ -101,11 +108,13 @@ where
             RequestsOperation::Accept(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
                 let prompt = provider.prompt();
+                let timestamps = provider.timestamps();
                 writes::run_accept_with(
                     args,
                     &store,
                     &api,
                     &prompt,
+                    &timestamps,
                     stdout,
                     stderr,
                     writes::production_financial_interruption,
@@ -115,11 +124,13 @@ where
             RequestsOperation::Decline(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
                 let prompt = provider.prompt();
+                let timestamps = provider.timestamps();
                 writes::run_decline_with(
                     args,
                     &store,
                     &api,
                     &prompt,
+                    &timestamps,
                     stdout,
                     stderr,
                     writes::production_financial_interruption,
@@ -128,7 +139,8 @@ where
             }
             RequestsOperation::Info(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
-                reads::run_request_info(args, &store, &api, stdout).await
+                let timestamps = provider.timestamps();
+                reads::run_request_info(args, &store, &api, &timestamps, stdout).await
             }
         },
         Command::Transfer(args) => match args.operation {
@@ -139,11 +151,13 @@ where
             TransferOperation::Out(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
                 let prompt = provider.prompt();
+                let timestamps = provider.timestamps();
                 writes::run_transfer_out_with(
                     args,
                     &store,
                     &api,
                     &prompt,
+                    &timestamps,
                     stdout,
                     stderr,
                     writes::production_financial_interruption,

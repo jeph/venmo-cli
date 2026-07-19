@@ -1,13 +1,12 @@
 use std::io::{self, Write};
 
-use time::format_description::well_known::Rfc3339;
-
 use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{FinancialStatus, PeerFundingFee, PeerFundingMethod};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
 use crate::features::requests::create::RequestCreateResult;
 use crate::features::requests::decline::{DeclineResult, PreparedDecline};
 
+use super::TimestampFormatter;
 use super::shared::{financial_user_label, sanitize_terminal_text};
 
 pub(crate) fn write_pay_preflight<W: Write>(
@@ -128,6 +127,7 @@ pub(crate) fn write_request_create_result<W: Write>(
 pub(crate) fn write_accept_preflight<W: Write>(
     writer: &mut W,
     prepared: &PreparedAccept,
+    timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     let plan = prepared.plan();
     let request = plan.request();
@@ -162,7 +162,7 @@ pub(crate) fn write_accept_preflight<W: Write>(
         sanitize_terminal_text(request.status().as_str())
     )?;
     if let Some(created_at) = request.created_at() {
-        let created_at = created_at.format(&Rfc3339).map_err(io::Error::other)?;
+        let created_at = timestamps.format(created_at)?;
         writeln!(writer, "  Created: {created_at}")?;
     }
     writeln!(
@@ -249,6 +249,7 @@ pub(crate) fn write_decline_result<W: Write>(
 pub(crate) fn write_decline_preflight<W: Write>(
     writer: &mut W,
     prepared: &PreparedDecline,
+    timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
     let request = prepared.plan().request();
     writeln!(writer, "Request decline preflight:")?;
@@ -280,7 +281,7 @@ pub(crate) fn write_decline_preflight<W: Write>(
         sanitize_terminal_text(request.status().as_str())
     )?;
     if let Some(created_at) = request.created_at() {
-        let created_at = created_at.format(&Rfc3339).map_err(io::Error::other)?;
+        let created_at = timestamps.format(created_at)?;
         writeln!(writer, "  Created: {created_at}")?;
     }
     writeln!(

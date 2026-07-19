@@ -10,6 +10,6 @@ Counterparty name: Bob\n\u{001B}[31mExample
 Counterparty username: @bob
 Counterparty user ID: 456
 Amount: $12.34
-Created: 1970-01-01T00:00:00Z
+Created: 1969-12-31T16:00:00
 Note: note\u{202E}text\nline
 Audience: private\u{0007}

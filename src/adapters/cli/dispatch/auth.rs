@@ -30,7 +30,8 @@ where
         }
         AuthOperation::Status => {
             let (store, api) = provider.credential_store_and_api()?;
-            run_auth_status_with(&store, &api, stdout).await
+            let timestamps = provider.timestamps();
+            run_auth_status_with(&store, &api, &timestamps, stdout).await
         }
         AuthOperation::Logout => {
             let store = provider.credential_store();
@@ -59,14 +60,21 @@ where
     finish_password_login(stdout, stderr, &report)
 }
 
-async fn run_auth_status_with<R, A, W>(store: &R, api: &A, stdout: &mut W) -> Result<(), AppError>
+async fn run_auth_status_with<R, A, W>(
+    store: &R,
+    api: &A,
+    timestamps: &output::TimestampFormatter,
+    stdout: &mut W,
+) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: CurrentAccountApi,
     W: Write,
 {
     let status = auth::status(store, api).await?;
-    write_and_flush(stdout, &status, output::write_auth_status)?;
+    write_and_flush(stdout, &status, |writer, status| {
+        output::write_auth_status(writer, status, timestamps)
+    })?;
     Ok(())
 }
 

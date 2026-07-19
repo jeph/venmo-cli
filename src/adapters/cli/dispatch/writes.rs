@@ -102,11 +102,13 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_accept_with<R, A, P, W, E, M, S>(
     args: AcceptArgs,
     store: &R,
     api: &A,
     prompt: &P,
+    timestamps: &output::TimestampFormatter,
     stdout: &mut W,
     stderr: &mut E,
     make_interruption: M,
@@ -122,7 +124,9 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = accept::prepare(store, api, &args.request_id).await?;
-    write_and_flush(stderr, &prepared, output::write_accept_preflight)?;
+    write_and_flush(stderr, &prepared, |writer, prepared| {
+        output::write_accept_preflight(writer, prepared, timestamps)
+    })?;
     let authorized = accept::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -132,11 +136,13 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_decline_with<R, A, P, W, E, M, S>(
     args: DeclineArgs,
     store: &R,
     api: &A,
     prompt: &P,
+    timestamps: &output::TimestampFormatter,
     stdout: &mut W,
     stderr: &mut E,
     make_interruption: M,
@@ -152,7 +158,9 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = decline::prepare(store, api, &args.request_id).await?;
-    write_and_flush(stderr, &prepared, output::write_decline_preflight)?;
+    write_and_flush(stderr, &prepared, |writer, prepared| {
+        output::write_decline_preflight(writer, prepared, timestamps)
+    })?;
     let authorized = decline::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -168,6 +176,7 @@ pub(super) async fn run_transfer_out_with<R, A, P, W, E, M, S>(
     store: &R,
     api: &A,
     prompt: &P,
+    timestamps: &output::TimestampFormatter,
     stdout: &mut W,
     stderr: &mut E,
     make_interruption: M,
@@ -188,8 +197,10 @@ where
     let interruption = make_interruption()?;
     let result =
         protect_with_interruption(transfer_out::execute(api, authorized), interruption).await??;
-    write_and_flush(stdout, &result, output::write_transfer_out_result)
-        .map_err(|source| AppError::FinancialResultOutput { source })?;
+    write_and_flush(stdout, &result, |writer, result| {
+        output::write_transfer_out_result(writer, result, timestamps)
+    })
+    .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())
 }
 

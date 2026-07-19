@@ -65,9 +65,10 @@ fn transfer_preflight_and_result_outputs_are_complete() -> TestResult {
     );
     let mut preflight = Vec::new();
     let mut completed = Vec::new();
+    let timestamps = super::local_timestamps();
 
     write_transfer_out_preflight(&mut preflight, &prepared)?;
-    write_transfer_out_result(&mut completed, &result)?;
+    write_transfer_out_result(&mut completed, &result, &timestamps)?;
 
     insta::assert_snapshot!("transfer_out_preflight", String::from_utf8(preflight)?);
     insta::assert_snapshot!("transfer_out_result", String::from_utf8(completed)?);

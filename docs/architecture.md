@@ -106,8 +106,8 @@ current injected boundaries are:
 - `AuthenticationInput`, `PromptAvailability`, and `DefaultNoConfirmation`;
 - `Clock` for persisted UTC save time and `ClientRequestIdGenerator` for externally significant
   request IDs;
-- CLI output through caller-provided `Write` values and financial interruption through an injected
-  future factory; and
+- CLI output through caller-provided `Write` values, a captured system-time-zone formatter for
+  timestamp-bearing output, and financial interruption through an injected future factory; and
 - crate-private CLI unit seams that inject terminal snapshots, a logging initializer, and a fake
   command executor.
 
@@ -133,12 +133,18 @@ Do not introduce an interface merely because a library function is called:
   feature models.
 - **Table formatting is not abstracted.** `tabled` is private to the CLI adapter and is tested as a
   pure renderer. Injecting the destination `Write` captures the meaningful I/O boundary.
+- **Time-zone conversion stays in the CLI adapter.** Persisted and wire timestamps remain exact
+  `time::OffsetDateTime` instants. Production composition asks `jiff` for the system-configured
+  zone once for each timestamp-bearing command and explicitly falls back to UTC; render tests inject
+  deterministic zones to prove daylight-saving conversion and exact output without changing feature
+  models.
 - **The filesystem is not abstracted.** Production code has no project-owned file repository:
   persistence goes through native credential capabilities, and generated text goes to a supplied
   writer. A speculative filesystem trait would have no feature contract to represent.
 - **`Instant` is not abstracted.** The transport uses monotonic elapsed time only for redacted
   diagnostics; it does not decide a feature outcome. HTTP timeout behavior belongs to the reviewed
-  transport library. In contrast, UTC time is persisted and therefore uses the injected `Clock`.
+  transport library. In contrast, UTC time is persisted and therefore uses the injected `Clock`;
+  converting an already typed instant for display is a separate CLI concern.
 
 Add a new seam only when it separates a real side effect, nondeterministic product decision, or
 capability boundary and when a test needs to control the behavior on the other side.

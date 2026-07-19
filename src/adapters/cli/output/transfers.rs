@@ -1,12 +1,12 @@
 use std::io::{self, Write};
 
 use tabled::builder::Builder;
-use time::format_description::well_known::Rfc3339;
 
 use crate::features::transfers::model::{TransferDirection, TransferSpeed};
 use crate::features::transfers::options::TransferOptionsResult;
 use crate::features::transfers::out::{PreparedTransferOut, TransferOutResult};
 
+use super::TimestampFormatter;
 use super::shared::{sanitize_terminal_text, write_table};
 
 pub(crate) fn write_transfer_options<W: Write>(
@@ -107,12 +107,9 @@ pub(crate) fn write_transfer_out_preflight<W: Write>(
 pub(crate) fn write_transfer_out_result<W: Write>(
     writer: &mut W,
     result: &TransferOutResult,
+    timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
-    let requested_at = result
-        .created()
-        .requested_at()
-        .format(&Rfc3339)
-        .map_err(io::Error::other)?;
+    let requested_at = timestamps.format(result.created().requested_at())?;
     writeln!(
         writer,
         "Transfer ID: {}",

@@ -54,6 +54,7 @@ pub(super) async fn run_activity<R, A, W, E>(
     args: ActivityArgs,
     store: &R,
     api: &A,
+    timestamps: &output::TimestampFormatter,
     stdout: &mut W,
     stderr: &mut E,
 ) -> Result<(), AppError>
@@ -66,11 +67,11 @@ where
     match args.operation {
         ActivityOperation::List(args) => {
             let result = activity::list(store, api, args.limit, args.before_id.as_ref()).await?;
-            output::write_activity_list(stdout, stderr, &result)?;
+            output::write_activity_list(stdout, stderr, &result, timestamps)?;
         }
         ActivityOperation::Info(args) => {
             let result = activity::info(store, api, &args.activity_id).await?;
-            output::write_activity_info(stdout, &result)?;
+            output::write_activity_info(stdout, &result, timestamps)?;
         }
     }
     Ok(())
@@ -80,6 +81,7 @@ pub(super) async fn run_requests_list<R, A, W, E>(
     args: RequestsListArgs,
     store: &R,
     api: &A,
+    timestamps: &output::TimestampFormatter,
     stdout: &mut W,
     stderr: &mut E,
 ) -> Result<(), AppError>
@@ -97,7 +99,7 @@ where
         args.before.as_ref(),
     )
     .await?;
-    output::write_requests(stdout, stderr, &result)?;
+    output::write_requests(stdout, stderr, &result, timestamps)?;
     Ok(())
 }
 
@@ -105,6 +107,7 @@ pub(super) async fn run_request_info<R, A, W>(
     args: RequestInfoArgs,
     store: &R,
     api: &A,
+    timestamps: &output::TimestampFormatter,
     stdout: &mut W,
 ) -> Result<(), AppError>
 where
@@ -113,7 +116,7 @@ where
     W: Write,
 {
     let result = requests::info(store, api, &args.request_id).await?;
-    output::write_request_info(stdout, &result)?;
+    output::write_request_info(stdout, &result, timestamps)?;
     Ok(())
 }
 

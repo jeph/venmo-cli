@@ -35,8 +35,9 @@ fn request_info_output_preserves_open_request_fields_and_sanitizes_text() -> Tes
     .with_audience(Some("private\u{7}".to_owned()));
     let result = RequestInfoResult::new(request);
     let mut output = Vec::new();
+    let timestamps = super::local_timestamps();
 
-    write_request_info(&mut output, &result)?;
+    write_request_info(&mut output, &result, &timestamps)?;
     let output = String::from_utf8(output)?;
 
     insta::assert_snapshot!("request_info", output);
@@ -72,9 +73,10 @@ fn activity_list_and_info_render_authoritative_status_as_data() -> TestResult {
     let mut list_stdout = Vec::new();
     let mut list_stderr = Vec::new();
     let mut info_stdout = Vec::new();
+    let timestamps = super::local_timestamps();
 
-    write_activity_list(&mut list_stdout, &mut list_stderr, &list)?;
-    write_activity_info(&mut info_stdout, &info)?;
+    write_activity_list(&mut list_stdout, &mut list_stderr, &list, &timestamps)?;
+    write_activity_info(&mut info_stdout, &info, &timestamps)?;
     let list_stdout = String::from_utf8(list_stdout)?;
     let info_stdout = String::from_utf8(info_stdout)?;
 
@@ -107,8 +109,9 @@ fn pending_request_output_preserves_ids_and_sanitizes_notes() -> TestResult {
     );
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let timestamps = super::local_timestamps();
 
-    write_requests(&mut stdout, &mut stderr, &requests)?;
+    write_requests(&mut stdout, &mut stderr, &requests, &timestamps)?;
     let stdout = String::from_utf8(stdout)?;
     let stderr = String::from_utf8(stderr)?;
 
@@ -126,9 +129,20 @@ fn empty_activity_and_request_lists_have_exact_messages_and_no_continuations() -
     let mut activity_stderr = Vec::new();
     let mut requests_stdout = Vec::new();
     let mut requests_stderr = Vec::new();
+    let timestamps = super::local_timestamps();
 
-    write_activity_list(&mut activity_stdout, &mut activity_stderr, &activity)?;
-    write_requests(&mut requests_stdout, &mut requests_stderr, &requests)?;
+    write_activity_list(
+        &mut activity_stdout,
+        &mut activity_stderr,
+        &activity,
+        &timestamps,
+    )?;
+    write_requests(
+        &mut requests_stdout,
+        &mut requests_stderr,
+        &requests,
+        &timestamps,
+    )?;
 
     assert_eq!(activity_stdout, b"No activity found.\n");
     assert_eq!(activity_stderr, b"");

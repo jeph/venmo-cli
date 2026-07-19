@@ -3,7 +3,7 @@ source: src/adapters/cli/output/tests/activity_requests.rs
 expression: info_stdout
 ---
 Activity ID: story-1
-Time: 1970-01-01T00:00:00Z
+Time: 1969-12-31T16:00:00
 Action: pay
 Direction: outgoing
 Counterparty: @bob

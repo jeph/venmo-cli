@@ -130,6 +130,35 @@ fn logout_only_deletes_locally_and_reports_remote_session_consequences() -> Test
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn auth_status_converts_the_saved_instant_to_the_selected_local_zone() -> TestResult {
+    let store = FakeStore {
+        credential: Some(credential()?),
+        delete: Ok(CredentialDeleteOutcome::Deleted),
+        calls: RefCell::new(Vec::new()),
+    };
+    let api = FakeApi(Ok(account()?));
+    let timestamps =
+        output::TimestampFormatter::for_time_zone(jiff::tz::TimeZone::fixed(jiff::tz::offset(-8)));
+    let mut stdout = Vec::new();
+
+    let result = run_auth_status_with(&store, &api, &timestamps, &mut stdout).await;
+
+    assert!(result.is_ok());
+    assert_eq!(store.calls.borrow().as_slice(), ["read"]);
+    assert_eq!(
+        String::from_utf8(stdout)?,
+        concat!(
+            "Username: @alice\n",
+            "Display name: Alice\n",
+            "User ID: 100\n",
+            "Saved at: 1969-12-31T16:00:00\n",
+            "Credential format: version 1\n",
+        )
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn auth_status_preserves_authentication_failure_classification() -> TestResult {
     let store = FakeStore {
         credential: Some(credential()?),
@@ -138,8 +167,9 @@ async fn auth_status_preserves_authentication_failure_classification() -> TestRe
     };
     let api = FakeApi(Err(FakeApiError(ApiFailureKind::Authentication)));
     let mut stdout = Vec::new();
+    let timestamps = output::TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
 
-    let error = run_auth_status_with(&store, &api, &mut stdout)
+    let error = run_auth_status_with(&store, &api, &timestamps, &mut stdout)
         .await
         .err()
         .ok_or("expected auth status failure")?;

@@ -13,6 +13,7 @@ use clap::Parser;
 use super::tests::{ErrorVariant, ResultSnapshot, failure_snapshot, snapshot_result};
 use crate::adapters::cli::args::{AcceptArgs, Cli, Command, RequestsOperation};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
+use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::{DefaultNoConfirmation, FinancialStatus, PaymentId};
 use crate::features::people::{User, UserLookupApi, UserProfileKind};
@@ -535,11 +536,13 @@ impl AcceptHarness {
     async fn execute(&mut self) -> Result<(), AppError> {
         let script = Rc::clone(&self.script);
         let transcript = Rc::clone(&self.transcript);
+        let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
         run_accept_with(
             self.args.clone(),
             &self.reader,
             &self.api,
             &self.prompt,
+            &timestamps,
             &mut self.stdout,
             &mut self.stderr,
             move || {

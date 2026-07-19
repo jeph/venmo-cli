@@ -22,6 +22,7 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
     let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let timestamps = timestamps();
     let expected = Observed::new(
         ResultSnapshot::Success,
         ReadState {
@@ -46,7 +47,7 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
     );
 
     // Execute once.
-    let result = run_activity(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let result = run_activity(args, &reader, &api, &timestamps, &mut stdout, &mut stderr).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {
@@ -81,6 +82,7 @@ async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
     let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let timestamps = timestamps();
     let expected = Observed::new(
         ResultSnapshot::Success,
         ReadState {
@@ -104,7 +106,7 @@ async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
     );
 
     // Execute once.
-    let result = run_activity(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let result = run_activity(args, &reader, &api, &timestamps, &mut stdout, &mut stderr).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {
@@ -143,6 +145,7 @@ async fn requests_handler_has_exact_filter_page_output_and_continuation_streams(
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
     let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let timestamps = timestamps();
     let expected = Observed::new(
         ResultSnapshot::Success,
         ReadState {
@@ -164,7 +167,8 @@ async fn requests_handler_has_exact_filter_page_output_and_continuation_streams(
     );
 
     // Execute once.
-    let result = run_requests_list(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let result =
+        run_requests_list(args, &reader, &api, &timestamps, &mut stdout, &mut stderr).await;
     let observed = observation(
         result,
         &transcript,
@@ -193,6 +197,7 @@ async fn request_info_handler_uses_only_lookup_and_writes_sanitized_stdout() -> 
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
     let stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let timestamps = timestamps();
 
     // Complete expected outcome and final fake state.
     let expected = Observed::new(
@@ -215,7 +220,7 @@ async fn request_info_handler_uses_only_lookup_and_writes_sanitized_stdout() -> 
     );
 
     // Execute once.
-    let result = run_request_info(args, &reader, &api, &mut stdout).await;
+    let result = run_request_info(args, &reader, &api, &timestamps, &mut stdout).await;
     let observed = observation(
         result,
         &transcript,

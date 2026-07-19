@@ -129,6 +129,8 @@ When the validated source response has another page, the CLI writes only the end
 
 Pending-request direction remains a local filter over that one source page. A filtered invocation can therefore emit fewer than `--limit` records, including none, while still reporting the source page's `before` continuation. Continuation tokens are bounded, reject whitespace and control characters, and are redacted from parsing errors and diagnostic formatting. The transport still validates every server next link against the fixed origin, route, and endpoint query allowlist and reconstructs subsequent requests locally. Internal exact-recipient resolution remains a separate exhaustive user-search traversal with its existing 200-record/four-page fail-closed bounds and no user-supplied continuation.
 
+User-facing timestamps are converted to the system-configured time zone and rendered to whole seconds as `YYYY-MM-DDTHH:MM:SS`. Local output has no zone suffix; when the configured zone is UTC, or when system-zone discovery fails and the CLI falls back to UTC, output uses `YYYY-MM-DDTHH:MM:SSZ`. Conversion uses the rules for each timestamp, including historical daylight-saving transitions. API parsing, comparisons, and credential persistence continue to preserve exact UTC instants independently of this display formatting.
+
 ### Trusted-device mobile login
 
 `venmo auth login` uses Venmo's unsupported legacy mobile-private password/SMS-OTP flow. Before running it, sign in through Venmo's normal browser interface and manually obtain the `v_id`/device ID for that already trusted browser session. The CLI does not automate the browser, import cookies, or generate a replacement device ID.
