@@ -5,17 +5,15 @@ use std::str::FromStr;
 use reqwest::StatusCode;
 
 use crate::features::transfers::{
-    CreatedTransfer, CreatedTransferIn, TransferFeeMetadata, TransferInCreationApi, TransferInPlan,
-    TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix, TransferModeOptions,
-    TransferOptions, TransferOptionsApi, TransferOutCreationApi, TransferOutPlan, TransferPayoutId,
-    TransferSpeed,
+    CreatedTransfer, TransferFeeMetadata, TransferInstrument, TransferInstrumentId,
+    TransferInstrumentSuffix, TransferModeOptions, TransferOptions, TransferOptionsApi,
+    TransferOutCreationApi, TransferOutPlan, TransferSpeed,
 };
 use crate::shared::{AccessToken, DeviceId, Money};
 
 use super::super::dto::{
-    CreateTransferInRequest, CreateTransferRequest, CreatedTransferEnvelope,
-    CreatedTransferInEnvelope, PreferredTransferTypeDto, RequiredNullableString,
-    TransferAmountLimitDto, TransferFeeDto, TransferInstrumentDto, TransferModeOptionsDto,
+    CreateTransferRequest, CreatedTransferEnvelope, PreferredTransferTypeDto,
+    RequiredNullableString, TransferFeeDto, TransferInstrumentDto, TransferModeOptionsDto,
     TransferOptionsDto, TransferOptionsEnvelope,
 };
 use super::super::transport::{ApiSession, ApiTransport, HttpRequest, JsonBody};
@@ -23,10 +21,7 @@ use super::error::VenmoApiError;
 use super::payments::{financial_contract_unknown, require_financial_timestamp};
 use super::response::{decode_success, require_financial_success_json};
 use super::support::{bounded_required_label, bounded_required_text};
-use super::{
-    TRANSFER_IN_CREATION_OPERATION, TRANSFER_OPTIONS_OPERATION, TRANSFER_OUT_CREATION_OPERATION,
-    VenmoApiClient,
-};
+use super::{TRANSFER_OPTIONS_OPERATION, TRANSFER_OUT_CREATION_OPERATION, VenmoApiClient};
 
 const MAX_TRANSFER_INSTRUMENTS_PER_BRANCH: usize = 100;
 
@@ -89,39 +84,6 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         }
         parse_created_transfer(value, plan)
     }
-
-    async fn post_standard_transfer_in(
-        &self,
-        access_token: &AccessToken,
-        device_id: &DeviceId,
-        plan: &TransferInPlan,
-    ) -> Result<CreatedTransferIn, VenmoApiError> {
-        let body = JsonBody::encode(&CreateTransferInRequest {
-            amount: plan.amount().cents(),
-            payment_method_id: plan.source().id().as_str(),
-            funding_request_source: "funds-in",
-            instant: false,
-        })
-        .map_err(|_| VenmoApiError::RequestEncoding {
-            operation: TRANSFER_IN_CREATION_OPERATION,
-        })?;
-        let response = self
-            .transport
-            .send_authenticated(
-                ApiSession::new(access_token, device_id),
-                HttpRequest::financial_json_post("/funds", &["funds"], &[], body),
-            )
-            .await?;
-        let status = response.status();
-        let value = require_financial_success_json(TRANSFER_IN_CREATION_OPERATION, response)?;
-        if status != StatusCode::OK {
-            return financial_contract_unknown(
-                TRANSFER_IN_CREATION_OPERATION,
-                "the provisional add-funds contract requires HTTP 200 pending live validation",
-            );
-        }
-        parse_created_transfer_in(value, plan)
-    }
 }
 
 impl<T: ApiTransport> TransferOptionsApi for VenmoApiClient<T> {
@@ -149,72 +111,18 @@ impl<T: ApiTransport> TransferOutCreationApi for VenmoApiClient<T> {
     }
 }
 
-impl<T: ApiTransport> TransferInCreationApi for VenmoApiClient<T> {
-    type Error = VenmoApiError;
-
-    fn create_transfer_in<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        plan: &'a TransferInPlan,
-    ) -> impl Future<Output = Result<CreatedTransferIn, Self::Error>> + Send + 'a {
-        self.post_standard_transfer_in(access_token, device_id, plan)
-    }
-}
-
 fn map_transfer_options(dto: TransferOptionsDto) -> Result<TransferOptions, VenmoApiError> {
     let TransferOptionsDto {
         preferred_transfer_type,
         standard,
         instant,
-        add_funds_single_transaction_limit,
     } = dto;
-    let PreferredTransferTypeDto { inbound, outbound } = preferred_transfer_type;
-    let (minimum_cents, maximum_cents) = map_add_funds_limits(add_funds_single_transaction_limit)?;
+    let PreferredTransferTypeDto { outbound } = preferred_transfer_type;
     Ok(TransferOptions::new(
-        map_required_optional_speed(inbound)?,
         map_required_optional_speed(outbound)?,
         map_mode_options(standard)?,
         map_mode_options(instant)?,
-    )
-    .with_add_funds_limits(minimum_cents, maximum_cents))
-}
-
-fn map_add_funds_limits(
-    value: Option<TransferAmountLimitDto>,
-) -> Result<(Option<u64>, Option<u64>), VenmoApiError> {
-    let Some(value) = value else {
-        return Ok((None, None));
-    };
-    let minimum = value.minimum_amount.map(parse_integral_cents).transpose()?;
-    let maximum = value.maximum_amount.map(parse_integral_cents).transpose()?;
-    if minimum
-        .zip(maximum)
-        .is_some_and(|(minimum, maximum)| minimum > maximum)
-    {
-        return Err(VenmoApiError::Contract {
-            operation: TRANSFER_OPTIONS_OPERATION,
-            problem: "the add-funds transaction limits were reversed",
-        });
-    }
-    Ok((minimum, maximum))
-}
-
-fn parse_integral_cents(value: serde_json::Number) -> Result<u64, VenmoApiError> {
-    let rendered = value.to_string();
-    let integer = rendered
-        .split_once('.')
-        .map_or(rendered.as_str(), |(integer, fraction)| {
-            if fraction.chars().all(|digit| digit == '0') {
-                integer
-            } else {
-                ""
-            }
-        });
-    integer.parse().map_err(|_| VenmoApiError::Contract {
-        operation: TRANSFER_OPTIONS_OPERATION,
-        problem: "the add-funds transaction limit was not an unsigned integer number of cents",
-    })
+    ))
 }
 
 fn map_required_optional_speed(
@@ -243,25 +151,17 @@ fn map_optional_speed(value: Option<String>) -> Result<Option<TransferSpeed>, Ve
 }
 
 fn map_mode_options(dto: TransferModeOptionsDto) -> Result<TransferModeOptions, VenmoApiError> {
-    if dto.eligible_sources.len() > MAX_TRANSFER_INSTRUMENTS_PER_BRANCH
-        || dto.eligible_destinations.len() > MAX_TRANSFER_INSTRUMENTS_PER_BRANCH
-    {
+    if dto.eligible_destinations.len() > MAX_TRANSFER_INSTRUMENTS_PER_BRANCH {
         return Err(VenmoApiError::Contract {
             operation: TRANSFER_OPTIONS_OPERATION,
             problem: "the transfer-options response exceeded the supported instrument count",
         });
     }
-    let sources = dto
-        .eligible_sources
-        .into_iter()
-        .map(map_transfer_instrument)
-        .collect::<Result<Vec<_>, _>>()?;
     let destinations = dto
         .eligible_destinations
         .into_iter()
         .map(map_transfer_instrument)
         .collect::<Result<Vec<_>, _>>()?;
-    validate_unique_instrument_ids(&sources)?;
     validate_unique_instrument_ids(&destinations)?;
     let estimate = bounded_required_text(
         dto.transfer_to_estimate,
@@ -269,7 +169,6 @@ fn map_mode_options(dto: TransferModeOptionsDto) -> Result<TransferModeOptions, 
         "the transfer-options response contained an invalid mode estimate",
     )?;
     Ok(TransferModeOptions::new(
-        sources,
         destinations,
         map_fee(dto.fee),
         estimate,
@@ -425,54 +324,5 @@ fn parse_created_transfer(
         requested_at,
         net_amount,
         transfer.amount_fee_cents,
-    ))
-}
-
-fn parse_created_transfer_in(
-    value: serde_json::Value,
-    plan: &TransferInPlan,
-) -> Result<CreatedTransferIn, VenmoApiError> {
-    let envelope: CreatedTransferInEnvelope = serde_json::from_value(value).map_err(|_| {
-        VenmoApiError::FinancialOutcomeUnknown {
-            operation: TRANSFER_IN_CREATION_OPERATION,
-            problem: "the successful response did not match the statically evidenced add-funds envelope",
-        }
-    })?;
-    let transfer = envelope.data;
-    if transfer.status != "pending" {
-        return financial_contract_unknown(
-            TRANSFER_IN_CREATION_OPERATION,
-            "the add-funds response did not prove pending status",
-        );
-    }
-    if transfer.amount != plan.amount().cents() {
-        return financial_contract_unknown(
-            TRANSFER_IN_CREATION_OPERATION,
-            "the add-funds response returned a different amount",
-        );
-    }
-    if i32::try_from(transfer.balance).is_err() {
-        return financial_contract_unknown(
-            TRANSFER_IN_CREATION_OPERATION,
-            "the add-funds response returned a balance outside the evidenced integer range",
-        );
-    }
-    let payout_id = TransferPayoutId::from_str(&transfer.payout_id).map_err(|_| {
-        VenmoApiError::FinancialOutcomeUnknown {
-            operation: TRANSFER_IN_CREATION_OPERATION,
-            problem: "the add-funds response contained an invalid payout ID",
-        }
-    })?;
-    let expected_at = require_financial_timestamp(
-        TRANSFER_IN_CREATION_OPERATION,
-        Some(&transfer.expected_date),
-        "the add-funds response omitted the expected-completion timestamp",
-        "the add-funds response contained an invalid expected-completion timestamp",
-    )?;
-    Ok(CreatedTransferIn::new(
-        payout_id,
-        transfer.status,
-        plan.amount(),
-        expected_at,
     ))
 }

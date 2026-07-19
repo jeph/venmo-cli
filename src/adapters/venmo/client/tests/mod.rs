@@ -42,9 +42,8 @@ use crate::features::requests::{
     RequestId, RequestLookupApi, RequestRecord, RequestStatus, RequestsApi, RequestsBefore,
 };
 use crate::features::transfers::{
-    TransferInCreationApi, TransferInPlan, TransferInstrument, TransferInstrumentId,
-    TransferInstrumentSuffix, TransferOptionsApi, TransferOutCreationApi, TransferOutPlan,
-    TransferSpeed,
+    TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix, TransferOptionsApi,
+    TransferOutCreationApi, TransferOutPlan, TransferSpeed,
 };
 use crate::features::wallet::{
     Balance, BalanceApi, PaymentMethod, PaymentMethodId, PaymentMethodsApi, SignedUsdAmount,
@@ -218,9 +217,6 @@ impl ApiErrorSnapshot {
                 ApiErrorDetail::AuthenticationOutcomeUnknown { operation }
             }
             VenmoApiError::FinancialOutcomeUnknown { operation, .. } => {
-                ApiErrorDetail::FinancialOutcomeUnknown { operation }
-            }
-            VenmoApiError::FinancialHttpOutcomeUnknown { operation, .. } => {
                 ApiErrorDetail::FinancialOutcomeUnknown { operation }
             }
             VenmoApiError::Contract { operation, .. } => ApiErrorDetail::Contract { operation },

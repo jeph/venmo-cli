@@ -85,7 +85,3 @@ There is deliberately no ignored test or contributor runbook for a live payment 
 mutation. Financial safety is proved routinely with typed feature transcripts and exact synthetic
 wire tests. Any separately authorized owner procedure is outside this test suite and does not make
 a live financial command part of development, CI, or release verification.
-
-The separately approved 2026-07-18 one-cent transfer-in attempt is evidence history, not a retained
-test: it exited ambiguous, showed no immediate balance/activity movement or delayed matching
-activity, was not retried, and its temporary bounded procedure was removed.

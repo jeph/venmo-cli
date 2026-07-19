@@ -54,15 +54,6 @@ pub(crate) enum VenmoApiError {
         problem: &'static str,
     },
 
-    #[error(
-        "the {operation} outcome is unknown and must be reconciled before retrying because Venmo returned HTTP {status}{code_suffix}; that response did not prove that no write occurred"
-    )]
-    FinancialHttpOutcomeUnknown {
-        operation: &'static str,
-        status: u16,
-        code_suffix: ApiCodeSuffix,
-    },
-
     #[error("cannot use the {operation} response because {problem}")]
     Contract {
         operation: &'static str,
@@ -80,8 +71,7 @@ impl ApiFailure for VenmoApiError {
                 | TransportError::ResponseRead,
             ) => ApiFailureKind::Network,
             Self::Transport(TransportError::FinancialWriteOutcomeUnknown { .. })
-            | Self::FinancialOutcomeUnknown { .. }
-            | Self::FinancialHttpOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
+            | Self::FinancialOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
             Self::Transport(TransportError::AuthenticationOutcomeUnknown { .. }) => {
                 ApiFailureKind::Internal
             }

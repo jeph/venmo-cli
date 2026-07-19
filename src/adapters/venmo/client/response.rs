@@ -48,10 +48,9 @@ pub(super) fn require_financial_success_json(
                 code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
             });
         }
-        return Err(VenmoApiError::FinancialHttpOutcomeUnknown {
+        return Err(VenmoApiError::FinancialOutcomeUnknown {
             operation,
-            status: status.as_u16(),
-            code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
+            problem: "the server response did not prove that no write occurred",
         });
     }
     if error_code.as_deref().is_some_and(is_failure_error_code) {

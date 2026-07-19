@@ -36,12 +36,10 @@ pub use crate::features::requests::model::{
 pub use crate::features::requests::plans::{
     AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, DeclineRequestPlan, DeclinedRequest,
 };
-pub use crate::features::transfers::in_transfer::TransferInResult;
 pub use crate::features::transfers::model::{
-    CreatedTransfer, CreatedTransferIn, TransferDirection, TransferFeeMetadata, TransferId,
-    TransferInPlan, TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix,
-    TransferInstrumentSuffixParseError, TransferModeOptions, TransferOptions, TransferOutPlan,
-    TransferPayoutId, TransferSpeed,
+    CreatedTransfer, TransferFeeMetadata, TransferId, TransferInstrument, TransferInstrumentId,
+    TransferInstrumentSuffix, TransferInstrumentSuffixParseError, TransferModeOptions,
+    TransferOptions, TransferOutPlan, TransferSpeed,
 };
 pub use crate::features::transfers::options::TransferOptionsResult;
 pub use crate::features::transfers::out::TransferOutResult;

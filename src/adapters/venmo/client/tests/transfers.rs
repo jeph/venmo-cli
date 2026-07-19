@@ -5,21 +5,12 @@ const TRANSFER_CREATION_REQUEST_BODY: &str = concat!(
     r#"{"amount":1234,"destination_id":"bank-out","final_amount":1234,"#,
     r#""transfer_type":"standard"}"#,
 );
-const TRANSFER_IN_CREATION_REQUEST_BODY: &str = concat!(
-    r#"{"amount":1234,"payment_method_id":"bank-in","#,
-    r#""funding_request_source":"funds-in","instant":false}"#,
-);
-
 #[derive(Debug, Eq, PartialEq)]
 struct OptionsSnapshot {
-    preferred_in: Option<TransferSpeed>,
     preferred_out: Option<TransferSpeed>,
-    add_funds_limits: (Option<u64>, Option<u64>),
-    standard_sources: Vec<InstrumentSnapshot>,
     standard_destinations: Vec<InstrumentSnapshot>,
     standard_fee_empty: bool,
     standard_estimate: String,
-    instant_source_count: usize,
     instant_destination_count: usize,
     instant_fee: (Option<String>, Option<String>, Option<String>, bool),
 }
@@ -57,15 +48,7 @@ async fn transfer_options_map_current_direction_speed_and_fee_structure() -> Tes
         serde_json::json!({
             "data": {
                 "preferred_transfer_type": {"in": null, "out": "standard"},
-                "add_funds_single_transaction_limit": {
-                    "minimum_amount": 1000, "maximum_amount": 100000
-                },
                 "standard": {
-                    "eligible_sources": [{
-                        "id": "bank-in", "name": "Inbound bank", "asset_name": "Checking",
-                        "type": "bank", "last_four": "1111", "is_default": true,
-                        "transfer_to_estimate": "3 business days", "ignored": {"safe": true}
-                    }],
                     "eligible_destinations": [{
                         "id": "bank-out", "name": "Outbound bank", "asset_name": "Savings",
                         "type": "bank", "last_four": "2222", "is_default": true,
@@ -78,7 +61,7 @@ async fn transfer_options_map_current_direction_speed_and_fee_structure() -> Tes
                     "transfer_to_estimate": "1-3 business days"
                 },
                 "instant": {
-                    "eligible_sources": [], "eligible_destinations": [],
+                    "eligible_destinations": [],
                     "fee": {
                         "minimum_amount": 25, "maximum_amount": 2500,
                         "variable_percentage": 1.75, "fixed_amount": 10
@@ -97,18 +80,7 @@ async fn transfer_options_map_current_direction_speed_and_fee_structure() -> Tes
     // Complete expected observation.
     let expected = ScriptedObservation::expected(
         Ok(OptionsSnapshot {
-            preferred_in: None,
             preferred_out: Some(TransferSpeed::Standard),
-            add_funds_limits: (Some(1_000), Some(100_000)),
-            standard_sources: vec![InstrumentSnapshot {
-                id: "bank-in".to_owned(),
-                name: "Inbound bank".to_owned(),
-                asset_name: "Checking".to_owned(),
-                instrument_type: "bank".to_owned(),
-                last_four: "1111".to_owned(),
-                is_default: true,
-                estimate: "3 business days".to_owned(),
-            }],
             standard_destinations: vec![InstrumentSnapshot {
                 id: "bank-out".to_owned(),
                 name: "Outbound bank".to_owned(),
@@ -120,7 +92,6 @@ async fn transfer_options_map_current_direction_speed_and_fee_structure() -> Tes
             }],
             standard_fee_empty: true,
             standard_estimate: "1-3 business days".to_owned(),
-            instant_source_count: 0,
             instant_destination_count: 0,
             instant_fee: (
                 Some("25".to_owned()),
@@ -140,18 +111,7 @@ async fn transfer_options_map_current_direction_speed_and_fee_structure() -> Tes
     let result = client.transfer_options(&token, &device_id).await;
     let observed = ScriptedObservation::observed(
         project_result(result, |options| OptionsSnapshot {
-            preferred_in: options.preferred_in(),
             preferred_out: options.preferred_out(),
-            add_funds_limits: (
-                options.add_funds_minimum_cents(),
-                options.add_funds_maximum_cents(),
-            ),
-            standard_sources: options
-                .standard()
-                .eligible_sources()
-                .iter()
-                .map(InstrumentSnapshot::from)
-                .collect(),
             standard_destinations: options
                 .standard()
                 .eligible_destinations()
@@ -160,7 +120,6 @@ async fn transfer_options_map_current_direction_speed_and_fee_structure() -> Tes
                 .collect(),
             standard_fee_empty: options.standard().fee().is_empty(),
             standard_estimate: options.standard().transfer_to_estimate().to_owned(),
-            instant_source_count: options.instant().eligible_sources().len(),
             instant_destination_count: options.instant().eligible_destinations().len(),
             instant_fee: (
                 options.instant().fee().minimum_amount().map(str::to_owned),
@@ -193,40 +152,6 @@ async fn transfer_options_reject_unknown_preference_invalid_ids_and_oversized_br
         })
         .collect::<Vec<_>>();
     for body in [
-        serde_json::json!({
-            "data": {
-                "preferred_transfer_type": {"in": null, "out": "standard"},
-                "add_funds_single_transaction_limit": {
-                    "minimum_amount": 1000.5, "maximum_amount": 100000
-                },
-                "standard": empty_mode(), "instant": empty_mode()
-            }
-        }),
-        serde_json::json!({
-            "data": {
-                "preferred_transfer_type": {"in": null, "out": "standard"},
-                "add_funds_single_transaction_limit": {
-                    "minimum_amount": 2000, "maximum_amount": 1000
-                },
-                "standard": empty_mode(), "instant": empty_mode()
-            }
-        }),
-        serde_json::json!({
-            "data": {
-                "preferred_transfer_type": {"in": null, "out": "standard"},
-                "add_funds_single_transaction_limit": {
-                    "minimum_amount": 1000, "maximum_amount": 100000,
-                    "unproven_constraint": 1
-                },
-                "standard": empty_mode(), "instant": empty_mode()
-            }
-        }),
-        serde_json::json!({
-            "data": {
-                "preferred_transfer_type": {"out": "standard"},
-                "standard": empty_mode(), "instant": empty_mode()
-            }
-        }),
         serde_json::json!({
             "data": {
                 "preferred_transfer_type": {"in": null},
@@ -485,101 +410,6 @@ async fn transfer_creation_rejects_every_relied_on_success_mismatch_as_ambiguous
     Ok(())
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn transfer_in_creation_sends_exact_historical_mobile_body_and_validates_success()
--> TestResult {
-    let response = scripted_json_response(200, created_transfer_in_body())?;
-    let (token, device_id) = test_session()?;
-    let plan = transfer_in_plan()?;
-    let (client, transport) = scripted_client([Ok(response)])?;
-    let expected = ScriptedObservation::expected(
-        Ok((
-            "payout-789".to_owned(),
-            "pending".to_owned(),
-            1_234_u64,
-            time::OffsetDateTime::parse("2026-07-20T05:24:56Z", &Rfc3339)?,
-        )),
-        vec![authenticated_request(
-            Method::POST,
-            "/funds",
-            &["funds"],
-            &[],
-            Some(TRANSFER_IN_CREATION_REQUEST_BODY.as_bytes()),
-            OperationClass::FinancialWrite,
-        )],
-    );
-
-    let result = client.create_transfer_in(&token, &device_id, &plan).await;
-    let observed = ScriptedObservation::observed(
-        project_result(result, |created| {
-            (
-                created.payout_id().as_str().to_owned(),
-                created.status().to_owned(),
-                created.amount().cents(),
-                created.expected_at(),
-            )
-        }),
-        &transport,
-    );
-
-    assert_eq!(observed, expected);
-    Ok(())
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn transfer_in_creation_treats_unproven_or_mismatched_responses_as_ambiguous() -> TestResult {
-    let mut wrong_status = created_transfer_in_body();
-    wrong_status["data"]["status"] = serde_json::json!("complete");
-    let mut wrong_amount = created_transfer_in_body();
-    wrong_amount["data"]["amount"] = serde_json::json!(1235);
-    let mut invalid_id = created_transfer_in_body();
-    invalid_id["data"]["payout_id"] = serde_json::json!("bad id");
-    let mut invalid_balance = created_transfer_in_body();
-    invalid_balance["data"]["balance"] = serde_json::json!(i64::from(i32::MAX) + 1);
-    let mut missing_expected = created_transfer_in_body();
-    if let Some(data) = missing_expected
-        .get_mut("data")
-        .and_then(serde_json::Value::as_object_mut)
-    {
-        data.remove("expected_date");
-    }
-
-    let responses = [
-        scripted_response(200, Vec::new())?,
-        scripted_json_response(201, created_transfer_in_body())?,
-        scripted_json_response(400, serde_json::json!({"error": {"code": 106}}))?,
-        scripted_json_response(200, wrong_status)?,
-        scripted_json_response(200, wrong_amount)?,
-        scripted_json_response(200, invalid_id)?,
-        scripted_json_response(200, invalid_balance)?,
-        scripted_json_response(200, missing_expected)?,
-    ];
-
-    for response in responses {
-        let (token, device_id) = test_session()?;
-        let plan = transfer_in_plan()?;
-        let (client, transport) = scripted_client([Ok(response)])?;
-        let expected = ScriptedObservation::expected(
-            Err(ApiErrorSnapshot::financial_unknown(
-                TRANSFER_IN_CREATION_OPERATION,
-            )),
-            vec![authenticated_request(
-                Method::POST,
-                "/funds",
-                &["funds"],
-                &[],
-                Some(TRANSFER_IN_CREATION_REQUEST_BODY.as_bytes()),
-                OperationClass::FinancialWrite,
-            )],
-        );
-
-        let result = client.create_transfer_in(&token, &device_id, &plan).await;
-        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
-        assert_eq!(observed, expected);
-    }
-    Ok(())
-}
-
 fn created_transfer_body() -> serde_json::Value {
     serde_json::json!({
         "data": {
@@ -607,25 +437,12 @@ fn created_transfer_body() -> serde_json::Value {
     })
 }
 
-fn created_transfer_in_body() -> serde_json::Value {
-    serde_json::json!({
-        "data": {
-            "payout_id": "payout-789",
-            "status": "pending",
-            "amount": 1234,
-            "balance": 5000,
-            "expected_date": "2026-07-20T05:24:56Z"
-        }
-    })
-}
-
 fn empty_mode() -> serde_json::Value {
     mode_with_destinations(Vec::new())
 }
 
 fn mode_with_destinations(destinations: Vec<serde_json::Value>) -> serde_json::Value {
     serde_json::json!({
-        "eligible_sources": [],
         "eligible_destinations": destinations,
         "fee": {
             "minimum_amount": null,
@@ -671,26 +488,6 @@ fn transfer_plan() -> Result<TransferOutPlan, Box<dyn Error>> {
             "Checking".to_owned(),
             "bank".to_owned(),
             TransferInstrumentSuffix::from_str("2222")?,
-            true,
-            "1-3 business days".to_owned(),
-        ),
-    ))
-}
-
-fn transfer_in_plan() -> Result<TransferInPlan, Box<dyn Error>> {
-    Ok(TransferInPlan::new(
-        Account::new(
-            UserId::from_str("123")?,
-            Username::from_bare("alice")?,
-            Some("Alice".to_owned()),
-        ),
-        Money::from_cents(1_234)?,
-        TransferInstrument::new(
-            TransferInstrumentId::from_str("bank-in")?,
-            "Bank".to_owned(),
-            "Checking".to_owned(),
-            "bank".to_owned(),
-            TransferInstrumentSuffix::from_str("1111")?,
             true,
             "1-3 business days".to_owned(),
         ),

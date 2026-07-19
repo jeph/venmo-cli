@@ -2,7 +2,7 @@
 source: tests/cli.rs
 expression: help
 ---
-Show current inbound and outbound transfer eligibility without moving money
+Show current outbound transfer eligibility without moving money
 
 Usage: options
 

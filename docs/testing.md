@@ -130,12 +130,6 @@ supplement rather than replace named exact examples at safety boundaries. A gene
 proves “some valid request succeeds” cannot replace the exact financial wire contract or the
 one-write transcript.
 
-Transfer-in synthetic coverage must additionally pin the signer-verified `/v1/funds` JSON body,
-`funds-in` request source, `instant:false`, current add-funds limit enforcement, explicit-ID versus
-marked-default source selection, and the provisional exact HTTP-200/direct-`pending` response
-verifier. No test may substitute a sole nondefault source, retry a write, or infer settlement from
-the pending response model.
-
 Review every snapshot diff as code. Never accept snapshots automatically merely to make a test
 pass.
 

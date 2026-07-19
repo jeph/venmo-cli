@@ -19,8 +19,8 @@ pub use crate::adapters::cli::args::{
     AuthOperation, Cli, Command, DeclineArgs, FriendsArgs, FriendsListArgs, FriendsOperation,
     PayArgs, PaymentMethodsArgs, PaymentMethodsOperation, RequestArgs, RequestDirectionArg,
     RequestInfoArgs, RequestsArgs, RequestsListArgs, RequestsOperation, TransferArgs,
-    TransferInArgs, TransferOperation, TransferOutArgs, TransferSpeedArg, UserInfoArgs,
-    UserSearchArgs, UsersArgs, UsersOperation, VisibilityArg,
+    TransferOperation, TransferOutArgs, TransferSpeedArg, UserInfoArgs, UserSearchArgs, UsersArgs,
+    UsersOperation, VisibilityArg,
 };
 pub use crate::adapters::cli::{
     AppError, ErrorCategory, handle_runtime_initialization_failure, run, write_error,

@@ -87,7 +87,7 @@ All web findings below are **direct observation (static client artifact)** dated
 | **third-party call** | Plaid, Braintree, PayPal, or presigned object URL—not Venmo API. |
 
 ## 3. Complete implemented CLI action inventory
-The CLI has 19 enabled leaf actions. Operation labels resolve to the mobile wire catalog in §5.
+The CLI has 18 enabled leaf actions. Operation labels resolve to the mobile wire catalog in §5.
 Counts begin after local credential loading; failed local gates can stop earlier.
 
 | # | CLI leaf | Calls and maximum orchestration | Classification |
@@ -110,12 +110,11 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 16 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
 | 17 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
 | 18 | `transfer out <AMOUNT> [--speed standard] [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; omitted speed defaults to standard; exactly one **T2** after default-No confirmation. |
-| 19 | `transfer in <AMOUNT> [--source SOURCE_ID] [--yes]` | **A5 → T1 → T3** (3). | Financial; current add-funds limits and an explicit eligible source or unique marked default are required; exactly one **T3** after default-No confirmation. |
 
 Help and version output are also service-free but are not leaf actions. There is no
 implemented generic payment list/detail, outgoing-request cancel/remind, explicit
-peer-payment funding-source selection, token refresh, friend mutation, payment-method mutation,
-remote token revocation, instant transfer write, or manual outbound
+funding-source selection, token refresh, friend mutation, payment-method mutation,
+remote token revocation, transfer-in command, instant transfer write, or manual
 transfer-destination selection.
 
 ## 4. Shared implemented mobile boundary
@@ -335,11 +334,7 @@ each item requires a branch-unique valid ID, bounded name/asset/type/estimate, a
 exactly four-visible-character suffix, and Boolean
 `is_default`. Fee minimum/maximum/percentage numbers are retained as unit-unverified
 strings; any additional non-null fee field is recorded. Unknown preferred speeds,
-invalid IDs/text, malformed envelopes, and oversized arrays fail the read contract. An optional
-`add_funds_single_transaction_limit` object contains nullable numeric `minimum_amount` and
-`maximum_amount`; when present, values must be exact unsigned integral cents and cannot be
-reversed. The options read can render without this object, but transfer-in requires a current
-minimum and enforces the optional maximum before preflight.
+invalid IDs/text, malformed envelopes, and oversized arrays fail the read contract.
 ### 5.3 Eligibility and financial writes
 #### T2 — create standard outbound bank transfer
 ```http
@@ -358,28 +353,6 @@ the plan; net cents plus fee cents must equal requested cents; dollar amount mus
 equal net cents exactly. Empty/malformed JSON, any other status, any mismatch, every
 non-201/non-2xx, challenge, or transport uncertainty is ambiguous. Pending proves
 accepted submission, not bank settlement.
-
-#### T3 — create standard inbound bank transfer
-```http
-POST /v1/funds
-```
-
-```json
-{"amount":<INTEGER_CENTS>,"payment_method_id":"<SELECTED_STANDARD_BANK_ID>","funding_request_source":"funds-in","instant":false}
-```
-
-The request shape is pinned to signer-verified Venmo Android 10.31.1 static evidence. The CLI
-requires the T1 add-funds minimum, enforces its optional maximum, and accepts only a current exact
-`bank` source from `standard.eligible_sources`. An explicit source ID must match; omission requires
-exactly one API-marked default and never falls back to a sole nondefault.
-
-The provisional success contract requires exact HTTP 200 and direct `data` fields: valid string
-`payout_id`, status exactly `pending`, integer-cent `amount` exactly matching the plan, an integer
-`balance` within the historical signed-32-bit model, and valid `expected_date`. Balance is required
-but not exposed because its standard-transfer semantics remain unproved. Empty/malformed JSON,
-other 2xx, non-2xx, challenge, mismatch, interruption, and transport uncertainty are ambiguous.
-Pending proves only that this verifier recognized an accepted response; no current successful live
-response or settlement has been established.
 
 #### F1 — blank-source payment eligibility
 ```http
@@ -589,26 +562,24 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-14 | F5 | Direct observation / reconciled live validation | Private decline became exact `cancelled`, with no balance/activity movement. Non-private success is accepted by code but is not independently pinned by an exact success fixture or live validation. |
 | 2026-07-16 | T1 | Direct observation / controlled live validation | One bounded read proved current bearer/device auth, direction/speed branches, standard bank candidates in both directions on the observed account, and fee/estimate structure; values/counts were not retained. |
 | 2026-07-17 | T2 standard out | Direct observation / controlled and reconciled live validation + exact synthetic | One approved $0.01 HTTP-201 write returned direct pending standard transfer data; exactly one matching outgoing activity record had the same transfer ID. Exact body, fail-closed selection, strict response proof, and one-write ambiguity are implemented. |
-| 2026-07-18 | T3 standard in | Signer-verified Android 10.31.1 static contract + exact synthetic; unsuccessful controlled attempt | The signed app proves JSON `/v1/funds`, exact fields, standard-bank `instant:false`, response DTO, and T1 add-funds limits. One approved $0.01 attempt exited ambiguous with no immediate balance delta or matching activity and no delayed matching activity; it was not retried and did not prove current success. |
 | Current gap | User-Agent | Existing behavior / residual gap | Literal is known; current necessity/currency is not. |
 
-## 10. Transfers: options, standard out, and guarded standard in
+## 10. Transfers: enabled options and standard out
 ### 10.1 Current command state
 ```text
 venmo transfer options
 venmo transfer out <AMOUNT> [--speed standard] [--yes]
-venmo transfer in <AMOUNT> [--source <SOURCE_ID>] [--yes]
 ```
 
-`transfer options` implements T1. Its CLI rendering contains eligible instrument rows ordered as
+`transfer options` implements the outbound portion of T1. Its CLI rendering contains eligible
+cash-out destination rows ordered as
 `Id`, `Name`, `Type`, `Last 4`, `Default`, `Direction`, `Speed`, and `Estimated Completion`.
 The semantically unclear API `asset_name` remains validated internally but is not rendered, and
 preferred-speed and branch-level estimate/fee summaries are also omitted.
 `transfer out` implements standard-bank T2 after A5/W2/T1 preflight and default-No confirmation;
-omitted speed defaults to standard and explicit `--speed standard` remains valid. `transfer in`
-implements guarded standard-bank T3 after A5/T1, current add-funds limit checks, explicit-source or
-marked-default selection, and default-No confirmation. It exposes no speed. Instant, debit, manual
-outbound destination, and challenge continuation are not accepted.
+omitted speed defaults to standard and explicit `--speed standard` remains valid. Transfer-in is
+intentionally unsupported. No instant, debit, manual destination, or challenge-continuation
+command is accepted.
 
 ### 10.2 Controlled current mobile options evidence
 On 2026-07-16, one owner-approved, non-retried, fixed-origin
@@ -625,10 +596,10 @@ count was retained. Sanitized structure proved:
   numeric; and
 - branch-level transfer estimates and additional unrelied-on fields.
 
-This direct observation proves current direction/speed partitioning and account-
-specific standard bank eligibility, not universal support, units, write semantics,
-debit behavior, or fees. T1 preserves both directions/speeds, bounds each array to
-100, validates all relied-on fields, and labels fee values unit-unverified.
+This direct observation proves current direction/speed partitioning and account-specific standard
+bank eligibility, not universal support, units, write semantics, debit behavior, or fees. The
+implemented T1 view ignores source metadata, preserves the standard/instant destination branches,
+bounds each destination array to 100, and validates all fields relied on by cash-out.
 
 ### 10.3 Standard-out contract
 The command performs A5 → W2 → T1, requires exact stored/current account equality
@@ -669,40 +640,7 @@ ID exactly matched the T2 response. The bounded balance read was valid, but no r
 balance or delta was retained. No raw response, credential, or destination ID was
 retained, and the temporary canary helper was removed.
 
-### 10.4 Standard-in static contract and unsuccessful canary
-
-Venmo Android 10.31.1 (`com.venmo`, November 2023) was obtained as an APK with SHA-256
-`31e22397a40d99ea0ea39ad3506602b1b6a7d45c98ce1528763425d2b4d9b0d6`. Android `apksigner`
-verified v2/v3 signatures, one signer `CN=Andrew Kortina, OU=Engineering, O=Venmo` with certificate
-SHA-256 `c77e2631ac0451c086f25f79ae258238afa400961e8d599db78e25eadcdcc947`, and a verified Google
-source stamp. The APK came from the AppDownList CDN URL dated 2023-12-09; archive integrity passed
-before decompilation. A SHA-verified JADX 1.5.6 release recovered the relevant Retrofit interface,
-implementation, request, response, and presenter despite unrelated obfuscation errors.
-
-`V1TransferApiService` defines authenticated JSON `POST "funds"` beneath the same V1 base as T1/T2.
-`TransferApiServiceImpl.addFunds` constructs exact `AddFundsRequestBody(amount,
-paymentMethodId, "funds-in", instant)`. The redesigned UI sets `instant` only for card sources, so
-the initial exact-bank command fixes it to false. The direct `data` DTO requires string payout ID
-and status, integer amount/balance, and expected date. `TransferOptionsResponse` separately exposes
-`add_funds_single_transaction_limit.minimum_amount|maximum_amount`; the app interprets these as
-integer cents. The CLI preserves and enforces those limits, validates fresh source eligibility,
-flushes preflight, confirms default-No, and encodes one `FinancialWrite` with no retry.
-
-The historical Retrofit layer accepts general 2xx and does not prove the current exact status or a
-specific success value. Corroborating current web code treats exact `pending` add-funds as success.
-The CLI therefore uses a deliberately provisional exact HTTP-200/direct-`pending` verifier; all
-other outcomes are ambiguous rather than guessed successful.
-
-On 2026-07-18, after separate owner approval, a temporary bounded procedure took read-only balance
-and first-page activity baselines, sent exactly one $0.01 T3 using the marked default standard bank,
-and performed immediate balance/activity reconciliation plus one delayed activity read. The write
-returned exit code 3 with no normal result; balance was unchanged and neither activity read showed
-a new matching incoming one-cent add-funds record. No retry occurred. Raw response, remote status,
-credential, source/account data, and IDs were not retained. This does not prove permanent
-non-mutation, a confirmed rejection, or the current success contract. The temporary procedure was
-removed.
-
-### 10.5 Corroborating evidence and boundaries
+### 10.4 Corroborating evidence and boundaries
 The 2022 historical source is pinned at
 [`transfer_api.py`](https://github.com/evanpurkhiser/venmo-api-unofficial/blob/3e290a575ac2f638cc82a3d1a1580bf41bf503aa/venmo_api/apis/transfer_api.py)
 and [`transfer.py`](https://github.com/evanpurkhiser/venmo-api-unofficial/blob/3e290a575ac2f638cc82a3d1a1580bf41bf503aa/venmo_api/models/transfer.py).
@@ -710,12 +648,10 @@ It supplied the paths/body above but chose the first standard destination, omitt
 the device header, returned local `true`, and discovered no inbound write.
 
 Current web build `OHCscQK3gMovYos3VtRgA` separately emits same-origin CSRF/cookie
-`POST /api/transfer` for cash-out and GraphQL `transferFromFundingInstrument` for
-add-funds. Cash-out uses integer cents, SSR-partitioned standard/instant IDs, instant
-net amount, and a code-1396 challenge coupled to GraphQL SMS OTP before a
-challenge-bound PATCH. Add-funds submits intended minor units and treats exact
-`pending` as success. These are browser BFF/orchestration contracts, not mobile
-write proof, and cannot be transplanted into the CLI.
+`POST /api/transfer` for cash-out. It uses integer cents, SSR-partitioned standard/instant IDs,
+instant net amount, and a code-1396 challenge coupled to GraphQL SMS OTP before a challenge-bound
+PATCH. This is a browser BFF/orchestration contract, not mobile write proof, and cannot be
+transplanted into the CLI.
 
 Official help accessed 2026-07-15 establishes product-level standard/instant
 cash-out and bank/debit add-money capability only:
@@ -723,9 +659,9 @@ cash-out and bank/debit add-money capability only:
 [transfer to bank](https://help.venmo.com/cs/articles/how-to-transfer-money-to-a-bank-account-vhel293),
 and [transfer issues](https://help.venmo.com/cs/articles/issues-with-a-bank-transfer-vhel114).
 
-### 10.6 Remaining scope
-Successful inbound response validation, instant, debit, broader server limit behavior, step-up,
-cancellation, and expedition remain independently gated. Standard-out response net/fee cents are
+### 10.5 Remaining scope
+Transfer-in/add-funds is intentionally unsupported and is not a future implementation gate.
+Instant/debit cash-out, step-up, cancellation, and expedition remain independently gated. Standard response net/fee cents are
 validated arithmetically, but T1 fee values and broader fee policy remain
 unit-unverified. Do not repeat the canary merely to broaden evidence; any future
 variant needs its own read, request, response, ambiguity, and reconciliation dossier.
@@ -747,8 +683,8 @@ supplies a cached `accessToken`. GraphQL can send bearer auth, `Venmo-Client-Id:
 headers—browser orchestration auth, not mobile auth. All 37 route chunks export
 `__N_SSP = true`; server implementations are absent. Output lists below are compact.
 ### 11.2 Money, peer payments, and requests
-Cash-out, add-funds, and shared OTP are fully inventoried in §10. Evidence for the
-remaining money pages is `pay-048a41b49c168600.js`,
+Cash-out and shared OTP are inventoried in §10. Evidence for the remaining money pages is
+`pay-048a41b49c168600.js`,
 `payment-ab4dcd083a4d7c8c.js`, `incomplete-50212b5d913b53ac.js`, and
 `backup-payment-02d9a99e9c813a30.js`.
 
@@ -1026,7 +962,7 @@ of §13 rather than duplicated here.
 | Non-private decline | Audience-generic code, common supported-audience validation, and representative response-preservation tests. | An exact friends/public success fixture, independent current live proof, or every accepted envelope alternative being individually pinned. |
 | General mobile payment reads | Pending requests and activity. | `payments list`, settled PaymentId detail, or ActivityId substitution. |
 | Model limits | Existing leading-zero IDs, username matching, nonblank note, read-only role compatibility, 200-record resolution bound. | Normalization, stricter grammar/note limit, exact read-only role set, or global username uniqueness without evidence. |
-| Transfers | Current T1 options read; enabled fail-closed T2 standard out with exact live HTTP-201 proof; signer-verified T3 standard-in body/DTO/limit contract, synthetic verifier, and one non-retried ambiguous canary with no observed movement. | Standard-in current success response or settlement, broader limit behavior, confirmed rejection codes, instant, debit, step-up, cancellation, or expedition. |
+| Transfers | Outbound-only T1 options view; enabled fail-closed T2 standard-bank write; exact HTTP-201 pending response; matching-ID activity reconciliation. Transfer-in is intentionally unsupported. | Settlement completion, confirmed rejection codes, instant/debit cash-out, T1 fee units, step-up, cancellation, or expedition. |
 | Web BFF/GraphQL | Captured-build emitted calls. | Current success, mobile equivalence, full schema, or retry safety. |
 | SSR reads | Consumed props/shapes. | Hidden method/path/document/variables/auth or complete response. |
 | Payment methods | Exact add/update/delete/verify browser flows and provider boundaries. | Initial list/detail/status request, Plaid Link-token endpoint, microdeposit-initiation endpoint, or runtime provider branch. |

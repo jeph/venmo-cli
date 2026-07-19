@@ -31,7 +31,7 @@ The initial MCP release provides structured, read-only access to the already imp
 ## 2. Confirmed product decisions
 
 - Use Rust with a pinned stable toolchain and a committed `Cargo.lock`.
-- Use Rust 1.95.0 for the pinned toolchain and MSRV, package version `0.4.0`, and the MIT license.
+- Use Rust 1.95.0 for the pinned toolchain and MSRV, package version `0.3.0`, and the MIT license.
 - Use [`clap`](https://docs.rs/clap/) with its derive API.
 - Use [`dialoguer`](https://docs.rs/dialoguer/) behind a narrow prompt adapter for hidden token input and default-No confirmation.
 - Prefer mature, popular, actively community-maintained off-the-shelf crates for common functionality instead of rolling project-owned replacements; keep custom code focused on Venmo-specific model behavior, feature orchestration, and safety policy.
@@ -361,8 +361,8 @@ All command-level username resolution is shared and fail-closed around the live-
 #### `venmo transfer options`
 
 - Performs one authenticated `GET /v1/transfers/options` and never moves money.
-- Preserves standard/instant eligible source and destination branches; bounds each branch to 100
-  instruments and validates every relied-on ID/text/default.
+- Preserves standard/instant eligible destination branches; bounds each branch to 100 instruments
+  and validates every relied-on ID/text/default. Inbound source metadata is ignored.
 - Renders sanitized copyable instrument rows as `Id`, `Name`, `Type`, `Last 4`, `Default`,
   `Direction`, `Speed`, and `Estimated Completion`. The API's semantically unclear `asset_name`
   remains validated internally but is not rendered. The CLI also omits preferred-speed and
@@ -380,32 +380,9 @@ All command-level username resolution is shared and fail-closed around the live-
   destination ID/type/suffix. Status alone, challenge, non-201, mismatch, or interruption is
   ambiguous.
 - A separately approved $0.01 canary on 2026-07-17 matched exactly one pending outgoing activity
-  record with the same transfer ID. This proves accepted submission, not settlement. Instant out,
-  debit, manual destination selection, OTP continuation, cancellation, and expedition remain
-  unavailable.
-
-#### `venmo transfer in <AMOUNT> [--source <SOURCE_ID>] [--yes]`
-
-- Runs current-account validation and fresh transfer options without reading or claiming an
-  external-bank balance. It accepts only exact `bank` entries from `standard.eligible_sources` and
-  requires empty standard fee metadata.
-- An explicit source ID must exactly match a current eligible source. With no flag, exactly one
-  source must be API-marked default; a sole nondefault does not authorize selection. Duplicate IDs,
-  multiple defaults, absent defaults, unsupported types, and unestablished fees fail closed.
-- Requires and enforces the options response's add-funds minimum and optional maximum before any
-  preflight or write. The CLI exposes no speed because the mobile standard-bank request itself
-  fixes `instant: false`.
-- Flushes a source/amount/account preflight before default-No confirmation and sends at most one
-  non-retried `POST /v1/funds` with integer cents, selected `payment_method_id`, exact
-  `funding_request_source: funds-in`, and `instant: false`.
-- The current implementation is based on signer-verified Android 10.31.1 static evidence. It
-  provisionally accepts only HTTP 200 direct `data` with exact `pending`, amount equality, a valid
-  payout ID, bounded integer balance, and valid expected timestamp. It never claims settlement or
-  availability.
-- One approved $0.01 attempt on 2026-07-18 produced ambiguous exit code 3 and no immediate balance
-  delta or matching activity, including one delayed activity read. It was not retried and did not
-  validate the current success contract. Every uncertain outcome still requires independent
-  reconciliation before any later transfer.
+  record with the same transfer ID. This proves accepted submission, not settlement. Transfer-in
+  is intentionally unsupported. Instant/debit cash-out, manual selection, OTP continuation,
+  cancellation, and expedition remain unavailable.
 
 ### 3.7 Activity
 
@@ -1858,10 +1835,9 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 9. Whether native MCP validation shows synchronous keychain reads need a `spawn_blocking`/loaded-credential feature seam rather than relying only on a multi-thread runtime.
 10. Which local MCP hosts, if any, can provide a trustworthy per-call human approval contract sufficient to unlock the separately gated future financial phase. Until one is selected and tested, writes remain unavailable.
 11. Whether any later release should add a remote MCP transport. The initial release is definitively local stdio only and must not accumulate HTTP/OAuth features speculatively.
-12. Whether future evidence proves the guarded standard-in success contract or justifies any
-    independently gated instant, debit, transfer step-up, cancellation, or expedition command.
-    Standard-out pending submission is live validated; standard-in remains static-contract plus
-    synthetic with one non-retried ambiguous canary.
+12. Whether future evidence justifies any independently gated instant, debit, transfer step-up,
+    cancellation, or expedition command. Transfer-in is intentionally out of scope; the
+    standard-bank cash-out pending-submission scope is finalized as implemented.
 
 ## 21. Immediate next steps
 

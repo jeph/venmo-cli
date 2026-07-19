@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use super::{CreatedTransfer, CreatedTransferIn, TransferInPlan, TransferOptions, TransferOutPlan};
+use super::{CreatedTransfer, TransferOptions, TransferOutPlan};
 use crate::shared::{AccessToken, ApiFailure, DeviceId};
 
 pub trait TransferOptionsApi {
@@ -22,15 +22,4 @@ pub trait TransferOutCreationApi {
         device_id: &'a DeviceId,
         plan: &'a TransferOutPlan,
     ) -> impl Future<Output = Result<CreatedTransfer, Self::Error>> + Send + 'a;
-}
-
-pub trait TransferInCreationApi {
-    type Error: ApiFailure;
-
-    fn create_transfer_in<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        plan: &'a TransferInPlan,
-    ) -> impl Future<Output = Result<CreatedTransferIn, Self::Error>> + Send + 'a;
 }

@@ -132,38 +132,3 @@ fn unsafe_error_codes_are_not_rendered() {
     assert_eq!(sanitize_api_code("bad\ncode"), None);
     assert_eq!(sanitize_api_code(&"x".repeat(65)), None);
 }
-
-#[test]
-fn ambiguous_financial_http_errors_expose_only_safe_status_and_code() -> TestResult {
-    let response = scripted_json_response(
-        403,
-        serde_json::json!({
-            "error": {"code": 106, "message": "sensitive remote detail\u{1b}[31m"}
-        }),
-    )?;
-
-    let result = super::super::response::require_financial_success_json(
-        TRANSFER_IN_CREATION_OPERATION,
-        response,
-    );
-    let error = match result {
-        Err(error) => error,
-        Ok(_) => {
-            return Err(io::Error::other("an unconfirmed financial rejection was accepted").into());
-        }
-    };
-    let rendered = error.to_string();
-
-    assert_eq!(error.kind(), ApiFailureKind::AmbiguousWrite);
-    assert_eq!(
-        rendered,
-        concat!(
-            "the inbound transfer creation outcome is unknown and must be reconciled before ",
-            "retrying because Venmo returned HTTP 403 (error code 106); that response did not ",
-            "prove that no write occurred"
-        )
-    );
-    assert!(!rendered.contains("sensitive"));
-    assert!(!rendered.contains('\u{1b}'));
-    Ok(())
-}

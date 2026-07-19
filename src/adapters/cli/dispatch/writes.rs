@@ -11,17 +11,12 @@ use crate::features::requests::{
     RequestAcceptanceApi, RequestCreationApi, RequestDeclineApi, RequestLookupApi,
 };
 use crate::features::requests::{accept, create as request_create, decline};
-use crate::features::transfers::in_transfer as transfer_in;
 use crate::features::transfers::out as transfer_out;
-use crate::features::transfers::{
-    TransferInCreationApi, TransferOptionsApi, TransferOutCreationApi,
-};
+use crate::features::transfers::{TransferOptionsApi, TransferOutCreationApi};
 use crate::features::wallet::BalanceApi;
 use crate::shared::{ApiFailure, ClientRequestIdGenerator, CredentialReader};
 
-use super::super::args::{
-    AcceptArgs, DeclineArgs, PayArgs, RequestArgs, TransferInArgs, TransferOutArgs,
-};
+use super::super::args::{AcceptArgs, DeclineArgs, PayArgs, RequestArgs, TransferOutArgs};
 use super::super::{error::AppError, output};
 use super::write_and_flush;
 
@@ -204,40 +199,6 @@ where
         protect_with_interruption(transfer_out::execute(api, authorized), interruption).await??;
     write_and_flush(stdout, &result, |writer, result| {
         output::write_transfer_out_result(writer, result, timestamps)
-    })
-    .map_err(|source| AppError::FinancialResultOutput { source })?;
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn run_transfer_in_with<R, A, P, W, E, M, S>(
-    args: TransferInArgs,
-    store: &R,
-    api: &A,
-    prompt: &P,
-    timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
-    make_interruption: M,
-) -> Result<(), AppError>
-where
-    R: CredentialReader,
-    A: CurrentAccountApi + TransferOptionsApi + TransferInCreationApi,
-    <A as CurrentAccountApi>::Error: ApiFailure,
-    P: DefaultNoConfirmation,
-    W: Write,
-    E: Write,
-    M: FnOnce() -> Result<S, AppError>,
-    S: Future<Output = Result<(), AppError>>,
-{
-    let prepared = transfer_in::prepare(store, api, args.amount, args.source.as_ref()).await?;
-    write_and_flush(stderr, &prepared, output::write_transfer_in_preflight)?;
-    let authorized = transfer_in::authorize(prompt, prepared, args.yes)?;
-    let interruption = make_interruption()?;
-    let result =
-        protect_with_interruption(transfer_in::execute(api, authorized), interruption).await??;
-    write_and_flush(stdout, &result, |writer, result| {
-        output::write_transfer_in_result(writer, result, timestamps)
     })
     .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())

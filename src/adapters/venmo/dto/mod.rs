@@ -18,9 +18,8 @@ pub(super) use payments::{
 pub(super) use people::{FriendsEnvelope, UserDto, UserEnvelope, UsersEnvelope};
 pub(super) use requests::{CreateRequestRequest, UpdatePaymentRequest};
 pub(super) use transfers::{
-    CreateTransferInRequest, CreateTransferRequest, CreatedTransferEnvelope,
-    CreatedTransferInEnvelope, PreferredTransferTypeDto, RequiredNullableString,
-    TransferAmountLimitDto, TransferFeeDto, TransferInstrumentDto, TransferModeOptionsDto,
+    CreateTransferRequest, CreatedTransferEnvelope, PreferredTransferTypeDto,
+    RequiredNullableString, TransferFeeDto, TransferInstrumentDto, TransferModeOptionsDto,
     TransferOptionsDto, TransferOptionsEnvelope,
 };
 pub(super) use wallet::{BalanceEnvelope, FeeDto, PaymentMethodDto, PaymentMethodsEnvelope};

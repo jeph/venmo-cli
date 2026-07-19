@@ -17,9 +17,7 @@ pub use requests::{
     AcceptArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs,
     RequestsListArgs, RequestsOperation,
 };
-pub use transfers::{
-    TransferArgs, TransferInArgs, TransferOperation, TransferOutArgs, TransferSpeedArg,
-};
+pub use transfers::{TransferArgs, TransferOperation, TransferOutArgs, TransferSpeedArg};
 pub use writes::{PayArgs, VisibilityArg};
 
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]

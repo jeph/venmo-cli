@@ -12,23 +12,10 @@ pub(crate) struct TransferOptionsDto {
     pub preferred_transfer_type: PreferredTransferTypeDto,
     pub standard: TransferModeOptionsDto,
     pub instant: TransferModeOptionsDto,
-    #[serde(default)]
-    pub add_funds_single_transaction_limit: Option<TransferAmountLimitDto>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TransferAmountLimitDto {
-    #[serde(default)]
-    pub minimum_amount: Option<serde_json::Number>,
-    #[serde(default)]
-    pub maximum_amount: Option<serde_json::Number>,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct PreferredTransferTypeDto {
-    #[serde(default, rename = "in")]
-    pub inbound: RequiredNullableString,
     #[serde(default, rename = "out")]
     pub outbound: RequiredNullableString,
 }
@@ -51,7 +38,6 @@ impl<'de> Deserialize<'de> for RequiredNullableString {
 
 #[derive(Deserialize)]
 pub(crate) struct TransferModeOptionsDto {
-    pub eligible_sources: Vec<TransferInstrumentDto>,
     pub eligible_destinations: Vec<TransferInstrumentDto>,
     pub fee: TransferFeeDto,
     pub transfer_to_estimate: String,
@@ -87,28 +73,6 @@ pub(crate) struct CreateTransferRequest<'a> {
     pub destination_id: &'a str,
     pub final_amount: u64,
     pub transfer_type: &'a str,
-}
-
-#[derive(Serialize)]
-pub(crate) struct CreateTransferInRequest<'a> {
-    pub amount: u64,
-    pub payment_method_id: &'a str,
-    pub funding_request_source: &'static str,
-    pub instant: bool,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct CreatedTransferInEnvelope {
-    pub data: CreatedTransferInDto,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct CreatedTransferInDto {
-    pub payout_id: String,
-    pub status: String,
-    pub amount: u64,
-    pub balance: i64,
-    pub expected_date: String,
 }
 
 #[derive(Deserialize)]

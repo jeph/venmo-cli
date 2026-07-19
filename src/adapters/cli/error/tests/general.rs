@@ -15,7 +15,6 @@ use crate::features::requests::create::RequestCreateError;
 use crate::features::requests::decline::DeclineError;
 use crate::features::requests::info::RequestInfoError;
 use crate::features::requests::list::RequestsError;
-use crate::features::transfers::in_transfer::TransferInError;
 use crate::features::transfers::options::TransferOptionsError;
 use crate::features::transfers::out::TransferOutError;
 use crate::features::wallet::balance::BalanceError;
@@ -48,7 +47,6 @@ enum AppErrorVariant {
     RequestInfo,
     TransferOptions,
     TransferOut,
-    TransferIn,
     CommandOutput,
     FinancialResultOutput,
 }
@@ -119,7 +117,6 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
             CredentialAccessError::Missing,
         )),
         AppError::from(TransferOutError::ConfirmationRequired),
-        AppError::from(TransferInError::ConfirmationRequired),
         AppError::CommandOutput {
             source: io::Error::other("synthetic command output failure"),
         },
@@ -167,7 +164,6 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         classification(AppErrorVariant::RequestInfo, ErrorCategory::Usage),
         classification(AppErrorVariant::TransferOptions, ErrorCategory::Credential),
         classification(AppErrorVariant::TransferOut, ErrorCategory::Usage),
-        classification(AppErrorVariant::TransferIn, ErrorCategory::Usage),
         classification(AppErrorVariant::CommandOutput, ErrorCategory::Internal),
         classification(
             AppErrorVariant::FinancialResultOutput,
@@ -220,7 +216,6 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::RequestInfo { .. } => AppErrorVariant::RequestInfo,
         AppError::TransferOptions { .. } => AppErrorVariant::TransferOptions,
         AppError::TransferOut { .. } => AppErrorVariant::TransferOut,
-        AppError::TransferIn { .. } => AppErrorVariant::TransferIn,
         AppError::CommandOutput { .. } => AppErrorVariant::CommandOutput,
         AppError::FinancialResultOutput { .. } => AppErrorVariant::FinancialResultOutput,
     }
