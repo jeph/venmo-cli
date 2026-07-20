@@ -8,7 +8,7 @@ Usage: requests <COMMAND>
 
 Commands:
   list     List pending requests involving the active account
-  create   Create a request immediately
+  create   Create a request after validation and confirmation
   accept   Accept an incoming request after authoritative validation and confirmation
   decline  Decline an incoming request without sending money
   info     Show information about one open request

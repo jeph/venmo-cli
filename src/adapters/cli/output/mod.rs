@@ -25,7 +25,7 @@ pub(super) use transfers::{
 pub(super) use wallet::{write_balance, write_payment_methods};
 pub(super) use writes::{
     write_accept_details, write_accept_result, write_decline_details, write_decline_result,
-    write_pay_details, write_pay_result, write_request_create_result,
+    write_pay_details, write_pay_result, write_request_create_details, write_request_create_result,
 };
 
 #[cfg(test)]

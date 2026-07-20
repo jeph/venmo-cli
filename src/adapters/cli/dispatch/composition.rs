@@ -123,12 +123,15 @@ where
             }
             RequestsOperation::Create(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
                 writes::run_request_create(
                     args,
                     &store,
                     &api,
                     &SystemClientRequestIdGenerator,
+                    &prompt,
                     stdout,
+                    stderr,
                     writes::production_financial_interruption,
                 )
                 .await

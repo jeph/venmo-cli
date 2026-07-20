@@ -7,6 +7,7 @@ use std::str::FromStr;
 use time::OffsetDateTime;
 
 use super::*;
+use crate::features::auth::PromptAvailability;
 use crate::features::payments::FinancialValidationError;
 use crate::features::people::{
     User, UserProfileKind, UserSearchPage, UserSearchPageRequest, UserSearchQuery,
@@ -71,6 +72,9 @@ enum Call {
     GenerateClientRequestId {
         request_id: ClientRequestId,
     },
+    Confirm {
+        prompt: &'static str,
+    },
     CreateRequest {
         session: RedactedSecret,
         plan: Box<CreatePlanCall>,
@@ -96,6 +100,9 @@ enum CreateFailure {
     CurrentAccount(ApiFailureKind),
     Validation(FinancialValidationError),
     Recipient(crate::features::people::recipients::RecipientResolutionFailureKind),
+    ConfirmationRequired,
+    ConfirmationDeclined,
+    Confirmation,
     Create(ApiFailureKind),
 }
 
@@ -118,6 +125,9 @@ fn project(result: Result<RequestCreateResult, RequestCreateError>) -> CreateOut
             RequestCreateError::Preflight(PeerPreflightError::Recipient(source)) => {
                 CreateFailure::Recipient(source.failure_kind())
             }
+            RequestCreateError::ConfirmationRequired => CreateFailure::ConfirmationRequired,
+            RequestCreateError::ConfirmationDeclined => CreateFailure::ConfirmationDeclined,
+            RequestCreateError::Confirmation { .. } => CreateFailure::Confirmation,
             RequestCreateError::Create { source } => CreateFailure::Create(source.kind()),
         }),
     }
@@ -296,6 +306,60 @@ struct FixedGenerator {
     transcript: Transcript,
 }
 
+struct UnusedPrompt;
+
+impl PromptAvailability for UnusedPrompt {
+    fn can_prompt(&self) -> bool {
+        false
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PromptScript {
+    Answer(bool),
+    Cancelled,
+    Failure,
+}
+
+struct FakePrompt {
+    can_prompt: bool,
+    script: PromptScript,
+    transcript: Transcript,
+}
+
+impl PromptAvailability for FakePrompt {
+    fn can_prompt(&self) -> bool {
+        self.can_prompt
+    }
+}
+
+impl DefaultNoConfirmation for FakePrompt {
+    fn confirm_default_no(&self, prompt: &str) -> Result<bool, PromptError> {
+        self.transcript.borrow_mut().push(Call::Confirm {
+            prompt: if prompt == "Create this payment request?" {
+                "Create this payment request?"
+            } else {
+                "unexpected prompt"
+            },
+        });
+        match self.script {
+            PromptScript::Answer(answer) => Ok(answer),
+            PromptScript::Cancelled => Err(PromptError::Cancelled),
+            PromptScript::Failure => Err(PromptError::Interaction {
+                source: std::io::Error::other("synthetic prompt failure"),
+            }),
+        }
+    }
+}
+
+impl DefaultNoConfirmation for UnusedPrompt {
+    fn confirm_default_no(&self, _prompt: &str) -> Result<bool, PromptError> {
+        Err(PromptError::Interaction {
+            source: std::io::Error::other("unexpected synthetic prompt"),
+        })
+    }
+}
+
 impl ClientRequestIdGenerator for FixedGenerator {
     fn generate(&self) -> ClientRequestId {
         let request_id = fixed_request_id();
@@ -314,6 +378,19 @@ async fn run_create(
     note: Note,
     visibility: Visibility,
 ) -> Result<RequestCreateResult, RequestCreateError> {
+    let prepared = prepare_create(reader, api, generator, amount, note, visibility).await?;
+    let authorized = authorize(&UnusedPrompt, prepared, true)?;
+    execute(api, authorized).await
+}
+
+async fn prepare_create(
+    reader: &FakeReader,
+    api: &FakeApi,
+    generator: &FixedGenerator,
+    amount: Money,
+    note: Note,
+    visibility: Visibility,
+) -> Result<PreparedRequest, RequestCreateError> {
     let recipient = RecipientInput::from_str("bob").map_err(|_| {
         RequestCreateError::Preflight(PeerPreflightError::Recipient(
             crate::features::people::recipients::RecipientResolutionError::Internal {
@@ -321,8 +398,7 @@ async fn run_create(
             },
         ))
     })?;
-    let prepared = prepare(reader, api, generator, &recipient, amount, note, visibility).await?;
-    execute(api, prepared).await
+    prepare(reader, api, generator, &recipient, amount, note, visibility).await
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -389,6 +465,89 @@ async fn create_uses_complete_arguments_and_exactly_one_ordered_write() -> TestR
     let rendered = format!("{:?}", observed.transcript);
     assert!(!rendered.contains(ACCESS_TOKEN));
     assert!(!rendered.contains(DEVICE_ID));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn creation_confirmation_required_declined_failed_and_yes_paths_are_distinct() -> TestResult {
+    #[derive(Clone, Copy)]
+    enum Expected {
+        Required,
+        Declined,
+        Cancelled,
+        Failed,
+        Confirmed,
+    }
+
+    for (can_prompt, script, assume_yes, expected) in [
+        (false, PromptScript::Answer(true), false, Expected::Required),
+        (true, PromptScript::Answer(false), false, Expected::Declined),
+        (true, PromptScript::Cancelled, false, Expected::Cancelled),
+        (true, PromptScript::Failure, false, Expected::Failed),
+        (true, PromptScript::Answer(true), false, Expected::Confirmed),
+        (false, PromptScript::Failure, true, Expected::Confirmed),
+    ] {
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let reader = FakeReader {
+            script: ReaderScript::Present,
+            transcript: Rc::clone(&transcript),
+        };
+        let api = FakeApi::new(CreateScript::successful()?, Rc::clone(&transcript));
+        let generator = FixedGenerator {
+            transcript: Rc::clone(&transcript),
+        };
+        let prepared = prepare_create(
+            &reader,
+            &api,
+            &generator,
+            Money::from_cents(125)?,
+            Note::from_str("Synthetic request note")?,
+            Visibility::Private,
+        )
+        .await?;
+        let prompt = FakePrompt {
+            can_prompt,
+            script,
+            transcript: Rc::clone(&transcript),
+        };
+        let authorized = authorize(&prompt, prepared, assume_yes);
+
+        match (expected, authorized) {
+            (Expected::Required, Err(RequestCreateError::ConfirmationRequired))
+            | (Expected::Declined, Err(RequestCreateError::ConfirmationDeclined)) => {}
+            (
+                Expected::Cancelled,
+                Err(RequestCreateError::Confirmation {
+                    source: PromptError::Cancelled,
+                }),
+            ) => {}
+            (
+                Expected::Failed,
+                Err(RequestCreateError::Confirmation {
+                    source: PromptError::Interaction { .. },
+                }),
+            ) => {}
+            (Expected::Confirmed, Ok(authorized)) => {
+                execute(&api, authorized).await?;
+            }
+            _ => return Err(std::io::Error::other("unexpected confirmation outcome").into()),
+        }
+
+        let calls = transcript.borrow();
+        let confirmation_count = calls
+            .iter()
+            .filter(|call| matches!(call, Call::Confirm { .. }))
+            .count();
+        assert_eq!(confirmation_count, usize::from(can_prompt && !assume_yes));
+        let write_count = calls
+            .iter()
+            .filter(|call| matches!(call, Call::CreateRequest { .. }))
+            .count();
+        assert_eq!(
+            write_count,
+            usize::from(matches!(expected, Expected::Confirmed))
+        );
+    }
     Ok(())
 }
 

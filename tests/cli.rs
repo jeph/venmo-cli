@@ -59,6 +59,15 @@ fn direct_request_creation_dispatches_to_create() {
         )
     });
     assert!(dispatches_to_create);
+
+    let authorized = Cli::try_parse_from([
+        "venmo", "requests", "create", "@alice", "12.50", "Dinner", "--yes",
+    ]);
+    assert!(authorized.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Requests(args)
+            if matches!(&args.operation, RequestsOperation::Create(args) if args.yes)
+    )));
 }
 
 #[test]
@@ -263,11 +272,25 @@ fn accept_username_is_not_the_accept_subcommand() {
 
 #[test]
 fn grouped_accept_and_decline_have_distinct_minimal_arguments() {
-    let accept = Cli::try_parse_from(["venmo", "requests", "accept", "request-123", "--yes"]);
+    let accept = Cli::try_parse_from([
+        "venmo",
+        "requests",
+        "accept",
+        "request-123",
+        "--protect",
+        "--yes",
+    ]);
     assert!(accept.is_ok_and(|cli| matches!(
         cli.command,
         Command::Requests(args)
-            if matches!(&args.operation, RequestsOperation::Accept(args) if args.yes)
+            if matches!(&args.operation, RequestsOperation::Accept(args) if args.yes && args.protect)
+    )));
+
+    let unprotected = Cli::try_parse_from(["venmo", "requests", "accept", "request-123"]);
+    assert!(unprotected.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Requests(args)
+            if matches!(&args.operation, RequestsOperation::Accept(args) if !args.yes && !args.protect)
     )));
 
     let decline = Cli::try_parse_from(["venmo", "requests", "decline", "request-123"]);
@@ -291,6 +314,16 @@ fn grouped_accept_and_decline_have_distinct_minimal_arguments() {
         "request-123",
         "--from",
         "method-456",
+    ]);
+    assert_rejected(&["venmo", "requests", "decline", "request-123", "--protect"]);
+    assert_rejected(&[
+        "venmo",
+        "requests",
+        "create",
+        "alice",
+        "1.00",
+        "Dinner",
+        "--protect",
     ]);
 }
 
@@ -333,9 +366,6 @@ fn request_and_request_mutation_forms_cannot_be_mixed() {
         "request-123",
         "12.50",
         "Dinner",
-    ]);
-    assert_rejected(&[
-        "venmo", "requests", "create", "@alice", "12.50", "Dinner", "--yes",
     ]);
     assert_rejected(&[
         "venmo", "requests", "create", "@alice", "12.50", "Dinner", "--from", "method-1",

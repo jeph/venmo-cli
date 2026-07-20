@@ -2,6 +2,7 @@ use super::super::{api_operation_failure, operation_failure};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::auth::PromptError;
 use crate::features::payments::FinancialValidationError;
+use crate::features::payments::funding::FundingSelectionError;
 use crate::features::requests::RequestMutationPreflightError;
 use crate::features::requests::accept::AcceptError;
 use crate::features::requests::decline::DeclineError;
@@ -72,8 +73,32 @@ fn request_mutation_variants_have_deliberate_categories() {
             ErrorCategory::ApiContract,
         ),
         (
-            AppError::from(AcceptError::InsufficientWalletBalance),
+            AppError::from(AcceptError::FundingMethods {
+                source: api_operation_failure(ApiFailureKind::Network),
+            }),
+            ErrorCategory::Network,
+        ),
+        (
+            AppError::from(AcceptError::NotificationLookup {
+                source: api_operation_failure(ApiFailureKind::Contract),
+            }),
+            ErrorCategory::ApiContract,
+        ),
+        (
+            AppError::from(AcceptError::FundingSelection(
+                FundingSelectionError::NoEligibleMethods,
+            )),
             ErrorCategory::Usage,
+        ),
+        (
+            AppError::from(AcceptError::Eligibility {
+                source: api_operation_failure(ApiFailureKind::Rejected),
+            }),
+            ErrorCategory::Api,
+        ),
+        (
+            AppError::from(AcceptError::ProtectionFeeExceedsAmount),
+            ErrorCategory::ApiContract,
         ),
         (
             AppError::from(AcceptError::ConfirmationRequired),

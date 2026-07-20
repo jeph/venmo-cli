@@ -96,8 +96,8 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
 | 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
-| 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3**; no prompt. |
-| 6 | `requests accept <REQUEST_ID> [--yes]` | **A5 → R2 → P2 → W2 → F4** (5). | Financial; exactly one **F4** after default-No confirmation. |
+| 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3** after default-No confirmation. |
+| 6 | `requests accept <REQUEST_ID> [--protect] [--yes]` | Common **A5 → R2 → P2 → W2**; unprotected covered balance then **F4** (5 total), otherwise **F4N → W1 → F4E → F4S** (8 total). | Financial; exactly one **F4** or **F4S** after default-No confirmation. `--protect` explicitly selects the modern branch even with balance coverage. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
 | 8 | `friends list [--limit N] [--offset N]` | **P3** once. | One page; stored self ID. |
 | 9 | `friends add <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P4**, then reconciling **P2** (maximum 8). | Relationship write; sends or accepts according to authoritative state. |
@@ -479,6 +479,49 @@ request. Two representations are supported:
 does **not** enforce that it differs from `<REQUEST_ID>`. PLAN/README prose at this
 snapshot describes a distinct ID based on observed behavior; that stronger claim is
 not the implemented acceptance contract.
+
+#### F4N — request-approval notification resolution
+```http
+GET /v1/notifications?acknowledged=false
+```
+
+Response `data` must be an array of at most 200 notifications. The CLI finds exactly one record
+whose nested `payment.id` equals the canonical R2 request ID, validates that record's top-level
+notification ID, and retains only that ID in the redacted immutable approval plan. No match,
+multiple matches, an invalid top-level ID, or an unsupported envelope fails before funding
+selection, confirmation, or any write. F4S uses this top-level notification ID; the nested payment
+ID is not interchangeable with it.
+
+#### F4E — source-bound request-approval eligibility
+```http
+POST /v1/protection/eligibility
+Content-Type: application/x-www-form-urlencoded
+```
+
+Exact fields are `target_type=user_id`, requester `target_id`, `country_code=1`, positive
+integer-cent `amount`, request `note`, and selected external `funding_source_id`. This is distinct
+from F1's blank-source JSON payment eligibility. The response must prove `eligible: true` and
+provide a valid eligibility token. Optional `fees` is a bounded array of exact objects containing
+required bounded `product_uri`, `applied_to`, and `fee_token` strings, optional nonnegative integer
+`base_fee_amount`, optional nonnegative JSON-number `fee_percentage`, and required nonnegative
+integer `calculated_fee_amount_in_cents`. The calculated cents are summed with checked arithmetic;
+denial is a confirmed prewrite rejection, while a missing/invalid token, malformed/oversized fee,
+unknown fee field, or total overflow fails before approval.
+
+#### F4S — source-funded request approval
+```http
+PUT /v1/requests/<NOTIFICATION_ID>
+```
+
+The JSON body contains exact selected `funding_source_id`, F4E `eligibility_token`, and
+`metadata.quasi_cash_disclaimer_viewed: false`. An unprotected acceptance omits F4E fee records.
+Explicit `--protect` includes normalized validated `fees`, preserving omitted versus explicit
+empty. The checked fee may not exceed the request amount; terminal output treats it as Venmo's
+estimated seller/recipient deduction and computes estimated recipient proceeds rather than adding
+it to the payer's amount. The body contains no `action` field. A complete 2xx JSON object without `data.url` is accepted;
+the current native contract need not return a payment ID or status. A webview continuation,
+non-object success, malformed/empty response, non-2xx result, or transport uncertainty after
+possible transmission is outcome-unknown and is never retried.
 #### F5 — decline an incoming request
 ```http
 PUT /v1/payments/<REQUEST_ID>
@@ -523,15 +566,21 @@ flushes validated payment details, then requires default-No confirmation unless 
 exactly one F2. W2 may coexist with an external backup; neither W1 nor F1 proves the
 final source/fee.
 
-**Request:** A5 and recipient resolution run, then one F3. There is no W1, W2, F1,
-funding field, balance gate, prompt, or `--yes`.
+**Request:** A5 and recipient resolution build an immutable F3 plan. There is no W1, W2, F1,
+funding field, or balance gate. The CLI renders and flushes the account, recipient, amount, note,
+requested audience, and create action, then requires default-No confirmation unless `--yes`
+(noninteractive always needs `--yes`). It installs interruption protection before exactly one F3.
 
-**Accept:** A5 and R2 prove an incoming exact-`pending`, exact-`private` request; P2
-proves the requester personal/payable; W2 available balance must cover the amount.
-Validated request-acceptance details are always flushed; unless `--yes` is supplied,
-default-No confirmation follows. Interruption protection is then installed and exactly one F4 is
-attempted. F4 carries no funding source. Balance
-coverage is only a safety snapshot and proves neither actual source nor fee.
+**Accept:** A5 and R2 prove an incoming exact-`pending`, exact-`private` request; P2 proves the
+requester personal/payable; W2 selects the acceptance branch. Full nonnegative coverage retains the
+live-validated F4 plan only for default unprotected acceptance. Any shortfall or explicit
+`--protect` first requires an exact F4N match, then loads W1, applies the same unique
+default-or-sole external peer method selection as pay, and requires F4E before building an F4S
+plan. Unprotected plans discard/omit returned fee records;
+protected plans retain normalized records, reject a fee above the request amount, and display the
+estimated seller fee and recipient proceeds. Validated details are always flushed; unless `--yes`
+is supplied, default-No confirmation follows. Interruption protection is then installed and exactly
+one F4 or F4S is attempted.
 
 **Decline:** A5 and R2 prove an incoming exact-`pending` request with any supported
 audience. The CLI renders and flushes authoritative request-decline details, requires default-No
@@ -596,7 +645,7 @@ writes. A1/A3 use a parallel but distinct authentication issuance ambiguity.
   overflow, and resource exhaustion are unknown.
 - A complete non-2xx financial response is still unknown, except only F2 HTTP 400 with
   root `error.code` exactly `1396` or `13006`, which is a confirmed rejection.
-- Every non-2xx F3/F4/F5 or transfer response remains unknown, even if it resembles
+- Every non-2xx F3/F4/F4S/F5 or transfer response remains unknown, even if it resembles
   stale state or a challenge.
 - On 2xx, a controlling API code other than rendered exact `0`/`0.0`, empty/malformed
   JSON, wrong envelope, or any ID/party/amount/note/audience/time/status mismatch is
@@ -628,6 +677,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-12 | F2 and private F3 | Direct observation / controlled and reconciled live validation | Separately approved minimal-value operations matched synthetic contracts. |
 | 2026-07-14 | Visibility | Direct observation / reconciled live; owner-approved decision | Friends/public pay and more-private response behavior reconciled; non-private F3 accepted without another mutation. |
 | 2026-07-14 | F4 | Direct observation / reconciled live validation plus historical lead / representative synthetic coverage | Live responses used the charge-oriented representation while activity exposed the resulting outgoing `pay`; the pay-oriented response representation remains historical/synthetic. Source and fee remain unproved. |
+| 2026-07-20 | F4N/F4E/F4S external approval | Signer-verified Android 10.31.1 and 26.13.0 + separately approved client-1 structure-only notification probe + owner-run corrected unprotected approval + current official Purchase Protection/Buying and Selling guidance + exact synthetic | Both native versions use the top-level request-notification ID with `PUT /v1/requests/{id}` and source/token/fee options, while the notification separately contains nested `payment.id`. A bounded client-1 read confirmed one current direct notification array with distinct paired IDs and retained no values. The CLI matches the R2 ID to exactly one nested payment ID before using the top-level ID. Native code submits fee records only when protection is selected; official guidance identifies them as seller deductions. An earlier payment-ID write returned non-success and reconciliation proved no mutation. A subsequent owner-run unprotected source-funded approval using the corrected top-level ID completed successfully, proving current client-1 authorization for that branch. Actual debit source/final fee, protected approval, and webview/SMS-step-up continuations remain unproven. |
 | 2026-07-14 | F5 | Direct observation / reconciled live validation | Private decline became exact `cancelled`, with no balance/activity movement. Non-private success is accepted by code but is not independently pinned by an exact success fixture or live validation. |
 | 2026-07-16 | T1 | Direct observation / controlled live validation | One bounded read proved current bearer/device auth, direction/speed branches, standard bank candidates in both directions on the observed account, and fee/estimate structure; values/counts were not retained. |
 | 2026-07-17 | T2 standard out | Direct observation / controlled and reconciled live validation + exact synthetic | One approved $0.01 HTTP-201 write returned direct pending standard transfer data; exactly one matching outgoing activity record had the same transfer ID. Exact body, fail-closed selection, strict response proof, and one-write ambiguity are implemented. |
@@ -1038,8 +1088,8 @@ of §13 rather than duplicated here.
 | Token lifecycle | Explicit issuance, local storage, and local-only logout. | Refresh/lifetime or remote revocation by this CLI. |
 | Compatibility User-Agent | Exact hard-coded value. | That server still requires it or that it is current. |
 | Natural pagination endings | First→second; friends exhaustion. | Natural search/activity/request ending. |
-| F4 response ID | Valid returned payment ID is enforced. | That response ID is necessarily distinct from request ID. |
-| F4 funding/fee | Balance coverage gate and no submitted external FI. | Actual wallet funding, final source, or zero/final fee. |
+| F4 balance response ID | Valid returned payment ID is enforced. | That response ID is necessarily distinct from request ID. F4S does not require an ID. |
+| F4/F4S funding | W2 branch selection; F4 action-only unprotected balance plan; signer-verified F4N/F4E/F4S notification ID, selected external source, and token; client-1 structure-only F4N read; one owner-run corrected unprotected F4S success; fee records omitted by default and normalized only for explicit `--protect`; exact synthetic protected/unprotected source bodies. | Actual debited source or final fee beyond the eligibility-reported amount; live protected F4S success; webview/SMS-step-up continuation. |
 | Non-private decline | Audience-generic code, common supported-audience validation, and representative response-preservation tests. | An exact friends/public success fixture, independent current live proof, or every accepted envelope alternative being individually pinned. |
 | General mobile payment reads | Pending requests and activity. | `payments list`, settled PaymentId detail, or ActivityId substitution. |
 | Model limits | Existing leading-zero IDs, username matching, nonblank note, read-only role compatibility, 200-record resolution bound. | Normalization, stricter grammar/note limit, exact read-only role set, or global username uniqueness without evidence. |

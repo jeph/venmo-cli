@@ -1015,7 +1015,6 @@ const DECLINE_DETAILS: &str = concat!(
     "  Current request status: pending\n",
     "  Created: 1970-01-01T00:00:00Z\n",
     "  Action: decline this exact incoming request without sending money.\n",
-    "  Confirmation defaults to No; --yes skips only the confirmation prompt.\n",
 );
 
 const DECLINE_RESULT: &str = concat!(

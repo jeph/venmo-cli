@@ -14,13 +14,15 @@ pub(crate) use continuation::RequestsBefore;
 pub(crate) use info::{RequestInfoResult, info};
 pub(crate) use model::{
     CreatedRequest, RequestAction, RequestDirection, RequestDirectionFilter, RequestId,
-    RequestRecord, RequestStatus,
+    RequestNotificationId, RequestRecord, RequestStatus,
 };
 pub(crate) use plans::{
     AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, DeclineRequestPlan, DeclinedRequest,
+    RequestApprovalFee, RequestApprovalFees,
 };
 pub(crate) use ports::{PendingRequestsPage, PendingRequestsPageRequest, RequestsApi};
 pub(crate) use ports::{
-    RequestAcceptanceApi, RequestCreationApi, RequestDeclineApi, RequestLookupApi,
+    RequestAcceptanceApi, RequestApprovalEligibility, RequestApprovalEligibilityApi,
+    RequestApprovalNotificationApi, RequestCreationApi, RequestDeclineApi, RequestLookupApi,
 };
 pub(crate) use preflight::RequestMutationPreflightError;

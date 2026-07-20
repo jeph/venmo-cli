@@ -11,6 +11,7 @@ use clap::Parser;
 
 use super::*;
 use crate::adapters::cli::error::ErrorCategory;
+use crate::features::auth::{PromptAvailability, PromptError};
 use crate::features::people::{
     User, UserProfileKind, UserSearchPage, UserSearchPageRequest, UserSearchQuery,
 };
@@ -188,6 +189,22 @@ impl ClientRequestIdGenerator for FixedRequestIdGenerator {
     }
 }
 
+struct UnusedRequestPrompt;
+
+impl PromptAvailability for UnusedRequestPrompt {
+    fn can_prompt(&self) -> bool {
+        false
+    }
+}
+
+impl DefaultNoConfirmation for UnusedRequestPrompt {
+    fn confirm_default_no(&self, _prompt: &str) -> Result<bool, PromptError> {
+        Err(PromptError::Interaction {
+            source: io::Error::other("unexpected request-creation prompt"),
+        })
+    }
+}
+
 #[derive(Clone, Copy)]
 enum InterruptionBehavior {
     Pending,
@@ -288,6 +305,11 @@ impl RequestHarness {
     }
 
     async fn execute(&mut self) -> Result<(), AppError> {
+        let mut stderr = Vec::new();
+        self.execute_with_stderr(&mut stderr).await
+    }
+
+    async fn execute_with_stderr<E: Write>(&mut self, stderr: &mut E) -> Result<(), AppError> {
         let transcript = Rc::clone(&self.transcript);
         let interruption = self.interruption;
         run_request_create(
@@ -295,7 +317,9 @@ impl RequestHarness {
             &self.reader,
             &self.api,
             &FixedRequestIdGenerator,
+            &UnusedRequestPrompt,
             &mut self.stdout,
+            stderr,
             move || {
                 transcript
                     .borrow_mut()
@@ -456,6 +480,32 @@ async fn request_preflight_failure_never_installs_signals_or_starts_a_write() ->
     let observed = harness.observed(result);
 
     assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_creation_detail_output_failure_stops_before_authorization_and_write() -> TestResult
+{
+    let mut harness = RequestHarness::new(RequestSetup::successful()?, RequestState::default())?;
+    let mut stderr = RecordingWriter::new(WriterState {
+        fail_write: true,
+        ..WriterState::default()
+    });
+
+    let result = harness.execute_with_stderr(&mut stderr).await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        harness.transcript.borrow().as_slice(),
+        &[
+            RequestCall::ReadCredential,
+            RequestCall::CurrentAccount,
+            RequestCall::SearchUsers,
+            RequestCall::UserById {
+                user_id: "456".to_owned(),
+            },
+        ]
+    );
     Ok(())
 }
 
@@ -735,6 +785,7 @@ fn request_args() -> Result<RequestArgs, Box<dyn Error>> {
         "recipient",
         "0.01",
         "Synthetic request",
+        "--yes",
     ])?;
     match cli.command {
         crate::adapters::cli::args::Command::Requests(args) => match args.operation {

@@ -87,6 +87,13 @@ tokens, URLs, or bodies. It was executed once with separate owner approval on 20
 not become routine verification. Exact synthetic tests retain viewer/subject separation, nullable
 external amounts, amount suppression, privacy checks, and continuation scope.
 
+The ignored `live_notification_request_id_shape_probe` performs one bounded authenticated
+`GET /v1/notifications?acknowledged=false` and emits only structural paths plus aggregate counts.
+It was executed once with separate owner approval on 2026-07-19 and confirmed that a request
+notification's top-level ID is distinct from its nested payment ID. It retains no ID, name, note,
+amount, token, URL, body, or other response value and must not become routine verification. Exact
+synthetic tests maintain unique nested-ID matching and top-level-ID approval routing.
+
 There is deliberately no ignored live friendship mutation test. Signer-verified Android artifacts
 and service-free synthetic contracts retain the route, form body, state matrix, reconciliation, and
 ambiguity rules. They do not prove that the CLI's client-1 session is authorized for the writes.

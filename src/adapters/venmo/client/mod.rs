@@ -47,6 +47,9 @@ pub(super) const PAYMENT_METHODS_OPERATION: &str = "payment-method listing";
 pub(super) const PEER_FUNDING_OPERATION: &str = "peer funding-method listing";
 pub(super) const REQUEST_CREATION_OPERATION: &str = "request creation";
 pub(super) const REQUEST_ACCEPTANCE_OPERATION: &str = "request acceptance";
+pub(super) const REQUEST_APPROVAL_ELIGIBILITY_OPERATION: &str = "request-approval eligibility";
+pub(super) const REQUEST_APPROVAL_NOTIFICATION_OPERATION: &str =
+    "request-approval notification lookup";
 pub(super) const REQUEST_DECLINE_OPERATION: &str = "request decline";
 pub(super) const REQUEST_DETAIL_OPERATION: &str = "request detail";
 pub(super) const REQUEST_LIST_OPERATION: &str = "pending-request listing";

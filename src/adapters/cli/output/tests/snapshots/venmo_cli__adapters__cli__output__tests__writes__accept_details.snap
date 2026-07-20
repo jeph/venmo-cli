@@ -9,9 +9,8 @@ Request acceptance details:
   Amount: $0.01
   Note: Synthetic\nrequest
   Audience: private
+  Purchase protection: not requested
   Current request status: pending
   Created: 1969-12-31T16:00:00
-  Fee/source proof: unavailable in the request-update contract
   Available Venmo balance: $0.01
-  Funding guard: available balance covers the request and no external funding method will be submitted.
-  Warning: the update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request.
+  Funding plan: available Venmo balance

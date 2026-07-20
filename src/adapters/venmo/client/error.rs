@@ -32,6 +32,11 @@ pub(crate) enum VenmoApiError {
     #[error("Venmo reported that this personal payment is not eligible")]
     EligibilityDenied,
 
+    #[error(
+        "Venmo reported that this request approval is not eligible for the selected funding method"
+    )]
+    RequestApprovalEligibilityDenied,
+
     #[error("the successful {operation} response was not valid JSON")]
     MalformedJson { operation: &'static str },
 
@@ -105,7 +110,8 @@ impl ApiFailure for VenmoApiError {
             Self::Http { .. }
             | Self::AuthenticatedHttp { .. }
             | Self::ApiFailure { .. }
-            | Self::EligibilityDenied => ApiFailureKind::Rejected,
+            | Self::EligibilityDenied
+            | Self::RequestApprovalEligibilityDenied => ApiFailureKind::Rejected,
         }
     }
 }

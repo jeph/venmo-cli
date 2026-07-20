@@ -15,13 +15,17 @@ use crate::adapters::cli::args::{AcceptArgs, Cli, Command, RequestsOperation};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
-use crate::features::payments::{DefaultNoConfirmation, FinancialStatus, PaymentId};
+use crate::features::payments::{
+    DefaultNoConfirmation, FinancialStatus, PaymentId, PeerFundingApi, PeerFundingMethod,
+};
 use crate::features::people::{User, UserLookupApi, UserProfileKind};
 use crate::features::requests::{
-    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestAction, RequestDirection,
-    RequestId, RequestLookupApi, RequestRecord, RequestStatus,
+    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestAction,
+    RequestApprovalEligibility, RequestApprovalEligibilityApi, RequestApprovalNotificationApi,
+    RequestDirection, RequestId, RequestLookupApi, RequestNotificationId, RequestRecord,
+    RequestStatus,
 };
-use crate::features::wallet::{Balance, BalanceApi, SignedUsdAmount};
+use crate::features::wallet::{Balance, BalanceApi, PaymentMethodId, SignedUsdAmount};
 use crate::shared::test_support::Observed;
 use crate::shared::{
     AccessToken, Account, ApiFailure, ApiFailureKind, CredentialCapability, CredentialEnvelope,
@@ -58,6 +62,7 @@ struct AcceptPlanCall {
     note: Option<String>,
     audience: Option<String>,
     available_balance_cents: i64,
+    backup_method_id: Option<PaymentMethodId>,
 }
 
 impl From<&AcceptRequestPlan> for AcceptPlanCall {
@@ -70,6 +75,9 @@ impl From<&AcceptRequestPlan> for AcceptPlanCall {
             note: plan.request().note().map(str::to_owned),
             audience: plan.request().audience().map(str::to_owned),
             available_balance_cents: plan.balance().available().cents(),
+            backup_method_id: plan
+                .backup_method()
+                .map(|funding| funding.method().id().clone()),
         }
     }
 }
@@ -86,6 +94,9 @@ enum AcceptCall {
         user_id: String,
     },
     Balance,
+    ApprovalNotification,
+    FundingMethods,
+    ApprovalEligibility,
     StderrWrite,
     StderrFlush,
     PromptAvailability,
@@ -370,6 +381,56 @@ impl BalanceApi for FakeAcceptApi {
             ApiStep::Success => Ok(balance()),
             ApiStep::Failure => Err(FakeApiError),
         })
+    }
+}
+
+impl PeerFundingApi for FakeAcceptApi {
+    type Error = FakeApiError;
+
+    fn peer_funding_methods<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
+        self.transcript
+            .borrow_mut()
+            .push(AcceptCall::FundingMethods);
+        ready(Err(FakeApiError))
+    }
+}
+
+impl RequestApprovalNotificationApi for FakeAcceptApi {
+    type Error = FakeApiError;
+
+    fn request_approval_notification_id<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _request_id: &'a RequestId,
+    ) -> impl Future<Output = Result<RequestNotificationId, Self::Error>> + Send + 'a {
+        self.transcript
+            .borrow_mut()
+            .push(AcceptCall::ApprovalNotification);
+        ready(Err(FakeApiError))
+    }
+}
+
+impl RequestApprovalEligibilityApi for FakeAcceptApi {
+    type Error = FakeApiError;
+
+    fn request_approval_eligibility<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _requester: &'a User,
+        _amount_cents: u64,
+        _note: &'a str,
+        _funding: &'a PeerFundingMethod,
+    ) -> impl Future<Output = Result<RequestApprovalEligibility, Self::Error>> + Send + 'a {
+        self.transcript
+            .borrow_mut()
+            .push(AcceptCall::ApprovalEligibility);
+        ready(Err(FakeApiError))
     }
 }
 

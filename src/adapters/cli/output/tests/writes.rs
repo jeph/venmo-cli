@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use super::super::{
     write_accept_details, write_accept_result, write_decline_details, write_decline_result,
-    write_pay_details, write_pay_result, write_request_create_result,
+    write_pay_details, write_pay_result, write_request_create_details, write_request_create_result,
 };
 use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{
@@ -12,11 +12,12 @@ use crate::features::payments::{
 };
 use crate::features::people::{User, UserProfileKind};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
-use crate::features::requests::create::RequestCreateResult;
+use crate::features::requests::create::{PreparedRequest, RequestCreateResult};
 use crate::features::requests::decline::{DeclineResult, PreparedDecline};
 use crate::features::requests::{
     AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, CreatedRequest, DeclineRequestPlan,
-    DeclinedRequest, RequestAction, RequestDirection, RequestId, RequestRecord, RequestStatus,
+    DeclinedRequest, RequestAction, RequestApprovalFee, RequestApprovalFees, RequestDirection,
+    RequestId, RequestNotificationId, RequestRecord, RequestStatus,
 };
 use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
 use crate::shared::{
@@ -92,6 +93,25 @@ fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult 
     let accept_output = String::from_utf8(accept_output)?;
     insta::assert_snapshot!("accept_result", accept_output);
 
+    let externally_funded_plan = synthetic_external_accept_plan()?;
+    let externally_funded =
+        PreparedAccept::new(synthetic_credential()?, synthetic_external_accept_plan()?);
+    let mut external_details = Vec::new();
+    write_accept_details(&mut external_details, &externally_funded, &timestamps)?;
+    insta::assert_snapshot!(
+        "external_accept_details",
+        String::from_utf8(external_details)?
+    );
+
+    let externally_accepted =
+        AcceptResult::new(externally_funded_plan, AcceptedRequest::source_funded());
+    let mut external_result = Vec::new();
+    write_accept_result(&mut external_result, &externally_accepted)?;
+    insta::assert_snapshot!(
+        "external_accept_result",
+        String::from_utf8(external_result)?
+    );
+
     let decline_prepared = PreparedDecline::new(synthetic_credential()?, synthetic_decline_plan()?);
     let mut decline_details = Vec::new();
     write_decline_details(&mut decline_details, &decline_prepared, &timestamps)?;
@@ -124,6 +144,16 @@ fn creation_output_renders_requested_visibility() -> TestResult {
     let mut pay_output = Vec::new();
     write_pay_details(&mut pay_output, &prepared)?;
     assert!(String::from_utf8(pay_output)?.contains("Requested audience: friends"));
+
+    let prepared_request = PreparedRequest::new(
+        synthetic_credential()?,
+        synthetic_request_plan_with_visibility(Visibility::Public)?,
+    );
+    let mut request_details = Vec::new();
+    write_request_create_details(&mut request_details, &prepared_request)?;
+    let request_details = String::from_utf8(request_details)?;
+    assert!(request_details.contains("Requested audience: public"));
+    insta::assert_snapshot!("request_create_details", request_details);
 
     let request = RequestCreateResult::new(
         synthetic_request_plan_with_visibility(Visibility::Public)?,
@@ -219,6 +249,12 @@ fn synthetic_request_plan_with_visibility(
 }
 
 fn synthetic_incoming_request() -> Result<RequestRecord, Box<dyn Error>> {
+    synthetic_incoming_request_with_amount(1)
+}
+
+fn synthetic_incoming_request_with_amount(
+    amount_cents: u64,
+) -> Result<RequestRecord, Box<dyn Error>> {
     Ok(RequestRecord::new(
         RequestId::from_str("request-1")?,
         RequestAction::Charge,
@@ -229,7 +265,7 @@ fn synthetic_incoming_request() -> Result<RequestRecord, Box<dyn Error>> {
             Some("Synthetic\nrequester".to_owned()),
         )
         .with_financial_attributes(UserProfileKind::Personal, true),
-        Money::from_cents(1)?,
+        Money::from_cents(amount_cents)?,
         Some("Synthetic\nrequest".to_owned()),
         Some(time::OffsetDateTime::UNIX_EPOCH),
         RequestStatus::from_str("pending")?,
@@ -238,18 +274,63 @@ fn synthetic_incoming_request() -> Result<RequestRecord, Box<dyn Error>> {
 }
 
 fn synthetic_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
+    synthetic_accept_plan_with_balance(1)
+}
+
+fn synthetic_accept_plan_with_balance(
+    available_cents: i64,
+) -> Result<AcceptRequestPlan, Box<dyn Error>> {
+    synthetic_accept_plan_with_balance_and_amount(available_cents, 1)
+}
+
+fn synthetic_accept_plan_with_balance_and_amount(
+    available_cents: i64,
+    amount_cents: u64,
+) -> Result<AcceptRequestPlan, Box<dyn Error>> {
     Ok(AcceptRequestPlan::new(
         Account::new(
             UserId::from_str("123")?,
             Username::from_bare("owner")?,
             Some("Synthetic owner".to_owned()),
         ),
-        synthetic_incoming_request()?,
+        synthetic_incoming_request_with_amount(amount_cents)?,
         Balance::new(
-            SignedUsdAmount::from_cents(1),
+            SignedUsdAmount::from_cents(available_cents),
             SignedUsdAmount::from_cents(0),
         ),
     ))
+}
+
+fn synthetic_external_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
+    Ok(
+        synthetic_accept_plan_with_balance_and_amount(0, 100)?.with_external_funding(
+            RequestNotificationId::from_str("notification-1")?,
+            PeerFundingMethod::new(
+                PaymentMethod::new(
+                    PaymentMethodId::from_str("bank-1")?,
+                    Some("Synthetic bank".to_owned()),
+                    Some("bank".to_owned()),
+                    Some("1234".to_owned()),
+                    true,
+                ),
+                PeerFundingRole::Default,
+                PeerFundingFee::Unknown,
+            ),
+            EligibilityToken::parse_owned("synthetic-approval-eligibility".to_owned())?,
+            RequestApprovalFees::present(
+                vec![RequestApprovalFee::new(
+                    "venmo://fees/request-approval".to_owned(),
+                    "recipient".to_owned(),
+                    "synthetic-fee-token".to_owned(),
+                    Some(25),
+                    Some("2.5".to_owned()),
+                    25,
+                )],
+                25,
+            ),
+            true,
+        ),
+    )
 }
 
 fn synthetic_decline_plan() -> Result<DeclineRequestPlan, Box<dyn Error>> {

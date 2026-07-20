@@ -11,4 +11,3 @@ Request decline details:
   Current request status: pending
   Created: 1969-12-31T16:00:00
   Action: decline this exact incoming request without sending money.
-  Confirmation defaults to No; --yes skips only the confirmation prompt.

@@ -93,6 +93,11 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
   `RequestStatusParseError`, `RequestRecord`, `RequestsBefore`.
 - `CreatedRequest`, `AcceptedRequest`, `DeclinedRequest`.
 - `CreateRequestPlan`, `AcceptRequestPlan`, `DeclineRequestPlan`.
+- `AcceptRequestPlan` exposes the internally selected optional backup method but not its secret
+  eligibility token or fee tokens. It exposes whether Purchase Protection was selected and, only
+  then, the checked aggregate seller-fee estimate and recipient-proceeds estimate for frontend
+  rendering. `AcceptedRequest` payment ID/status are optional because the modern
+  source-funded approval success object does not guarantee either field.
 - `RequestCreateResult`, `AcceptResult`, `DeclineResult`, `RequestsResult`, `RequestInfoResult`.
 
 ### Transfers

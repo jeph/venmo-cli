@@ -1,0 +1,11 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: request_details
+---
+Request creation details:
+  Requesting account: @owner (ID 123)
+  Requested from: @bob (Synthetic User) (ID 456)
+  Amount: $0.01
+  Note: Synthetic note
+  Requested audience: public
+  Action: create payment request

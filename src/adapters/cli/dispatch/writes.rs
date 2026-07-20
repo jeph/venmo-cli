@@ -9,7 +9,8 @@ use crate::features::payments::{
 use crate::features::people::friendship::{self, FriendshipIntent};
 use crate::features::people::{FriendshipMutationApi, UserLookupApi, UserSearchApi};
 use crate::features::requests::{
-    RequestAcceptanceApi, RequestCreationApi, RequestDeclineApi, RequestLookupApi,
+    RequestAcceptanceApi, RequestApprovalEligibilityApi, RequestApprovalNotificationApi,
+    RequestCreationApi, RequestDeclineApi, RequestLookupApi,
 };
 use crate::features::requests::{accept, create as request_create, decline};
 use crate::features::transfers::out as transfer_out;
@@ -71,12 +72,15 @@ where
     Ok(())
 }
 
-pub(super) async fn run_request_create<R, A, G, W, M, S>(
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_request_create<R, A, G, P, W, E, M, S>(
     args: RequestArgs,
     store: &R,
     api: &A,
     generator: &G,
+    prompt: &P,
     stdout: &mut W,
+    stderr: &mut E,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -84,7 +88,9 @@ where
     A: CurrentAccountApi + UserLookupApi + UserSearchApi + RequestCreationApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
     G: ClientRequestIdGenerator,
+    P: DefaultNoConfirmation,
     W: Write,
+    E: Write,
     M: FnOnce() -> Result<S, AppError>,
     S: Future<Output = Result<(), AppError>>,
 {
@@ -98,9 +104,11 @@ where
         args.visibility.into(),
     )
     .await?;
+    write_and_flush(stderr, &prepared, output::write_request_create_details)?;
+    let authorized = request_create::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
-        protect_with_interruption(request_create::execute(api, prepared), interruption).await??;
+        protect_with_interruption(request_create::execute(api, authorized), interruption).await??;
     write_and_flush(stdout, &result, output::write_request_create_result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())
@@ -119,7 +127,14 @@ pub(super) async fn run_accept_with<R, A, P, W, E, M, S>(
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
-    A: CurrentAccountApi + RequestLookupApi + UserLookupApi + BalanceApi + RequestAcceptanceApi,
+    A: CurrentAccountApi
+        + RequestLookupApi
+        + UserLookupApi
+        + BalanceApi
+        + PeerFundingApi
+        + RequestApprovalNotificationApi
+        + RequestApprovalEligibilityApi
+        + RequestAcceptanceApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
     P: DefaultNoConfirmation,
     W: Write,
@@ -127,7 +142,8 @@ where
     M: FnOnce() -> Result<S, AppError>,
     S: Future<Output = Result<(), AppError>>,
 {
-    let prepared = accept::prepare(store, api, &args.request_id).await?;
+    let prepared =
+        accept::prepare_with_protection(store, api, &args.request_id, args.protect).await?;
     write_and_flush(stderr, &prepared, |writer, prepared| {
         output::write_accept_details(writer, prepared, timestamps)
     })?;

@@ -115,6 +115,23 @@ impl FormBody {
         Self { bytes }
     }
 
+    pub(in crate::adapters::venmo) fn pairs(
+        pairs: &[(&str, &str)],
+    ) -> Result<Self, std::collections::TryReserveError> {
+        let mut bytes = Zeroizing::new(Vec::new());
+        for (index, (name, value)) in pairs.iter().enumerate() {
+            if index != 0 {
+                bytes.try_reserve(1)?;
+                bytes.push(b'&');
+            }
+            push_form_component(&mut bytes, name)?;
+            bytes.try_reserve(1)?;
+            bytes.push(b'=');
+            push_form_component(&mut bytes, value)?;
+        }
+        Ok(Self { bytes })
+    }
+
     pub(super) fn try_into_reqwest_copy(
         self,
     ) -> Result<Vec<u8>, std::collections::TryReserveError> {
@@ -123,6 +140,28 @@ impl FormBody {
         copy.extend_from_slice(self.bytes.as_slice());
         Ok(copy)
     }
+}
+
+fn push_form_component(
+    output: &mut Vec<u8>,
+    value: &str,
+) -> Result<(), std::collections::TryReserveError> {
+    output.try_reserve(value.len().saturating_mul(3))?;
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_' => {
+                output.push(byte);
+            }
+            b' ' => output.push(b'+'),
+            _ => {
+                output.push(b'%');
+                output.push(HEX[usize::from(byte >> 4)]);
+                output.push(HEX[usize::from(byte & 0x0f)]);
+            }
+        }
+    }
+    Ok(())
 }
 
 impl fmt::Debug for FormBody {
@@ -260,6 +299,23 @@ impl<'a> HttpRequest<'a> {
             path_segments,
             query,
             RequestBodies::json(json_body),
+            OperationClass::NonFinancialWrite,
+            ResponseCapture::None,
+        )
+    }
+
+    pub(in crate::adapters::venmo) fn non_financial_form_post(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+        form_body: FormBody,
+    ) -> Self {
+        Self::new(
+            Method::POST,
+            route_template,
+            path_segments,
+            query,
+            RequestBodies::form(form_body),
             OperationClass::NonFinancialWrite,
             ResponseCapture::None,
         )

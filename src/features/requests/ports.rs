@@ -1,7 +1,10 @@
 use super::{
     AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, CreatedRequest, DeclineRequestPlan,
-    DeclinedRequest, RequestId, RequestRecord, RequestsBefore,
+    DeclinedRequest, RequestApprovalFees, RequestId, RequestNotificationId, RequestRecord,
+    RequestsBefore,
 };
+use crate::features::payments::{EligibilityToken, PeerFundingMethod};
+use crate::features::people::User;
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, UserId};
 use std::future::Future;
 
@@ -25,6 +28,49 @@ pub(crate) trait RequestAcceptanceApi {
         device_id: &'a DeviceId,
         plan: &'a AcceptRequestPlan,
     ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a;
+}
+
+pub(crate) struct RequestApprovalEligibility {
+    token: EligibilityToken,
+    fees: RequestApprovalFees,
+}
+
+impl RequestApprovalEligibility {
+    #[must_use]
+    pub const fn new(token: EligibilityToken, fees: RequestApprovalFees) -> Self {
+        Self { token, fees }
+    }
+
+    #[must_use]
+    pub fn into_parts(self) -> (EligibilityToken, RequestApprovalFees) {
+        (self.token, self.fees)
+    }
+}
+
+pub(crate) trait RequestApprovalEligibilityApi {
+    type Error: ApiFailure;
+
+    #[allow(clippy::too_many_arguments)]
+    fn request_approval_eligibility<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        requester: &'a User,
+        amount_cents: u64,
+        note: &'a str,
+        funding: &'a PeerFundingMethod,
+    ) -> impl Future<Output = Result<RequestApprovalEligibility, Self::Error>> + Send + 'a;
+}
+
+pub(crate) trait RequestApprovalNotificationApi {
+    type Error: ApiFailure;
+
+    fn request_approval_notification_id<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        request_id: &'a RequestId,
+    ) -> impl Future<Output = Result<RequestNotificationId, Self::Error>> + Send + 'a;
 }
 
 pub(crate) trait RequestDeclineApi {

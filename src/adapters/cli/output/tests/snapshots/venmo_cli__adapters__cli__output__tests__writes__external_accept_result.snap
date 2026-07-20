@@ -1,9 +1,8 @@
 ---
 source: src/adapters/cli/output/tests/writes.rs
-expression: accept_output
+expression: "String::from_utf8(external_result)?"
 ---
 Accepted request ID: request-1
-Payment ID: request-1
-Status: settled
 Paid requester: @requester (Synthetic\nrequester)
-Amount: $0.01
+Amount: $1.00
+Submitted backup method ID: bank-1

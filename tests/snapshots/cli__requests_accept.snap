@@ -11,10 +11,13 @@ Arguments:
           Canonical incoming request ID
 
 Options:
+      --protect
+          Turn on Purchase Protection; its seller fee is deducted from recipient proceeds
+
       --yes
           Skip only the final default-No confirmation
 
   -h, --help
           Print help (see a summary with '-h')
 
-Accepting sends the exact requested amount to the requester and requires an available Venmo balance snapshot covering it. The approval submits no external funding-method identifier, but neither the snapshot nor the response proves the final funding source or fee. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app.
+Acceptance is an unprotected personal payment by default. `--protect` explicitly turns on Venmo Purchase Protection; Venmo deducts its disclosed seller fee from the amount the recipient receives. Acceptance uses available Venmo balance when it covers an unprotected request. Otherwise it automatically selects the unique default or sole eligible external peer method. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app.

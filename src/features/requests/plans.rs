@@ -1,11 +1,11 @@
 use std::fmt;
 
-use crate::features::payments::{FinancialStatus, PaymentId};
+use crate::features::payments::{EligibilityToken, FinancialStatus, PaymentId, PeerFundingMethod};
 use crate::features::people::User;
 use crate::features::wallet::Balance;
 use crate::shared::{Account, ClientRequestId, Money, Note, Visibility};
 
-use super::{RequestId, RequestRecord, RequestStatus};
+use super::{RequestId, RequestNotificationId, RequestRecord, RequestStatus};
 
 const REDACTED: &str = "[REDACTED]";
 
@@ -81,6 +81,130 @@ pub struct AcceptRequestPlan {
     account: Account,
     request: RequestRecord,
     balance: Balance,
+    external_funding: Option<ExternalAcceptFunding>,
+}
+
+#[derive(Eq, PartialEq)]
+struct ExternalAcceptFunding {
+    notification_id: RequestNotificationId,
+    method: PeerFundingMethod,
+    eligibility_token: EligibilityToken,
+    fees: RequestApprovalFees,
+    protected: bool,
+}
+
+#[derive(Eq, PartialEq)]
+pub(crate) enum RequestApprovalFees {
+    Omitted,
+    Present {
+        entries: Vec<RequestApprovalFee>,
+        total_cents: u64,
+    },
+}
+
+impl RequestApprovalFees {
+    #[must_use]
+    pub(crate) const fn omitted() -> Self {
+        Self::Omitted
+    }
+
+    #[must_use]
+    pub(crate) const fn present(entries: Vec<RequestApprovalFee>, total_cents: u64) -> Self {
+        Self::Present {
+            entries,
+            total_cents,
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn entries(&self) -> Option<&[RequestApprovalFee]> {
+        match self {
+            Self::Omitted => None,
+            Self::Present { entries, .. } => Some(entries.as_slice()),
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn total_cents(&self) -> u64 {
+        match self {
+            Self::Omitted => 0,
+            Self::Present { total_cents, .. } => *total_cents,
+        }
+    }
+}
+
+impl fmt::Debug for RequestApprovalFees {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("RequestApprovalFees([REDACTED])")
+    }
+}
+
+#[derive(Eq, PartialEq)]
+pub(crate) struct RequestApprovalFee {
+    product_uri: String,
+    applied_to: String,
+    fee_token: String,
+    base_fee_amount: Option<u64>,
+    fee_percentage: Option<String>,
+    calculated_fee_amount_in_cents: u64,
+}
+
+impl RequestApprovalFee {
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub(crate) fn new(
+        product_uri: String,
+        applied_to: String,
+        fee_token: String,
+        base_fee_amount: Option<u64>,
+        fee_percentage: Option<String>,
+        calculated_fee_amount_in_cents: u64,
+    ) -> Self {
+        Self {
+            product_uri,
+            applied_to,
+            fee_token,
+            base_fee_amount,
+            fee_percentage,
+            calculated_fee_amount_in_cents,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn product_uri(&self) -> &str {
+        &self.product_uri
+    }
+
+    #[must_use]
+    pub(crate) fn applied_to(&self) -> &str {
+        &self.applied_to
+    }
+
+    #[must_use]
+    pub(crate) fn fee_token(&self) -> &str {
+        &self.fee_token
+    }
+
+    #[must_use]
+    pub(crate) const fn base_fee_amount(&self) -> Option<u64> {
+        self.base_fee_amount
+    }
+
+    #[must_use]
+    pub(crate) fn fee_percentage(&self) -> Option<&str> {
+        self.fee_percentage.as_deref()
+    }
+
+    #[must_use]
+    pub(crate) const fn calculated_fee_amount_in_cents(&self) -> u64 {
+        self.calculated_fee_amount_in_cents
+    }
+}
+
+impl fmt::Debug for RequestApprovalFee {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("RequestApprovalFee([REDACTED])")
+    }
 }
 
 impl AcceptRequestPlan {
@@ -90,6 +214,28 @@ impl AcceptRequestPlan {
             account,
             request,
             balance,
+            external_funding: None,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_external_funding(
+        self,
+        notification_id: RequestNotificationId,
+        method: PeerFundingMethod,
+        eligibility_token: EligibilityToken,
+        fees: RequestApprovalFees,
+        protected: bool,
+    ) -> Self {
+        Self {
+            external_funding: Some(ExternalAcceptFunding {
+                notification_id,
+                method,
+                eligibility_token,
+                fees,
+                protected,
+            }),
+            ..self
         }
     }
 
@@ -107,6 +253,59 @@ impl AcceptRequestPlan {
     pub const fn balance(&self) -> &Balance {
         &self.balance
     }
+
+    #[must_use]
+    pub fn backup_method(&self) -> Option<&PeerFundingMethod> {
+        self.external_funding
+            .as_ref()
+            .map(|funding| &funding.method)
+    }
+
+    #[must_use]
+    pub const fn uses_external_funding(&self) -> bool {
+        self.external_funding.is_some()
+    }
+
+    #[must_use]
+    pub(crate) fn approval_notification_id(&self) -> Option<&RequestNotificationId> {
+        self.external_funding
+            .as_ref()
+            .map(|funding| &funding.notification_id)
+    }
+
+    #[must_use]
+    pub(crate) fn eligibility_token(&self) -> Option<&EligibilityToken> {
+        self.external_funding
+            .as_ref()
+            .map(|funding| &funding.eligibility_token)
+    }
+
+    #[must_use]
+    pub(crate) fn approval_fees(&self) -> Option<&RequestApprovalFees> {
+        self.external_funding.as_ref().map(|funding| &funding.fees)
+    }
+
+    #[must_use]
+    pub const fn approval_fee_cents(&self) -> Option<u64> {
+        match &self.external_funding {
+            Some(funding) if funding.protected => Some(funding.fees.total_cents()),
+            Some(_) | None => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn is_purchase_protected(&self) -> bool {
+        match &self.external_funding {
+            Some(funding) => funding.protected,
+            None => false,
+        }
+    }
+
+    #[must_use]
+    pub fn recipient_proceeds_cents(&self) -> Option<u64> {
+        self.approval_fee_cents()
+            .and_then(|fee| self.request.amount().cents().checked_sub(fee))
+    }
 }
 
 impl fmt::Debug for AcceptRequestPlan {
@@ -117,23 +316,34 @@ impl fmt::Debug for AcceptRequestPlan {
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct AcceptedRequest {
-    payment_id: PaymentId,
-    status: FinancialStatus,
+    payment_id: Option<PaymentId>,
+    status: Option<FinancialStatus>,
 }
 
 impl AcceptedRequest {
     #[must_use]
     pub(crate) const fn new(payment_id: PaymentId, status: FinancialStatus) -> Self {
-        Self { payment_id, status }
+        Self {
+            payment_id: Some(payment_id),
+            status: Some(status),
+        }
     }
 
     #[must_use]
-    pub const fn payment_id(&self) -> &PaymentId {
-        &self.payment_id
+    pub(crate) const fn source_funded() -> Self {
+        Self {
+            payment_id: None,
+            status: None,
+        }
     }
 
     #[must_use]
-    pub const fn status(&self) -> FinancialStatus {
+    pub const fn payment_id(&self) -> Option<&PaymentId> {
+        self.payment_id.as_ref()
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> Option<FinancialStatus> {
         self.status
     }
 }

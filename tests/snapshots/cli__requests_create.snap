@@ -2,7 +2,7 @@
 source: tests/cli.rs
 expression: help
 ---
-Create a request immediately
+Create a request after validation and confirmation
 
 Usage: create [OPTIONS] <USERNAME> <AMOUNT> <NOTE>
 
@@ -23,7 +23,10 @@ Options:
           [default: private]
           [possible values: private, friends, public]
 
+      --yes
+          Skip only the final default-No confirmation
+
   -h, --help
           Print help (see a summary with '-h')
 
-Direct request creation writes immediately after validation. It does not prompt and has no `--yes` option. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app.
+Confirmation defaults to No and requires both stdin and stderr to be terminals unless `--yes` is supplied. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app.

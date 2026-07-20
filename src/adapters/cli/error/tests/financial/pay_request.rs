@@ -130,6 +130,22 @@ fn pay_and_request_creation_variants_have_deliberate_categories() {
             ErrorCategory::Internal,
         ),
         (
+            AppError::from(RequestCreateError::ConfirmationRequired),
+            ErrorCategory::Usage,
+        ),
+        (
+            AppError::from(RequestCreateError::ConfirmationDeclined),
+            ErrorCategory::Cancelled,
+        ),
+        (
+            AppError::from(RequestCreateError::Confirmation {
+                source: PromptError::Interaction {
+                    source: io::Error::other("synthetic request confirmation failure"),
+                },
+            }),
+            ErrorCategory::Internal,
+        ),
+        (
             AppError::from(RequestCreateError::Create {
                 source: api_operation_failure(ApiFailureKind::AmbiguousWrite),
             }),

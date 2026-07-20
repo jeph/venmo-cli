@@ -30,7 +30,7 @@ use crate::features::auth::{
 };
 use crate::features::payments::{
     BlankSourceEligibilityApi, EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi,
-    PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+    PaymentId, PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
 };
 use crate::features::people::{
     FriendsApi, FriendsPageRequest, FriendshipMutationApi, FriendshipStatus, User, UserLookupApi,
@@ -38,8 +38,10 @@ use crate::features::people::{
 };
 use crate::features::requests::{
     AcceptRequestPlan, CreateRequestPlan, DeclineRequestPlan, PendingRequestsPageRequest,
-    RequestAcceptanceApi, RequestAction, RequestCreationApi, RequestDeclineApi, RequestDirection,
-    RequestId, RequestLookupApi, RequestRecord, RequestStatus, RequestsApi, RequestsBefore,
+    RequestAcceptanceApi, RequestAction, RequestApprovalEligibilityApi, RequestApprovalFee,
+    RequestApprovalFees, RequestApprovalNotificationApi, RequestCreationApi, RequestDeclineApi,
+    RequestDirection, RequestId, RequestLookupApi, RequestNotificationId, RequestRecord,
+    RequestStatus, RequestsApi, RequestsBefore,
 };
 use crate::features::transfers::{
     TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix, TransferOptionsApi,
@@ -169,6 +171,7 @@ enum ApiErrorDetail {
         rendered: String,
     },
     EligibilityDenied,
+    RequestApprovalEligibilityDenied,
     MalformedJson {
         operation: &'static str,
     },
@@ -210,6 +213,9 @@ impl ApiErrorSnapshot {
                 rendered,
             },
             VenmoApiError::EligibilityDenied => ApiErrorDetail::EligibilityDenied,
+            VenmoApiError::RequestApprovalEligibilityDenied => {
+                ApiErrorDetail::RequestApprovalEligibilityDenied
+            }
             VenmoApiError::MalformedJson { operation } => {
                 ApiErrorDetail::MalformedJson { operation }
             }
@@ -673,6 +679,55 @@ fn accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
             SignedUsdAmount::from_cents(0),
         ),
     ))
+}
+
+fn source_funded_unprotected_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
+    Ok(AcceptRequestPlan::new(
+        test_account()?,
+        incoming_request()?,
+        Balance::new(
+            SignedUsdAmount::from_cents(0),
+            SignedUsdAmount::from_cents(0),
+        ),
+    )
+    .with_external_funding(
+        RequestNotificationId::from_str("notification-1")?,
+        zero_fee_peer_method()?,
+        EligibilityToken::parse_owned("synthetic-approval-token".to_owned())?,
+        RequestApprovalFees::omitted(),
+        false,
+    ))
+}
+
+fn source_funded_accept_plan_with_fees(
+    fees: RequestApprovalFees,
+) -> Result<AcceptRequestPlan, Box<dyn Error>> {
+    Ok(AcceptRequestPlan::new(
+        test_account()?,
+        incoming_request()?,
+        Balance::new(
+            SignedUsdAmount::from_cents(0),
+            SignedUsdAmount::from_cents(0),
+        ),
+    )
+    .with_external_funding(
+        RequestNotificationId::from_str("notification-1")?,
+        zero_fee_peer_method()?,
+        EligibilityToken::parse_owned("synthetic-approval-token".to_owned())?,
+        fees,
+        true,
+    ))
+}
+
+fn synthetic_approval_fee(cents: u64) -> RequestApprovalFee {
+    RequestApprovalFee::new(
+        "venmo://fees/request-approval".to_owned(),
+        "transaction".to_owned(),
+        "synthetic-fee-token".to_owned(),
+        Some(25),
+        Some("2.5".to_owned()),
+        cents,
+    )
 }
 
 fn decline_plan() -> Result<DeclineRequestPlan, Box<dyn Error>> {

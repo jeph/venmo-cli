@@ -18,7 +18,7 @@ pub enum RequestsOperation {
     /// List pending requests involving the active account.
     List(RequestsListArgs),
 
-    /// Create a request immediately.
+    /// Create a request after validation and confirmation.
     Create(RequestArgs),
 
     /// Accept an incoming request after authoritative validation and confirmation.
@@ -66,7 +66,7 @@ impl From<RequestDirectionArg> for RequestDirectionFilter {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "Direct request creation writes immediately after validation. It does not prompt and has no `--yes` option. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app."
+    after_long_help = "Confirmation defaults to No and requires both stdin and stderr to be terminals unless `--yes` is supplied. Financial exit code 3 means the request outcome must be verified independently. Do not retry; check `requests list` and the official Venmo app."
 )]
 pub struct RequestArgs {
     /// Exact username with an optional leading @.
@@ -84,16 +84,24 @@ pub struct RequestArgs {
     /// Visibility of the created request.
     #[arg(long, value_enum, default_value_t = VisibilityArg::Private)]
     pub visibility: VisibilityArg,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long)]
+    pub yes: bool,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "Accepting sends the exact requested amount to the requester and requires an available Venmo balance snapshot covering it. The approval submits no external funding-method identifier, but neither the snapshot nor the response proves the final funding source or fee. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
+    after_long_help = "Acceptance is an unprotected personal payment by default. `--protect` explicitly turns on Venmo Purchase Protection; Venmo deducts its disclosed seller fee from the amount the recipient receives. Acceptance uses available Venmo balance when it covers an unprotected request. Otherwise it automatically selects the unique default or sole eligible external peer method. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
 )]
 pub struct AcceptArgs {
     /// Canonical incoming request ID.
     #[arg(value_name = "REQUEST_ID", value_parser = RedactedRequestIdParser)]
     pub request_id: RequestId,
+
+    /// Turn on Purchase Protection; its seller fee is deducted from recipient proceeds.
+    #[arg(long)]
+    pub protect: bool,
 
     /// Skip only the final default-No confirmation.
     #[arg(long)]

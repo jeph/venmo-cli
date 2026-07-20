@@ -3,20 +3,24 @@ use std::str::FromStr;
 
 use serde_json::Value;
 
-use crate::features::payments::{FinancialStatus, PaymentId};
+use crate::features::payments::{EligibilityToken, FinancialStatus, PaymentId, PeerFundingMethod};
 use crate::features::people::User;
 use crate::features::requests::{
     AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, CreatedRequest, DeclineRequestPlan,
     DeclinedRequest, PendingRequestsPage, PendingRequestsPageRequest, RequestAcceptanceApi,
-    RequestAction, RequestCreationApi, RequestDeclineApi, RequestDirection, RequestId,
-    RequestLookupApi, RequestRecord, RequestStatus, RequestsApi, RequestsBefore,
+    RequestAction, RequestApprovalEligibility, RequestApprovalEligibilityApi, RequestApprovalFee,
+    RequestApprovalFees, RequestApprovalNotificationApi, RequestCreationApi, RequestDeclineApi,
+    RequestDirection, RequestId, RequestLookupApi, RequestNotificationId, RequestRecord,
+    RequestStatus, RequestsApi, RequestsBefore,
 };
 use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
 
 use super::super::dto::{
-    CreateRequestRequest, PaymentEnvelope, PaymentRecordDto, PaymentsEnvelope, UpdatePaymentRequest,
+    CreateRequestRequest, FundedRequestApproval, FundedRequestApprovalFee, PaymentEnvelope,
+    PaymentRecordDto, PaymentsEnvelope, RequestApprovalEligibilityEnvelope, RequestApprovalFeeDto,
+    RequestApprovalMetadata, RequestApprovalNotificationsEnvelope, UpdatePaymentRequest,
 };
-use super::super::transport::{ApiSession, ApiTransport, HttpRequest, JsonBody};
+use super::super::transport::{ApiSession, ApiTransport, FormBody, HttpRequest, JsonBody};
 use super::error::VenmoApiError;
 use super::payments::{
     PeerCreation, TimestampedPaymentRecord, financial_contract_unknown, money_json_number,
@@ -32,6 +36,70 @@ enum RequestMutation {
 enum RequestMutationStatus {
     Accepted(FinancialStatus),
     Declined(RequestStatus),
+}
+
+const MAX_REQUEST_APPROVAL_FEES: usize = 16;
+const MAX_REQUEST_APPROVAL_FEE_FIELD_BYTES: usize = 4096;
+
+fn map_request_approval_fees(
+    fees: Option<Vec<RequestApprovalFeeDto>>,
+) -> Result<RequestApprovalFees, VenmoApiError> {
+    let Some(fees) = fees else {
+        return Ok(RequestApprovalFees::omitted());
+    };
+    if fees.len() > MAX_REQUEST_APPROVAL_FEES {
+        return request_approval_fee_contract_error();
+    }
+    let mut total_cents = 0_u64;
+    let mut mapped = Vec::with_capacity(fees.len());
+    for fee in fees {
+        let product_uri = validate_request_approval_fee_field(fee.product_uri, false)?;
+        let applied_to = validate_request_approval_fee_field(fee.applied_to, true)?;
+        let fee_token = validate_request_approval_fee_field(fee.fee_token, false)?;
+        let fee_percentage = fee.fee_percentage.map(|value| value.to_string());
+        if fee_percentage
+            .as_deref()
+            .is_some_and(|value| value.starts_with('-'))
+        {
+            return request_approval_fee_contract_error();
+        }
+        total_cents = total_cents
+            .checked_add(fee.calculated_fee_amount_in_cents)
+            .ok_or(VenmoApiError::Contract {
+                operation: REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
+                problem: "the request-approval eligibility fee total overflowed",
+            })?;
+        mapped.push(RequestApprovalFee::new(
+            product_uri,
+            applied_to,
+            fee_token,
+            fee.base_fee_amount,
+            fee_percentage,
+            fee.calculated_fee_amount_in_cents,
+        ));
+    }
+    Ok(RequestApprovalFees::present(mapped, total_cents))
+}
+
+fn validate_request_approval_fee_field(
+    value: String,
+    allow_whitespace: bool,
+) -> Result<String, VenmoApiError> {
+    if value.is_empty()
+        || value.len() > MAX_REQUEST_APPROVAL_FEE_FIELD_BYTES
+        || value.chars().any(char::is_control)
+        || (!allow_whitespace && value.chars().any(char::is_whitespace))
+    {
+        return request_approval_fee_contract_error();
+    }
+    Ok(value)
+}
+
+fn request_approval_fee_contract_error<T>() -> Result<T, VenmoApiError> {
+    Err(VenmoApiError::Contract {
+        operation: REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
+        problem: "the request-approval eligibility response contained invalid fee details",
+    })
 }
 
 impl RequestMutation {
@@ -130,7 +198,8 @@ use super::support::{
     validate_query_keys,
 };
 use super::{
-    REQUEST_ACCEPTANCE_OPERATION, REQUEST_CREATION_OPERATION, REQUEST_DECLINE_OPERATION,
+    REQUEST_ACCEPTANCE_OPERATION, REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
+    REQUEST_APPROVAL_NOTIFICATION_OPERATION, REQUEST_CREATION_OPERATION, REQUEST_DECLINE_OPERATION,
     REQUEST_DETAIL_OPERATION, REQUEST_LIST_OPERATION, VenmoApiClient,
 };
 
@@ -179,6 +248,11 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         device_id: &DeviceId,
         plan: &AcceptRequestPlan,
     ) -> Result<AcceptedRequest, VenmoApiError> {
+        if plan.uses_external_funding() {
+            return self
+                .accept_source_funded_request(access_token, device_id, plan)
+                .await;
+        }
         let payment = self
             .update_incoming_request(
                 access_token,
@@ -188,6 +262,205 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             )
             .await?;
         validate_accepted_request(payment, plan)
+    }
+
+    async fn fetch_request_approval_notification_id(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        request_id: &RequestId,
+    ) -> Result<RequestNotificationId, VenmoApiError> {
+        const MAX_NOTIFICATIONS: usize = 200;
+
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::read(
+                    "/notifications",
+                    &["notifications"],
+                    &[("acknowledged", "false")],
+                ),
+            )
+            .await?;
+        let envelope: RequestApprovalNotificationsEnvelope = decode_success(
+            REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+            response,
+            "the request-approval notification response did not match the supported envelope",
+        )?;
+        if envelope.data.len() > MAX_NOTIFICATIONS {
+            return Err(VenmoApiError::Contract {
+                operation: REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+                problem: "the request-approval notification response exceeded its record limit",
+            });
+        }
+        let mut matches = envelope.data.into_iter().filter_map(|notification| {
+            let payment = notification.payment?;
+            (payment.id.into_string() == request_id.as_str()).then_some(notification.id)
+        });
+        let notification_id = match (matches.next(), matches.next()) {
+            (Some(notification_id), None) => notification_id,
+            (None, _) => {
+                return Err(VenmoApiError::Contract {
+                    operation: REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+                    problem: "the pending request had no matching approval notification",
+                });
+            }
+            (Some(_), Some(_)) => {
+                return Err(VenmoApiError::Contract {
+                    operation: REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+                    problem: "the pending request had multiple matching approval notifications",
+                });
+            }
+        };
+        RequestNotificationId::from_str(&notification_id.into_string()).map_err(|_| {
+            VenmoApiError::Contract {
+                operation: REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+                problem: "the matching approval notification had an invalid ID",
+            }
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn fetch_request_approval_eligibility(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        requester: &User,
+        amount_cents: u64,
+        note: &str,
+        funding: &PeerFundingMethod,
+    ) -> Result<RequestApprovalEligibility, VenmoApiError> {
+        let amount = amount_cents.to_string();
+        let body = FormBody::pairs(&[
+            ("target_type", "user_id"),
+            ("target_id", requester.user_id().as_str()),
+            ("country_code", "1"),
+            ("amount", amount.as_str()),
+            ("note", note),
+            ("funding_source_id", funding.method().id().as_str()),
+        ])
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::non_financial_form_post(
+                    "/protection/eligibility",
+                    &["protection", "eligibility"],
+                    &[],
+                    body,
+                ),
+            )
+            .await?;
+        let envelope: RequestApprovalEligibilityEnvelope = decode_success(
+            REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
+            response,
+            "the request-approval eligibility response did not match the supported envelope",
+        )?;
+        let eligibility = envelope.data;
+        if !eligibility.eligible {
+            return Err(VenmoApiError::RequestApprovalEligibilityDenied);
+        }
+        let fees = map_request_approval_fees(eligibility.fees)?;
+        let token = eligibility
+            .eligibility_token
+            .ok_or(VenmoApiError::Contract {
+                operation: REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
+                problem: "the request-approval eligibility response omitted its token",
+            })?;
+        let token = EligibilityToken::parse_owned(token).map_err(|_| VenmoApiError::Contract {
+            operation: REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
+            problem: "the request-approval eligibility response contained an invalid token",
+        })?;
+        Ok(RequestApprovalEligibility::new(token, fees))
+    }
+
+    async fn accept_source_funded_request(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        plan: &AcceptRequestPlan,
+    ) -> Result<AcceptedRequest, VenmoApiError> {
+        let funding = plan.backup_method().ok_or(VenmoApiError::RequestEncoding {
+            operation: REQUEST_ACCEPTANCE_OPERATION,
+        })?;
+        let token = plan
+            .eligibility_token()
+            .ok_or(VenmoApiError::RequestEncoding {
+                operation: REQUEST_ACCEPTANCE_OPERATION,
+            })?;
+        let fees = plan.approval_fees().ok_or(VenmoApiError::RequestEncoding {
+            operation: REQUEST_ACCEPTANCE_OPERATION,
+        })?;
+        let notification_id =
+            plan.approval_notification_id()
+                .ok_or(VenmoApiError::RequestEncoding {
+                    operation: REQUEST_ACCEPTANCE_OPERATION,
+                })?;
+        let wire_fees = fees
+            .entries()
+            .map(|fees| {
+                fees.iter()
+                    .map(|fee| {
+                        let fee_percentage = fee
+                            .fee_percentage()
+                            .map(serde_json::Number::from_str)
+                            .transpose()
+                            .map_err(|_| VenmoApiError::RequestEncoding {
+                                operation: REQUEST_ACCEPTANCE_OPERATION,
+                            })?;
+                        Ok(FundedRequestApprovalFee {
+                            product_uri: fee.product_uri(),
+                            applied_to: fee.applied_to(),
+                            fee_token: fee.fee_token(),
+                            base_fee_amount: fee.base_fee_amount(),
+                            fee_percentage,
+                            calculated_fee_amount_in_cents: fee.calculated_fee_amount_in_cents(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, VenmoApiError>>()
+            })
+            .transpose()?;
+        let body = JsonBody::encode(&FundedRequestApproval {
+            funding_source_id: funding.method().id().as_str(),
+            eligibility_token: token.expose(),
+            fees: wire_fees.as_deref(),
+            metadata: RequestApprovalMetadata {
+                quasi_cash_disclaimer_viewed: false,
+            },
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: REQUEST_ACCEPTANCE_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::financial_json_put(
+                    "/requests/{request-id}",
+                    &["requests", notification_id.as_str()],
+                    &[],
+                    body,
+                ),
+            )
+            .await?;
+        let value = require_financial_success_json(REQUEST_ACCEPTANCE_OPERATION, response)?;
+        if !value.is_object() {
+            return financial_contract_unknown(
+                REQUEST_ACCEPTANCE_OPERATION,
+                "the successful source-funded approval response was not an object",
+            );
+        }
+        if value.pointer("/data/url").is_some_and(|url| !url.is_null()) {
+            return financial_contract_unknown(
+                REQUEST_ACCEPTANCE_OPERATION,
+                "the source-funded approval requires an unsupported continuation",
+            );
+        }
+        Ok(AcceptedRequest::source_funded())
     }
 
     async fn decline_incoming_request(
@@ -368,6 +641,42 @@ impl<T: ApiTransport> RequestAcceptanceApi for VenmoApiClient<T> {
         plan: &'a AcceptRequestPlan,
     ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a {
         self.accept_incoming_request(access_token, device_id, plan)
+    }
+}
+
+impl<T: ApiTransport> RequestApprovalEligibilityApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn request_approval_eligibility<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        requester: &'a User,
+        amount_cents: u64,
+        note: &'a str,
+        funding: &'a PeerFundingMethod,
+    ) -> impl Future<Output = Result<RequestApprovalEligibility, Self::Error>> + Send + 'a {
+        self.fetch_request_approval_eligibility(
+            access_token,
+            device_id,
+            requester,
+            amount_cents,
+            note,
+            funding,
+        )
+    }
+}
+
+impl<T: ApiTransport> RequestApprovalNotificationApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn request_approval_notification_id<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        request_id: &'a RequestId,
+    ) -> impl Future<Output = Result<RequestNotificationId, Self::Error>> + Send + 'a {
+        self.fetch_request_approval_notification_id(access_token, device_id, request_id)
     }
 }
 

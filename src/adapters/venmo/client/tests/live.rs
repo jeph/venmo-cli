@@ -174,6 +174,64 @@ async fn live_other_user_activity_shape_probe() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "manually probes notification request-ID structure without emitting response values"]
+async fn live_notification_request_id_shape_probe() -> TestResult {
+    let loaded = NativeCredentialStore::new()
+        .read_credential()?
+        .ok_or_else(|| io::Error::other("the live schema probe requires a stored credential"))?;
+    let client = VenmoApiClient::production()?;
+    let response = client
+        .transport
+        .send_authenticated(
+            ApiSession::from(&loaded.envelope),
+            HttpRequest::read(
+                "/notifications",
+                &["notifications"],
+                &[("acknowledged", "false")],
+            ),
+        )
+        .await?;
+    if !response.status().is_success() {
+        return Err(io::Error::other("the notification schema probe did not succeed").into());
+    }
+    let value: Value = serde_json::from_slice(response.body())?;
+    let records = value
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| io::Error::other("the notification probe did not return a data array"))?;
+    let request_records = records
+        .iter()
+        .filter(|record| record.get("payment").is_some())
+        .collect::<Vec<_>>();
+    let paired_ids = request_records
+        .iter()
+        .filter_map(|record| {
+            Some((
+                record.get("id")?.as_str()?,
+                record.pointer("/payment/id")?.as_str()?,
+            ))
+        })
+        .collect::<Vec<_>>();
+    let distinct_pairs = paired_ids
+        .iter()
+        .filter(|(notification_id, payment_id)| notification_id != payment_id)
+        .count();
+    eprintln!(
+        "schema-probe notification requests: records={} paired-ids={} distinct-pairs={distinct_pairs}",
+        request_records.len(),
+        paired_ids.len(),
+    );
+    let mut shape = BTreeSet::new();
+    for record in request_records {
+        collect_json_types(record, "$.data[]", 0, &mut shape);
+    }
+    for line in shape {
+        eprintln!("  {line}");
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "manually probes non-payment activity shapes with the active credential"]
 async fn live_non_payment_activity_probe() -> TestResult {
     let loaded = NativeCredentialStore::new()

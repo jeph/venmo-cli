@@ -19,7 +19,11 @@ pub(super) use payments::{
 pub(super) use people::{
     FriendMutationEnvelope, FriendsEnvelope, UserDto, UserEnvelope, UsersEnvelope,
 };
-pub(super) use requests::{CreateRequestRequest, UpdatePaymentRequest};
+pub(super) use requests::{
+    CreateRequestRequest, FundedRequestApproval, FundedRequestApprovalFee,
+    RequestApprovalEligibilityEnvelope, RequestApprovalFeeDto, RequestApprovalMetadata,
+    RequestApprovalNotificationsEnvelope, UpdatePaymentRequest,
+};
 pub(super) use transfers::{
     CreateTransferRequest, CreatedTransferEnvelope, PreferredTransferTypeDto,
     RequiredNullableString, TransferFeeDto, TransferInstrumentDto, TransferModeOptionsDto,

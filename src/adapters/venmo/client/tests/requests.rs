@@ -263,10 +263,339 @@ async fn request_acceptance_uses_exact_approve_update_and_validates_settlement()
         let accepted = client
             .accept_request(&token, &device_id, &accept_plan()?)
             .await?;
-        assert_eq!(accepted.payment_id().as_str(), "payment-1");
-        assert_eq!(accepted.status(), FinancialStatus::Settled);
+        assert_eq!(
+            accepted.payment_id().map(PaymentId::as_str),
+            Some("payment-1")
+        );
+        assert_eq!(accepted.status(), Some(FinancialStatus::Settled));
         assert_request_count(&server, 1).await;
         assert_requests_have_no_query(&server).await;
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_approval_notification_resolves_the_unique_nested_payment_id() -> TestResult {
+    let response = scripted_json_response(
+        200,
+        serde_json::json!({"data":[
+            {"id":"notification-other"},
+            {"id":"notification-1","payment":{"id":"request-1"}}
+        ]}),
+    )?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let request_id = RequestId::from_str("request-1")?;
+
+    let result = client
+        .request_approval_notification_id(&token, &device_id, &request_id)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |notification_id| {
+            notification_id.as_str().to_owned()
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok("notification-1".to_owned()),
+        vec![authenticated_read_request(
+            "/notifications",
+            &["notifications"],
+            &[("acknowledged", "false")],
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_approval_notification_rejects_missing_duplicate_or_invalid_matches() -> TestResult
+{
+    for body in [
+        serde_json::json!({"data":[{"id":"notification-1","payment":{"id":"request-2"}}]}),
+        serde_json::json!({"data":[
+            {"id":"notification-1","payment":{"id":"request-1"}},
+            {"id":"notification-2","payment":{"id":"request-1"}}
+        ]}),
+        serde_json::json!({"data":[{"id":"bad id","payment":{"id":"request-1"}}]}),
+    ] {
+        let response = scripted_json_response(200, body)?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let request_id = RequestId::from_str("request-1")?;
+
+        let result = client
+            .request_approval_notification_id(&token, &device_id, &request_id)
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::contract(
+                REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+            )),
+            vec![authenticated_read_request(
+                "/notifications",
+                &["notifications"],
+                &[("acknowledged", "false")],
+            )],
+        );
+
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_approval_eligibility_uses_source_bound_form_and_preserves_empty_fees() -> TestResult
+{
+    let response = scripted_json_response(
+        200,
+        serde_json::json!({"data": {
+            "eligible": true,
+            "eligibility_token": "synthetic-approval-token",
+            "fees": []
+        }}),
+    )?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let requester = financial_user("456", "requester")?;
+    let funding = zero_fee_peer_method()?;
+
+    let result = client
+        .request_approval_eligibility(
+            &token,
+            &device_id,
+            &requester,
+            125,
+            "Dinner & café",
+            &funding,
+        )
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |eligibility| {
+            let (token, fees) = eligibility.into_parts();
+            (
+                token.expose().to_owned(),
+                fees.entries().map(<[_]>::len),
+                fees.total_cents(),
+            )
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok(("synthetic-approval-token".to_owned(), Some(0), 0)),
+        vec![ScriptedRequest::for_test_form(
+            ScriptedCredentials::authenticated_for_test(
+                SYNTHETIC_ACCESS_TOKEN,
+                SYNTHETIC_DEVICE_ID,
+            ),
+            Method::POST,
+            "/protection/eligibility",
+            &["protection", "eligibility"],
+            &[],
+            b"target_type=user_id&target_id=456&country_code=1&amount=125&note=Dinner+%26+caf%C3%A9&funding_source_id=bank-1",
+            OperationClass::NonFinancialWrite,
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_approval_eligibility_accepts_and_totals_valid_fees() -> TestResult {
+    let response = scripted_json_response(
+        200,
+        serde_json::json!({"data": {
+            "eligible": true,
+            "eligibility_token": "synthetic-approval-token",
+            "fees": [
+                {
+                    "product_uri":"venmo://fees/one","applied_to":"transaction",
+                    "fee_token":"fee-token-1","base_fee_amount":25,"fee_percentage":2.5,
+                    "calculated_fee_amount_in_cents":25
+                },
+                {
+                    "product_uri":"venmo://fees/two","applied_to":"transaction",
+                    "fee_token":"fee-token-2","calculated_fee_amount_in_cents":10
+                }
+            ]
+        }}),
+    )?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let requester = financial_user("456", "requester")?;
+    let funding = zero_fee_peer_method()?;
+
+    let result = client
+        .request_approval_eligibility(&token, &device_id, &requester, 125, "Dinner", &funding)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |eligibility| {
+            let (_, fees) = eligibility.into_parts();
+            (fees.entries().map(<[_]>::len), fees.total_cents())
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok((Some(2), 35)),
+        vec![ScriptedRequest::for_test_form(
+            ScriptedCredentials::authenticated_for_test(
+                SYNTHETIC_ACCESS_TOKEN,
+                SYNTHETIC_DEVICE_ID,
+            ),
+            Method::POST,
+            "/protection/eligibility",
+            &["protection", "eligibility"],
+            &[],
+            b"target_type=user_id&target_id=456&country_code=1&amount=125&note=Dinner&funding_source_id=bank-1",
+            OperationClass::NonFinancialWrite,
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_approval_eligibility_rejects_denial_missing_token_and_invalid_fees() -> TestResult
+{
+    let cases = [
+        (
+            serde_json::json!({"data":{"eligible":false}}),
+            ApiErrorSnapshot {
+                kind: ApiFailureKind::Rejected,
+                detail: ApiErrorDetail::RequestApprovalEligibilityDenied,
+            },
+        ),
+        (
+            serde_json::json!({"data":{"eligible":true,"fees":[]}}),
+            ApiErrorSnapshot::contract(REQUEST_APPROVAL_ELIGIBILITY_OPERATION),
+        ),
+        (
+            serde_json::json!({"data":{
+                "eligible":true,
+                "eligibility_token":"synthetic-approval-token",
+                "fees":[{"fee_token":"unsupported"}]
+            }}),
+            ApiErrorSnapshot::contract(REQUEST_APPROVAL_ELIGIBILITY_OPERATION),
+        ),
+        (
+            serde_json::json!({"data":{
+                "eligible":true,
+                "eligibility_token":"synthetic-approval-token",
+                "fees":[
+                    {"product_uri":"a","applied_to":"b","fee_token":"c","calculated_fee_amount_in_cents":18446744073709551615_u64},
+                    {"product_uri":"d","applied_to":"e","fee_token":"f","calculated_fee_amount_in_cents":1}
+                ]
+            }}),
+            ApiErrorSnapshot::contract(REQUEST_APPROVAL_ELIGIBILITY_OPERATION),
+        ),
+    ];
+    let (token, device_id) = test_session()?;
+    let requester = financial_user("456", "requester")?;
+    let funding = zero_fee_peer_method()?;
+
+    for (body, expected_error) in cases {
+        let response = scripted_json_response(200, body)?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let result = client
+            .request_approval_eligibility(&token, &device_id, &requester, 125, "Dinner", &funding)
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(expected_error),
+            vec![ScriptedRequest::for_test_form(
+                ScriptedCredentials::authenticated_for_test(
+                    SYNTHETIC_ACCESS_TOKEN,
+                    SYNTHETIC_DEVICE_ID,
+                ),
+                Method::POST,
+                "/protection/eligibility",
+                &["protection", "eligibility"],
+                &[],
+                b"target_type=user_id&target_id=456&country_code=1&amount=125&note=Dinner&funding_source_id=bank-1",
+                OperationClass::NonFinancialWrite,
+            )],
+        );
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn source_funded_request_acceptance_uses_modern_options_route() -> TestResult {
+    let response = scripted_json_response(200, serde_json::json!({"data": {"url": null}}))?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+
+    let result = client
+        .accept_request(
+            &token,
+            &device_id,
+            &source_funded_accept_plan_with_fees(RequestApprovalFees::present(
+                vec![synthetic_approval_fee(25)],
+                25,
+            ))?,
+        )
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |accepted| {
+            (accepted.payment_id().is_none(), accepted.status().is_none())
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok((true, true)),
+        vec![authenticated_request(
+            Method::PUT,
+            "/requests/{request-id}",
+            &["requests", "notification-1"],
+            &[],
+            Some(br#"{"funding_source_id":"bank-1","eligibility_token":"synthetic-approval-token","fees":[{"product_uri":"venmo://fees/request-approval","applied_to":"transaction","fee_token":"synthetic-fee-token","base_fee_amount":25,"fee_percentage":2.5,"calculated_fee_amount_in_cents":25}],"metadata":{"quasi_cash_disclaimer_viewed":false}}"#),
+            OperationClass::FinancialWrite,
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn source_funded_acceptance_continuations_and_malformed_success_are_ambiguous() -> TestResult
+{
+    for body in [
+        serde_json::json!({"data":{"url":"https://venmo.example/continue"}}),
+        serde_json::json!([]),
+    ] {
+        let response = scripted_json_response(200, body)?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let result = client
+            .accept_request(
+                &token,
+                &device_id,
+                &source_funded_unprotected_accept_plan()?,
+            )
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot {
+                kind: ApiFailureKind::AmbiguousWrite,
+                detail: ApiErrorDetail::FinancialOutcomeUnknown {
+                    operation: REQUEST_ACCEPTANCE_OPERATION,
+                },
+            }),
+            vec![authenticated_request(
+                Method::PUT,
+                "/requests/{request-id}",
+                &["requests", "notification-1"],
+                &[],
+                Some(br#"{"funding_source_id":"bank-1","eligibility_token":"synthetic-approval-token","metadata":{"quasi_cash_disclaimer_viewed":false}}"#),
+                OperationClass::FinancialWrite,
+            )],
+        );
+        assert_eq!(observed, expected);
     }
     Ok(())
 }

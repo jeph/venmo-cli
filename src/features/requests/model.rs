@@ -9,6 +9,7 @@ use crate::shared::Money;
 use crate::shared::opaque_id::opaque_id;
 
 opaque_id!(RequestId, "request ID");
+opaque_id!(RequestNotificationId, "request notification ID");
 
 const MAX_REQUEST_STATUS_BYTES: usize = 64;
 

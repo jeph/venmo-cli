@@ -5,13 +5,15 @@ use super::validation::{
     RequestMutationValidationError, validate_complete_request, validate_private_audience,
 };
 use super::{
-    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestId, RequestLookupApi,
+    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestApprovalEligibilityApi,
+    RequestApprovalFees, RequestApprovalNotificationApi, RequestId, RequestLookupApi,
     RequestMutationPreflightError,
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
 use crate::features::payments::confirmation::{self, DefaultNoConfirmationError};
+use crate::features::payments::funding::{self, FundingSelectionError};
 use crate::features::payments::{
-    DefaultNoConfirmation, FinancialValidationError, validate_recipient,
+    DefaultNoConfirmation, FinancialValidationError, PeerFundingApi, validate_recipient,
 };
 use crate::features::people::UserLookupApi;
 use crate::features::wallet::BalanceApi;
@@ -80,10 +82,27 @@ pub enum AcceptError {
         #[source]
         source: ApiOperationFailure,
     },
+    #[error("failed to resolve the request's approval notification: {source}")]
+    NotificationLookup {
+        #[source]
+        source: ApiOperationFailure,
+    },
+    #[error("failed to obtain peer-payment funding methods for request acceptance: {source}")]
+    FundingMethods {
+        #[source]
+        source: ApiOperationFailure,
+    },
+    #[error(transparent)]
+    FundingSelection(#[from] FundingSelectionError),
     #[error(
-        "acceptance requires available Venmo balance covering the full request; the CLI submits no external funding method"
+        "failed to verify request-approval eligibility for the selected funding method: {source}"
     )]
-    InsufficientWalletBalance,
+    Eligibility {
+        #[source]
+        source: ApiOperationFailure,
+    },
+    #[error("the purchase-protection fee exceeded the request amount")]
+    ProtectionFeeExceedsAmount,
     #[error(
         "request acceptance confirmation requires both stdin and stderr to be terminals; pass `--yes` to authorize non-interactively"
     )]
@@ -109,13 +128,16 @@ impl AcceptError {
             Self::Preflight(source) => source.failure_kind(),
             Self::RequesterLookup { source }
             | Self::Balance { source }
+            | Self::NotificationLookup { source }
+            | Self::FundingMethods { source }
+            | Self::Eligibility { source }
             | Self::Accept { source } => ApplicationFailureKind::Api(source.kind()),
             Self::AccountOrRequester(source) => source.failure_kind(),
+            Self::FundingSelection(source) => source.failure_kind(),
             Self::RequesterIdentityMismatch => ApplicationFailureKind::ApiContract,
+            Self::ProtectionFeeExceedsAmount => ApplicationFailureKind::ApiContract,
             Self::RequestValidation(source) => source.failure_kind(),
-            Self::InsufficientWalletBalance | Self::ConfirmationRequired => {
-                ApplicationFailureKind::Usage
-            }
+            Self::ConfirmationRequired => ApplicationFailureKind::Usage,
             Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
             Self::Confirmation { source } => prompt_failure_kind(source),
         }
@@ -125,14 +147,21 @@ impl AcceptError {
 #[derive(Debug)]
 pub(crate) struct AuthorizedAccept(PreparedAccept);
 
-pub(crate) async fn prepare<R, A>(
+pub(crate) async fn prepare_with_protection<R, A>(
     credentials: &R,
     api: &A,
     request_id: &RequestId,
+    protect: bool,
 ) -> Result<PreparedAccept, AcceptError>
 where
     R: CredentialReader,
-    A: CurrentAccountApi + RequestLookupApi + UserLookupApi + BalanceApi,
+    A: CurrentAccountApi
+        + RequestLookupApi
+        + UserLookupApi
+        + BalanceApi
+        + RequestApprovalNotificationApi
+        + PeerFundingApi
+        + RequestApprovalEligibilityApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
 {
     let (credential, account, request) = preflight::prepare(credentials, api, request_id)
@@ -161,16 +190,57 @@ where
         .map_err(|source| AcceptError::Balance {
             source: ApiOperationFailure::new(source),
         })?;
-    let Ok(available_cents) = u64::try_from(balance.available().cents()) else {
-        return Err(AcceptError::InsufficientWalletBalance);
-    };
-    if available_cents < request.amount().cents() {
-        return Err(AcceptError::InsufficientWalletBalance);
+    let balance_covers_request = u64::try_from(balance.available().cents())
+        .is_ok_and(|available_cents| available_cents >= request.amount().cents());
+    let mut plan = AcceptRequestPlan::new(account, request, balance);
+    if protect || !balance_covers_request {
+        let notification_id = api
+            .request_approval_notification_id(
+                credential.access_token(),
+                credential.device_id(),
+                plan.request().id(),
+            )
+            .await
+            .map_err(|source| AcceptError::NotificationLookup {
+                source: ApiOperationFailure::new(source),
+            })?;
+        let methods = api
+            .peer_funding_methods(credential.access_token(), credential.device_id())
+            .await
+            .map_err(|source| AcceptError::FundingMethods {
+                source: ApiOperationFailure::new(source),
+            })?;
+        let funding = funding::select(&methods)?;
+        let note = plan
+            .request()
+            .note()
+            .ok_or(RequestMutationValidationError::InvalidNote)?;
+        let eligibility = api
+            .request_approval_eligibility(
+                credential.access_token(),
+                credential.device_id(),
+                plan.request().counterparty(),
+                plan.request().amount().cents(),
+                note,
+                &funding,
+            )
+            .await
+            .map_err(|source| AcceptError::Eligibility {
+                source: ApiOperationFailure::new(source),
+            })?;
+        let (eligibility_token, fees) = eligibility.into_parts();
+        let fees = if protect {
+            if fees.total_cents() > plan.request().amount().cents() {
+                return Err(AcceptError::ProtectionFeeExceedsAmount);
+            }
+            fees
+        } else {
+            RequestApprovalFees::omitted()
+        };
+        plan =
+            plan.with_external_funding(notification_id, funding, eligibility_token, fees, protect);
     }
-    Ok(PreparedAccept::new(
-        credential,
-        AcceptRequestPlan::new(account, request, balance),
-    ))
+    Ok(PreparedAccept::new(credential, plan))
 }
 
 pub(crate) fn authorize<P>(

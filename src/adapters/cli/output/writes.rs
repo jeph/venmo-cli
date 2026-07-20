@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{FinancialStatus, PeerFundingFee, PeerFundingMethod};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
-use crate::features::requests::create::RequestCreateResult;
+use crate::features::requests::create::{PreparedRequest, RequestCreateResult};
 use crate::features::requests::decline::{DeclineResult, PreparedDecline};
 
 use super::TimestampFormatter;
@@ -108,6 +108,34 @@ pub(crate) fn write_request_create_result<W: Write>(
     writeln!(writer, "Requested audience: {}", result.plan().visibility())
 }
 
+pub(crate) fn write_request_create_details<W: Write>(
+    writer: &mut W,
+    prepared: &PreparedRequest,
+) -> io::Result<()> {
+    let plan = prepared.plan();
+    writeln!(writer, "Request creation details:")?;
+    writeln!(
+        writer,
+        "  Requesting account: {} (ID {})",
+        sanitize_terminal_text(&plan.account().username().to_string()),
+        plan.account().user_id()
+    )?;
+    writeln!(
+        writer,
+        "  Requested from: {} (ID {})",
+        sanitize_terminal_text(&financial_user_label(plan.recipient())),
+        plan.recipient().user_id()
+    )?;
+    writeln!(writer, "  Amount: ${}", plan.amount())?;
+    writeln!(
+        writer,
+        "  Note: {}",
+        sanitize_terminal_text(plan.note().as_str())
+    )?;
+    writeln!(writer, "  Requested audience: {}", plan.visibility())?;
+    writeln!(writer, "  Action: create payment request")
+}
+
 pub(crate) fn write_accept_details<W: Write>(
     writer: &mut W,
     prepared: &PreparedAccept,
@@ -142,6 +170,15 @@ pub(crate) fn write_accept_details<W: Write>(
     writeln!(writer, "  Audience: private")?;
     writeln!(
         writer,
+        "  Purchase protection: {}",
+        if plan.is_purchase_protected() {
+            "requested"
+        } else {
+            "not requested"
+        }
+    )?;
+    writeln!(
+        writer,
         "  Current request status: {}",
         sanitize_terminal_text(request.status().as_str())
     )?;
@@ -151,21 +188,31 @@ pub(crate) fn write_accept_details<W: Write>(
     }
     writeln!(
         writer,
-        "  Fee/source proof: unavailable in the request-update contract"
-    )?;
-    writeln!(
-        writer,
         "  Available Venmo balance: {}",
         plan.balance().available()
     )?;
-    writeln!(
-        writer,
-        "  Funding guard: available balance covers the request and no external funding method will be submitted."
-    )?;
-    writeln!(
-        writer,
-        "  Warning: the update does not bind that balance snapshot or prove the final fee/source; accepting pays the requester and settles this exact request."
-    )
+    if let Some(method) = plan.backup_method() {
+        writeln!(writer, "  Funding plan: external backup method")?;
+        write_backup_method(writer, method)?;
+        write_method_fee(writer, method.fee())?;
+        if plan.is_purchase_protected() {
+            let fee_cents = plan.approval_fee_cents().unwrap_or(0);
+            writeln!(
+                writer,
+                "  Estimated purchase-protection seller fee: ${}",
+                format_usd_cents(u128::from(fee_cents))
+            )?;
+            writeln!(
+                writer,
+                "  Estimated recipient proceeds: ${}",
+                format_usd_cents(u128::from(plan.recipient_proceeds_cents().unwrap_or(0)))
+            )
+        } else {
+            Ok(())
+        }
+    } else {
+        writeln!(writer, "  Funding plan: available Venmo balance")
+    }
 }
 
 pub(crate) fn write_accept_result<W: Write>(
@@ -177,16 +224,16 @@ pub(crate) fn write_accept_result<W: Write>(
         "Accepted request ID: {}",
         sanitize_terminal_text(result.plan().request().id().as_str())
     )?;
-    writeln!(
-        writer,
-        "Payment ID: {}",
-        sanitize_terminal_text(result.accepted().payment_id().as_str())
-    )?;
-    writeln!(
-        writer,
-        "Status: {}",
-        financial_status(result.accepted().status())
-    )?;
+    if let Some(payment_id) = result.accepted().payment_id() {
+        writeln!(
+            writer,
+            "Payment ID: {}",
+            sanitize_terminal_text(payment_id.as_str())
+        )?;
+    }
+    if let Some(status) = result.accepted().status() {
+        writeln!(writer, "Status: {}", financial_status(status))?;
+    }
     writeln!(
         writer,
         "Paid requester: {}",
@@ -195,10 +242,14 @@ pub(crate) fn write_accept_result<W: Write>(
         ))
     )?;
     writeln!(writer, "Amount: ${}", result.plan().request().amount())?;
-    writeln!(
-        writer,
-        "Validation required full available-balance coverage and submitted no external funding method; the response did not prove the actual source or fee."
-    )
+    if let Some(method) = result.plan().backup_method() {
+        writeln!(
+            writer,
+            "Submitted backup method ID: {}",
+            sanitize_terminal_text(method.method().id().as_str())
+        )?;
+    }
+    Ok(())
 }
 
 pub(crate) fn write_decline_result<W: Write>(
@@ -271,10 +322,6 @@ pub(crate) fn write_decline_details<W: Write>(
     writeln!(
         writer,
         "  Action: decline this exact incoming request without sending money."
-    )?;
-    writeln!(
-        writer,
-        "  Confirmation defaults to No; --yes skips only the confirmation prompt."
     )
 }
 

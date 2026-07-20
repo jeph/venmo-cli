@@ -61,12 +61,22 @@ absence of another exact match beyond the bounded search.
 
 ## Request-acceptance funding and fee evidence
 
-Request acceptance retains a residual evidence gap. Validation requires an available Venmo balance
-snapshot covering the full request, and the approval submits no external funding-method
-identifier. The mutation does not bind that
-snapshot, however, and its response proves neither the final funding source nor the fee. Output
-must disclose that limitation and must not claim wallet funding or a `$0.00` fee. Changing those
-claims requires transaction-bound source and fee evidence from the acceptance operation itself.
+Signer-verified Android 10.31.1 and 26.13.0 establish unacknowledged notification lookup,
+association of nested `payment.id` with a distinct top-level notification ID, source-bound
+eligibility, and explicit funding options on `PUT /v1/requests/{notification-id}`. A separately
+approved bounded client-1 read confirmed the direct array and distinct paired IDs without retaining
+values. Native code includes applied fees only when Purchase Protection
+is selected. The CLI uses the branch after any balance shortfall or explicit `--protect`, only with
+its deterministic external peer-method policy and a valid eligibility token. Unprotected approval
+omits returned fees. Protected approval strictly validates and submits normalized fee objects and
+shows the eligibility amount as an estimated seller deduction with estimated recipient proceeds.
+An earlier payment-ID write returned non-success and reconciled as no mutation. A subsequent
+owner-run unprotected source-funded approval using the corrected top-level notification ID
+completed successfully, proving current client-1 authorization for that F4S branch. Residual gaps
+remain: the successful object does not prove the actual debit source or final fee beyond the
+eligibility response; explicit protected approval has not received separate live validation; and
+current native webview/SMS-step-up continuations are unsupported. No output may claim an actual
+source or final fee, and no continuation may be retried.
 
 ## Friendship mutation session authorization
 

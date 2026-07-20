@@ -9,10 +9,17 @@ use time::OffsetDateTime;
 
 use super::*;
 use crate::features::auth::PromptAvailability;
-use crate::features::payments::{FinancialStatus, PaymentId};
+use crate::features::payments::funding::FundingSelectionError;
+use crate::features::payments::{
+    EligibilityToken, FinancialStatus, PaymentId, PeerFundingApi, PeerFundingFee,
+    PeerFundingMethod, PeerFundingRole,
+};
 use crate::features::people::{User, UserProfileKind};
-use crate::features::requests::{RequestAction, RequestDirection, RequestRecord, RequestStatus};
-use crate::features::wallet::{Balance, SignedUsdAmount};
+use crate::features::requests::{
+    RequestAction, RequestApprovalEligibility, RequestApprovalFee, RequestApprovalFees,
+    RequestDirection, RequestNotificationId, RequestRecord, RequestStatus,
+};
+use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
 use crate::shared::{
     AccessToken, Account, ApiFailureKind, CredentialAccessError, CredentialCapability,
     CredentialFailureKind, CredentialFormat, CredentialStoreFailure, DeviceId, LoadedCredential,
@@ -35,6 +42,10 @@ struct AcceptPlanCall {
     account: Account,
     request: RequestRecord,
     balance: Balance,
+    notification_id: Option<RequestNotificationId>,
+    backup_method_id: Option<PaymentMethodId>,
+    approval_fee_cents: Option<u64>,
+    protected: bool,
 }
 
 impl From<&AcceptRequestPlan> for AcceptPlanCall {
@@ -43,6 +54,12 @@ impl From<&AcceptRequestPlan> for AcceptPlanCall {
             account: plan.account().clone(),
             request: plan.request().clone(),
             balance: plan.balance().clone(),
+            notification_id: plan.approval_notification_id().cloned(),
+            backup_method_id: plan
+                .backup_method()
+                .map(|funding| funding.method().id().clone()),
+            approval_fee_cents: plan.approval_fee_cents(),
+            protected: plan.is_purchase_protected(),
         }
     }
 }
@@ -64,6 +81,20 @@ enum Call {
     },
     Balance {
         session: RedactedSecret,
+    },
+    ApprovalNotification {
+        session: RedactedSecret,
+        request_id: RequestId,
+    },
+    FundingMethods {
+        session: RedactedSecret,
+    },
+    ApprovalEligibility {
+        session: RedactedSecret,
+        requester_id: UserId,
+        amount_cents: u64,
+        note: String,
+        funding_method_id: PaymentMethodId,
     },
     PromptAvailability,
     ConfirmDefaultNo {
@@ -114,11 +145,34 @@ enum AcceptFailure {
     RequesterIdentityMismatch,
     RequestValidation(RequestMutationValidationError),
     Balance(ApiFailureKind),
-    InsufficientWalletBalance,
+    NotificationLookup(ApiFailureKind),
+    FundingMethods(ApiFailureKind),
+    FundingSelection(FundingSelectionFailure),
+    Eligibility(ApiFailureKind),
+    ProtectionFeeExceedsAmount,
     ConfirmationRequired,
     ConfirmationDeclined,
     Confirmation(PromptFailure),
     Accept(ApiFailureKind),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FundingSelectionFailure {
+    NoEligibleMethods,
+    DuplicateMethodIds,
+    MultipleDefaults,
+    AmbiguousAutomaticSelection,
+}
+
+impl From<FundingSelectionError> for FundingSelectionFailure {
+    fn from(value: FundingSelectionError) -> Self {
+        match value {
+            FundingSelectionError::NoEligibleMethods => Self::NoEligibleMethods,
+            FundingSelectionError::DuplicateMethodIds => Self::DuplicateMethodIds,
+            FundingSelectionError::MultipleDefaults => Self::MultipleDefaults,
+            FundingSelectionError::AmbiguousAutomaticSelection => Self::AmbiguousAutomaticSelection,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -156,7 +210,13 @@ fn project(result: Result<AcceptResult, AcceptError>) -> AcceptOutcome {
             AcceptError::RequesterIdentityMismatch => AcceptFailure::RequesterIdentityMismatch,
             AcceptError::RequestValidation(source) => AcceptFailure::RequestValidation(source),
             AcceptError::Balance { source } => AcceptFailure::Balance(source.kind()),
-            AcceptError::InsufficientWalletBalance => AcceptFailure::InsufficientWalletBalance,
+            AcceptError::NotificationLookup { source } => {
+                AcceptFailure::NotificationLookup(source.kind())
+            }
+            AcceptError::FundingMethods { source } => AcceptFailure::FundingMethods(source.kind()),
+            AcceptError::FundingSelection(source) => AcceptFailure::FundingSelection(source.into()),
+            AcceptError::Eligibility { source } => AcceptFailure::Eligibility(source.kind()),
+            AcceptError::ProtectionFeeExceedsAmount => AcceptFailure::ProtectionFeeExceedsAmount,
             AcceptError::ConfirmationRequired => AcceptFailure::ConfirmationRequired,
             AcceptError::ConfirmationDeclined => AcceptFailure::ConfirmationDeclined,
             AcceptError::Confirmation {
@@ -228,6 +288,9 @@ struct AcceptScript {
     request: Result<RequestRecord, FakeApiError>,
     user: Result<User, FakeApiError>,
     balance: Result<Balance, FakeApiError>,
+    notification_id: Result<RequestNotificationId, FakeApiError>,
+    funding_methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    eligibility: Result<RequestApprovalEligibility, FakeApiError>,
     accepted: Result<AcceptedRequest, FakeApiError>,
 }
 
@@ -238,6 +301,12 @@ impl AcceptScript {
             request: Ok(standard_request()?),
             user: Ok(financial_requester()?),
             balance: Ok(sufficient_balance()),
+            notification_id: Ok(RequestNotificationId::from_str("notification-1")?),
+            funding_methods: Ok(vec![funding_method("bank-1", true)?]),
+            eligibility: Ok(RequestApprovalEligibility::new(
+                eligibility_token()?,
+                approval_fees(),
+            )),
             accepted: Ok(accepted_request()?),
         })
     }
@@ -258,6 +327,36 @@ impl AcceptScript {
         Self { balance, ..self }
     }
 
+    fn with_notification_id(
+        self,
+        notification_id: Result<RequestNotificationId, FakeApiError>,
+    ) -> Self {
+        Self {
+            notification_id,
+            ..self
+        }
+    }
+
+    fn with_funding_methods(
+        self,
+        funding_methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    ) -> Self {
+        Self {
+            funding_methods,
+            ..self
+        }
+    }
+
+    fn with_eligibility(
+        self,
+        eligibility: Result<RequestApprovalEligibility, FakeApiError>,
+    ) -> Self {
+        Self {
+            eligibility,
+            ..self
+        }
+    }
+
     fn with_accepted(self, accepted: Result<AcceptedRequest, FakeApiError>) -> Self {
         Self { accepted, ..self }
     }
@@ -268,6 +367,9 @@ struct FakeApi {
     request: Result<RequestRecord, FakeApiError>,
     user: Result<User, FakeApiError>,
     balance: Result<Balance, FakeApiError>,
+    notification_id: Result<RequestNotificationId, FakeApiError>,
+    funding_methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    eligibility: RefCell<Option<Result<RequestApprovalEligibility, FakeApiError>>>,
     accepted: Result<AcceptedRequest, FakeApiError>,
     transcript: Transcript,
 }
@@ -279,6 +381,9 @@ impl FakeApi {
             request: script.request,
             user: script.user,
             balance: script.balance,
+            notification_id: script.notification_id,
+            funding_methods: script.funding_methods,
+            eligibility: RefCell::new(Some(script.eligibility)),
             accepted: script.accepted,
             transcript,
         }
@@ -351,6 +456,69 @@ impl BalanceApi for FakeApi {
     }
 }
 
+impl PeerFundingApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn peer_funding_methods<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::FundingMethods {
+            session: RedactedSecret::Redacted,
+        });
+        ready(self.funding_methods.clone())
+    }
+}
+
+impl RequestApprovalNotificationApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn request_approval_notification_id<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        request_id: &'a RequestId,
+    ) -> impl Future<Output = Result<RequestNotificationId, Self::Error>> + Send + 'a {
+        self.transcript
+            .borrow_mut()
+            .push(Call::ApprovalNotification {
+                session: RedactedSecret::Redacted,
+                request_id: request_id.clone(),
+            });
+        ready(self.notification_id.clone())
+    }
+}
+
+impl RequestApprovalEligibilityApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn request_approval_eligibility<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        requester: &'a User,
+        amount_cents: u64,
+        note: &'a str,
+        funding: &'a PeerFundingMethod,
+    ) -> impl Future<Output = Result<RequestApprovalEligibility, Self::Error>> + Send + 'a {
+        self.transcript
+            .borrow_mut()
+            .push(Call::ApprovalEligibility {
+                session: RedactedSecret::Redacted,
+                requester_id: requester.user_id().clone(),
+                amount_cents,
+                note: note.to_owned(),
+                funding_method_id: funding.method().id().clone(),
+            });
+        let result = match self.eligibility.borrow_mut().take() {
+            Some(result) => result,
+            None => Err(FakeApiError(ApiFailureKind::Internal)),
+        };
+        ready(result)
+    }
+}
+
 impl RequestAcceptanceApi for FakeApi {
     type Error = FakeApiError;
 
@@ -420,7 +588,7 @@ async fn run_accept(
     request_id: &RequestId,
     assume_yes: bool,
 ) -> Result<AcceptResult, AcceptError> {
-    let prepared = prepare(reader, api, request_id).await?;
+    let prepared = prepare_with_protection(reader, api, request_id, false).await?;
     let authorized = authorize(prompt, prepared, assume_yes)?;
     execute(api, authorized).await
 }
@@ -459,6 +627,10 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
                     account,
                     request: final_request,
                     balance,
+                    notification_id: None,
+                    backup_method_id: None,
+                    approval_fee_cents: None,
+                    protected: false,
                 }),
             },
         ],
@@ -472,6 +644,240 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
     let rendered = format!("{:?}", observed.transcript);
     assert!(!rendered.contains(ACCESS_TOKEN));
     assert!(!rendered.contains(DEVICE_ID));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn insufficient_balance_uses_selected_external_funding_before_one_accept_write() -> TestResult
+{
+    for (available_cents, request_cents) in [(-1_i64, 1_u64), (0, 1), (1, 2)] {
+        let request_id = RequestId::from_str("request-1")?;
+        let initial_request = standard_request_with_amount(request_cents)?;
+        let requester = financial_requester()?;
+        let final_request = initial_request.clone().with_counterparty(requester.clone());
+        let balance = Balance::new(
+            SignedUsdAmount::from_cents(available_cents),
+            SignedUsdAmount::from_cents(0),
+        );
+        let funding = funding_method("bank-1", true)?;
+        let plan = AcceptRequestPlan::new(account("123")?, final_request.clone(), balance.clone())
+            .with_external_funding(
+                RequestNotificationId::from_str("notification-1")?,
+                funding.clone(),
+                eligibility_token()?,
+                RequestApprovalFees::omitted(),
+                false,
+            );
+        let expected_result = AcceptResult::new(plan, AcceptedRequest::source_funded());
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+        let script = AcceptScript::successful()?
+            .with_request(Ok(initial_request.clone()))
+            .with_balance(Ok(balance.clone()))
+            .with_accepted(Ok(AcceptedRequest::source_funded()));
+        let api = FakeApi::new(script, Rc::clone(&transcript));
+        let prompt = FakePrompt::new(false, PromptScript::Answer(false), Rc::clone(&transcript));
+        let mut expected_calls = preparation_calls(&request_id, &initial_request)?;
+        expected_calls.extend([
+            Call::ApprovalNotification {
+                session: RedactedSecret::Redacted,
+                request_id: request_id.clone(),
+            },
+            Call::FundingMethods {
+                session: RedactedSecret::Redacted,
+            },
+            Call::ApprovalEligibility {
+                session: RedactedSecret::Redacted,
+                requester_id: requester.user_id().clone(),
+                amount_cents: request_cents,
+                note: "Synthetic request".to_owned(),
+                funding_method_id: PaymentMethodId::from_str("bank-1")?,
+            },
+            Call::Accept {
+                session: RedactedSecret::Redacted,
+                plan: Box::new(AcceptPlanCall {
+                    account: account("123")?,
+                    request: final_request,
+                    balance,
+                    notification_id: Some(RequestNotificationId::from_str("notification-1")?),
+                    backup_method_id: Some(PaymentMethodId::from_str("bank-1")?),
+                    approval_fee_cents: None,
+                    protected: false,
+                }),
+            },
+        ]);
+        let expected = Observation::new(
+            AcceptOutcome::Success(Box::new(expected_result)),
+            expected_calls,
+        );
+
+        let result = run_accept(&reader, &api, &prompt, &request_id, true).await;
+        let observed = Observation::new(project(result), transcript.borrow().clone());
+
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn explicit_protection_preserves_recipient_fee_and_uses_external_approval() -> TestResult {
+    let request_id = RequestId::from_str("request-1")?;
+    let initial_request = standard_request_with_amount(100)?;
+    let requester = financial_requester()?;
+    let final_request = initial_request.clone().with_counterparty(requester.clone());
+    let balance = sufficient_balance();
+    let funding = funding_method("bank-1", true)?;
+    let plan = AcceptRequestPlan::new(account("123")?, final_request.clone(), balance.clone())
+        .with_external_funding(
+            RequestNotificationId::from_str("notification-1")?,
+            funding.clone(),
+            eligibility_token()?,
+            approval_fees(),
+            true,
+        );
+    let expected_result = AcceptResult::new(plan, AcceptedRequest::source_funded());
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+    let script = AcceptScript::successful()?
+        .with_request(Ok(initial_request.clone()))
+        .with_accepted(Ok(AcceptedRequest::source_funded()));
+    let api = FakeApi::new(script, Rc::clone(&transcript));
+    let prompt = FakePrompt::new(false, PromptScript::Answer(false), Rc::clone(&transcript));
+    let mut expected_calls = preparation_calls(&request_id, &initial_request)?;
+    expected_calls.extend([
+        Call::ApprovalNotification {
+            session: RedactedSecret::Redacted,
+            request_id: request_id.clone(),
+        },
+        Call::FundingMethods {
+            session: RedactedSecret::Redacted,
+        },
+        Call::ApprovalEligibility {
+            session: RedactedSecret::Redacted,
+            requester_id: requester.user_id().clone(),
+            amount_cents: initial_request.amount().cents(),
+            note: "Synthetic request".to_owned(),
+            funding_method_id: PaymentMethodId::from_str("bank-1")?,
+        },
+        Call::Accept {
+            session: RedactedSecret::Redacted,
+            plan: Box::new(AcceptPlanCall {
+                account: account("123")?,
+                request: final_request,
+                balance,
+                notification_id: Some(RequestNotificationId::from_str("notification-1")?),
+                backup_method_id: Some(PaymentMethodId::from_str("bank-1")?),
+                approval_fee_cents: Some(25),
+                protected: true,
+            }),
+        },
+    ]);
+    let expected = Observation::new(
+        AcceptOutcome::Success(Box::new(expected_result)),
+        expected_calls,
+    );
+
+    let prepared = prepare_with_protection(&reader, &api, &request_id, true).await?;
+    let authorized = authorize(&prompt, prepared, true)?;
+    let result = execute(&api, authorized).await;
+    let observed = Observation::new(project(result), transcript.borrow().clone());
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn protection_fee_exceeding_request_fails_before_confirmation_or_write() -> TestResult {
+    let request_id = RequestId::from_str("request-1")?;
+    let request = standard_request()?;
+    let requester = financial_requester()?;
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(AcceptScript::successful()?, Rc::clone(&transcript));
+    let mut expected_calls = preparation_calls(&request_id, &request)?;
+    expected_calls.extend([
+        Call::ApprovalNotification {
+            session: RedactedSecret::Redacted,
+            request_id: request_id.clone(),
+        },
+        Call::FundingMethods {
+            session: RedactedSecret::Redacted,
+        },
+        Call::ApprovalEligibility {
+            session: RedactedSecret::Redacted,
+            requester_id: requester.user_id().clone(),
+            amount_cents: request.amount().cents(),
+            note: "Synthetic request".to_owned(),
+            funding_method_id: PaymentMethodId::from_str("bank-1")?,
+        },
+    ]);
+
+    let result = prepare_with_protection(&reader, &api, &request_id, true).await;
+
+    assert!(matches!(
+        result,
+        Err(AcceptError::ProtectionFeeExceedsAmount)
+    ));
+    assert_eq!(*transcript.borrow(), expected_calls);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn external_funding_preflight_failures_stop_before_confirmation_or_write() -> TestResult {
+    let request_id = RequestId::from_str("request-1")?;
+    let zero_balance = Balance::new(
+        SignedUsdAmount::from_cents(0),
+        SignedUsdAmount::from_cents(0),
+    );
+    let cases = [
+        (
+            AcceptScript::successful()?
+                .with_balance(Ok(zero_balance.clone()))
+                .with_notification_id(Err(FakeApiError(ApiFailureKind::Network))),
+            AcceptFailure::NotificationLookup(ApiFailureKind::Network),
+            6_usize,
+        ),
+        (
+            AcceptScript::successful()?
+                .with_balance(Ok(zero_balance.clone()))
+                .with_funding_methods(Err(FakeApiError(ApiFailureKind::Network))),
+            AcceptFailure::FundingMethods(ApiFailureKind::Network),
+            7,
+        ),
+        (
+            AcceptScript::successful()?
+                .with_balance(Ok(zero_balance.clone()))
+                .with_funding_methods(Ok(Vec::new())),
+            AcceptFailure::FundingSelection(FundingSelectionFailure::NoEligibleMethods),
+            7,
+        ),
+        (
+            AcceptScript::successful()?
+                .with_balance(Ok(zero_balance.clone()))
+                .with_eligibility(Err(FakeApiError(ApiFailureKind::Rejected))),
+            AcceptFailure::Eligibility(ApiFailureKind::Rejected),
+            8,
+        ),
+    ];
+
+    for (script, expected_failure, expected_call_count) in cases {
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+        let api = FakeApi::new(script, Rc::clone(&transcript));
+        let prompt = FakePrompt::new(false, PromptScript::Answer(false), Rc::clone(&transcript));
+
+        let result = run_accept(&reader, &api, &prompt, &request_id, true).await;
+        let observed = Observation::new(project(result), transcript.borrow().clone());
+
+        assert_eq!(observed.outcome, AcceptOutcome::Failure(expected_failure));
+        assert_eq!(observed.transcript.len(), expected_call_count);
+        assert!(
+            !observed
+                .transcript
+                .iter()
+                .any(|call| matches!(call, Call::Accept { .. } | Call::PromptAvailability))
+        );
+    }
     Ok(())
 }
 
@@ -632,24 +1038,6 @@ async fn unsafe_contract_identity_financial_and_balance_variants_never_write() -
                 RequestMutationValidationError::IncompleteRequester,
             ),
             prefix_len: 4,
-        },
-        UnsafeCase {
-            script: AcceptScript::successful()?.with_balance(Ok(Balance::new(
-                SignedUsdAmount::from_cents(-1),
-                SignedUsdAmount::from_cents(0),
-            ))),
-            returned_request: standard.clone(),
-            expected_failure: AcceptFailure::InsufficientWalletBalance,
-            prefix_len: 5,
-        },
-        UnsafeCase {
-            script: AcceptScript::successful()?.with_balance(Ok(Balance::new(
-                SignedUsdAmount::from_cents(0),
-                SignedUsdAmount::from_cents(0),
-            ))),
-            returned_request: standard,
-            expected_failure: AcceptFailure::InsufficientWalletBalance,
-            prefix_len: 5,
         },
     ];
 
@@ -845,6 +1233,10 @@ fn successful_calls(request_id: &RequestId) -> Result<Vec<Call>, Box<dyn Error>>
             account,
             request: final_request,
             balance,
+            notification_id: None,
+            backup_method_id: None,
+            approval_fee_cents: None,
+            protected: false,
         }),
     });
     Ok(calls)
@@ -931,16 +1323,21 @@ fn financial_user(
 }
 
 fn standard_request() -> Result<RequestRecord, Box<dyn Error>> {
-    request_record(
-        "request-1",
+    standard_request_with_amount(1)
+}
+
+fn standard_request_with_amount(amount_cents: u64) -> Result<RequestRecord, Box<dyn Error>> {
+    Ok(RequestRecord::new(
+        RequestId::from_str("request-1")?,
         RequestAction::Charge,
         RequestDirection::Incoming,
         financial_requester()?,
-        "pending",
-        Some("Synthetic request"),
-        Some("private"),
+        Money::from_cents(amount_cents)?,
+        Some("Synthetic request".to_owned()),
         Some(OffsetDateTime::UNIX_EPOCH),
+        RequestStatus::from_str("pending")?,
     )
+    .with_audience(Some("private".to_owned())))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -971,6 +1368,46 @@ fn sufficient_balance() -> Balance {
     Balance::new(
         SignedUsdAmount::from_cents(1),
         SignedUsdAmount::from_cents(0),
+    )
+}
+
+fn funding_method(id: &str, is_default: bool) -> Result<PeerFundingMethod, Box<dyn Error>> {
+    let method = PaymentMethod::new(
+        PaymentMethodId::from_str(id)?,
+        Some("Synthetic bank".to_owned()),
+        Some("bank".to_owned()),
+        Some("1234".to_owned()),
+        is_default,
+    );
+    let role = if is_default {
+        PeerFundingRole::Default
+    } else {
+        PeerFundingRole::Backup
+    };
+    Ok(PeerFundingMethod::new(
+        method,
+        role,
+        PeerFundingFee::Unknown,
+    ))
+}
+
+fn eligibility_token() -> Result<EligibilityToken, Box<dyn Error>> {
+    Ok(EligibilityToken::parse_owned(
+        "synthetic-approval-eligibility".to_owned(),
+    )?)
+}
+
+fn approval_fees() -> RequestApprovalFees {
+    RequestApprovalFees::present(
+        vec![RequestApprovalFee::new(
+            "venmo://fees/request-approval".to_owned(),
+            "transaction".to_owned(),
+            "synthetic-fee-token".to_owned(),
+            Some(25),
+            Some("2.5".to_owned()),
+            25,
+        )],
+        25,
     )
 }
 
