@@ -86,7 +86,7 @@ pub(super) const ACCEPT_DETAILS: &str = concat!(
     "  Current request status: pending\n",
     "  Created: 1970-01-01T00:00:00Z\n",
     "  Available Venmo balance: $0.01\n",
-    "  Funding plan: available Venmo balance\n",
+    "  Funding source: Venmo balance (balance, ID balance-1)\n",
 );
 
 pub(super) const ACCEPT_RESULT: &str = concat!(
@@ -95,4 +95,5 @@ pub(super) const ACCEPT_RESULT: &str = concat!(
     "Status: settled\n",
     "Paid requester: @requester (Synthetic requester)\n",
     "Amount: $0.01\n",
+    "Submitted funding source ID: balance-1\n",
 );

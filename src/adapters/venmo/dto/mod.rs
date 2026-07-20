@@ -25,7 +25,7 @@ pub(super) use people::{
 pub(super) use requests::{
     CreateRequestRequest, FundedRequestApproval, FundedRequestApprovalFee,
     RequestApprovalEligibilityEnvelope, RequestApprovalFeeDto, RequestApprovalMetadata,
-    RequestApprovalNotificationsEnvelope, UpdatePaymentRequest,
+    RequestApprovalNotificationsEnvelope, RequestVerificationMetadata, UpdatePaymentRequest,
 };
 pub(super) use transfers::{
     CreateTransferRequest, CreatedTransferEnvelope, PreferredTransferTypeDto,

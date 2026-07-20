@@ -12,6 +12,9 @@ pub(super) fn preparation_calls() -> Vec<AcceptCall> {
             user_id: "456".to_owned(),
         },
         AcceptCall::Balance,
+        AcceptCall::ApprovalNotification,
+        AcceptCall::FundingMethods,
+        AcceptCall::ApprovalEligibility,
     ]
 }
 
@@ -54,7 +57,7 @@ pub(super) fn accept_call() -> AcceptCall {
             note: Some("Synthetic request".to_owned()),
             audience: Some("private".to_owned()),
             available_balance_cents: 1,
-            funding_source_id: None,
+            funding_source_id: PaymentMethodId::from_str("balance-1").ok(),
         },
     }
 }

@@ -4,16 +4,12 @@ use super::{
     CreatedPayment, EligibilityToken, PayPlan, PeerFundingSource, PeerFundingSources,
     PurchaseProtectionFee,
 };
-use crate::features::auth::{OtpCode, PromptAvailability, PromptError};
+use crate::features::auth::{PromptAvailability, PromptError};
 use crate::features::people::User;
-use crate::shared::{AccessToken, ApiFailure, ClientRequestId, DeviceId, Money, Note};
+use crate::shared::{AccessToken, ApiFailure, DeviceId, Money, Note};
 
 pub trait DefaultNoConfirmation: PromptAvailability {
     fn confirm_default_no(&self, prompt: &str) -> Result<bool, PromptError>;
-}
-
-pub(crate) trait PaymentStepUpInput: PromptAvailability {
-    fn read_payment_otp(&self, prompt: &str) -> Result<OtpCode, PromptError>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,15 +22,6 @@ pub(crate) enum PaymentVerification {
 pub(crate) enum PaymentCreationOutcome {
     Created(CreatedPayment),
     OtpStepUpRequired,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PaymentOtpVerification {
-    Verified,
-    Incorrect,
-    Expired,
-    Unexpected,
-    TooManyIncorrectAttempts,
 }
 
 #[derive(Debug)]
@@ -135,23 +122,4 @@ pub(crate) trait PaymentCreationApi {
         plan: &'a PayPlan,
         verification: PaymentVerification,
     ) -> impl Future<Output = Result<PaymentCreationOutcome, Self::Error>> + Send + 'a;
-}
-
-pub(crate) trait PaymentStepUpApi {
-    type Error: ApiFailure;
-
-    fn issue_payment_otp<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        request_id: &'a ClientRequestId,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a;
-
-    fn verify_payment_otp<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        request_id: &'a ClientRequestId,
-        otp: &'a OtpCode,
-    ) -> impl Future<Output = Result<PaymentOtpVerification, Self::Error>> + Send + 'a;
 }

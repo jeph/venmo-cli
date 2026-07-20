@@ -1,3 +1,4 @@
+use super::super::response::{is_p2p_otp_step_up_required, p2p_otp_step_up_session_id};
 use super::*;
 
 #[test]
@@ -131,4 +132,70 @@ fn unsafe_error_codes_are_not_rendered() {
     assert_eq!(sanitize_api_code("AUTH-1"), Some("AUTH-1".to_owned()));
     assert_eq!(sanitize_api_code("bad\ncode"), None);
     assert_eq!(sanitize_api_code(&"x".repeat(65)), None);
+}
+
+#[test]
+fn p2p_step_up_detection_matches_the_current_app_exactly() -> TestResult {
+    let required = scripted_json_response(
+        403,
+        serde_json::json!({"error":{"title":"OTP_STEP_UP_REQUIRED"}}),
+    )?;
+    assert!(is_p2p_otp_step_up_required(&required));
+
+    for (status, body) in [
+        (
+            400,
+            serde_json::json!({"error":{"title":"OTP_STEP_UP_REQUIRED"}}),
+        ),
+        (403, serde_json::json!({"error":{"code":1396}})),
+        (
+            403,
+            serde_json::json!({"error":{"title":"otp_step_up_required"}}),
+        ),
+        (403, serde_json::json!({"title":"OTP_STEP_UP_REQUIRED"})),
+        (
+            403,
+            serde_json::json!({"error":{"metadata":{"title":"OTP_STEP_UP_REQUIRED"}}}),
+        ),
+    ] {
+        let response = scripted_json_response(status, body)?;
+        assert!(!is_p2p_otp_step_up_required(&response));
+    }
+    Ok(())
+}
+
+#[test]
+fn acceptance_step_up_requires_a_valid_root_metadata_uuid() -> TestResult {
+    let session_id = ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?;
+    let response = scripted_json_response(
+        403,
+        serde_json::json!({
+            "error": {
+                "title":"OTP_STEP_UP_REQUIRED",
+                "metadata":{"uuid":session_id.to_string()}
+            }
+        }),
+    )?;
+    assert_eq!(
+        p2p_otp_step_up_session_id(REQUEST_ACCEPTANCE_OPERATION, &response)?,
+        Some(session_id)
+    );
+
+    for body in [
+        serde_json::json!({"error":{"title":"OTP_STEP_UP_REQUIRED"}}),
+        serde_json::json!({
+            "error":{"title":"OTP_STEP_UP_REQUIRED","metadata":{"uuid":"not-a-uuid"}}
+        }),
+        serde_json::json!({
+            "error":{"title":"OTP_STEP_UP_REQUIRED"},
+            "metadata":{"uuid":"123e4567-e89b-12d3-a456-426614174000"}
+        }),
+    ] {
+        let response = scripted_json_response(403, body)?;
+        assert!(matches!(
+            p2p_otp_step_up_session_id(REQUEST_ACCEPTANCE_OPERATION, &response),
+            Err(VenmoApiError::Contract { .. })
+        ));
+    }
+    Ok(())
 }

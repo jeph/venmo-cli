@@ -11,11 +11,14 @@ use clap::Parser;
 
 use super::*;
 use crate::adapters::cli::error::ErrorCategory;
-use crate::features::auth::{PromptAvailability, PromptError};
+use crate::features::auth::{OtpCode, PromptAvailability, PromptError};
+use crate::features::p2p_step_up::{P2pOtpVerification, P2pStepUpApi, P2pStepUpInput};
 use crate::features::people::{
     User, UserProfileKind, UserSearchPage, UserSearchPageRequest, UserSearchQuery,
 };
-use crate::features::requests::{CreatedRequest, RequestId, RequestStatus};
+use crate::features::requests::{
+    CreatedRequest, RequestCreationOutcome, RequestCreationVerification, RequestId, RequestStatus,
+};
 use crate::shared::test_support::Observed;
 use crate::shared::{
     AccessToken, Account, ApiFailureKind, CredentialCapability, CredentialEnvelope,
@@ -160,7 +163,8 @@ impl RequestCreationApi for FakeRequestApi {
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
         plan: &'a crate::features::requests::CreateRequestPlan,
-    ) -> impl Future<Output = Result<CreatedRequest, Self::Error>> + Send + 'a {
+        _verification: RequestCreationVerification,
+    ) -> impl Future<Output = Result<RequestCreationOutcome, Self::Error>> + Send + 'a {
         self.transcript
             .borrow_mut()
             .push(RequestCall::CreateRequest {
@@ -173,10 +177,35 @@ impl RequestCreationApi for FakeRequestApi {
         let behavior = self.write_behavior.clone();
         async move {
             match behavior {
-                RequestWriteBehavior::Complete(created) => Ok(created),
+                RequestWriteBehavior::Complete(created) => {
+                    Ok(RequestCreationOutcome::Created(created))
+                }
                 RequestWriteBehavior::Pending => pending().await,
             }
         }
+    }
+}
+
+impl P2pStepUpApi for FakeRequestApi {
+    type Error = FakeRequestApiError;
+
+    fn issue_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a crate::shared::ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        ready(Err(FakeRequestApiError))
+    }
+
+    fn verify_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a crate::shared::ClientRequestId,
+        _otp: &'a OtpCode,
+    ) -> impl Future<Output = Result<P2pOtpVerification, Self::Error>> + Send + 'a {
+        ready(Err(FakeRequestApiError))
     }
 }
 
@@ -201,6 +230,14 @@ impl DefaultNoConfirmation for UnusedRequestPrompt {
     fn confirm_default_no(&self, _prompt: &str) -> Result<bool, PromptError> {
         Err(PromptError::Interaction {
             source: io::Error::other("unexpected request-creation prompt"),
+        })
+    }
+}
+
+impl P2pStepUpInput for UnusedRequestPrompt {
+    fn read_p2p_otp(&self, _prompt: &str) -> Result<OtpCode, PromptError> {
+        Err(PromptError::Interaction {
+            source: io::Error::other("unexpected request-creation OTP prompt"),
         })
     }
 }

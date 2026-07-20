@@ -1,7 +1,11 @@
 use thiserror::Error;
 
-use super::{CreateRequestPlan, CreatedRequest, RequestCreationApi};
+use super::{
+    CreateRequestPlan, CreatedRequest, RequestCreationApi, RequestCreationOutcome,
+    RequestCreationVerification,
+};
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
+use crate::features::p2p_step_up::{self, P2pStepUpApi, P2pStepUpError, P2pStepUpInput};
 use crate::features::payments::confirmation::{self, DefaultNoConfirmationError};
 use crate::features::payments::{DefaultNoConfirmation, PeerPreflightError};
 use crate::features::people::{RecipientInput, UserLookupApi, UserSearchApi};
@@ -71,6 +75,8 @@ pub enum RequestCreateError {
         #[source]
         source: ApiOperationFailure,
     },
+    #[error(transparent)]
+    StepUp(#[from] P2pStepUpError),
 }
 
 impl RequestCreateError {
@@ -82,6 +88,7 @@ impl RequestCreateError {
             Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
             Self::Confirmation { source } => prompt_failure_kind(source),
             Self::Create { source } => ApplicationFailureKind::Api(source.kind()),
+            Self::StepUp(source) => source.failure_kind(),
         }
     }
 }
@@ -119,24 +126,50 @@ where
     Ok(PreparedRequest::new(credential, plan))
 }
 
-pub(crate) async fn execute<A>(
+pub(crate) async fn execute<A, P>(
     api: &A,
+    prompt: &P,
     authorized: AuthorizedRequest,
 ) -> Result<RequestCreateResult, RequestCreateError>
 where
-    A: RequestCreationApi,
+    A: RequestCreationApi + P2pStepUpApi,
+    P: P2pStepUpInput,
 {
     let AuthorizedRequest(prepared) = authorized;
-    let created = api
+    let first_attempt = api
         .create_request(
             prepared.credential.access_token(),
             prepared.credential.device_id(),
             &prepared.plan,
+            RequestCreationVerification::Unverified,
         )
         .await
         .map_err(|source| RequestCreateError::Create {
             source: ApiOperationFailure::new(source),
         })?;
+    let created = match first_attempt {
+        RequestCreationOutcome::Created(created) => created,
+        RequestCreationOutcome::OtpStepUpRequired => {
+            let session_id = prepared.plan.request_id();
+            p2p_step_up::complete(api, prompt, &prepared.credential, &session_id).await?;
+            match api
+                .create_request(
+                    prepared.credential.access_token(),
+                    prepared.credential.device_id(),
+                    &prepared.plan,
+                    RequestCreationVerification::SmsOtpVerified,
+                )
+                .await
+                .map_err(|source| RequestCreateError::Create {
+                    source: ApiOperationFailure::new(source),
+                })? {
+                RequestCreationOutcome::Created(created) => created,
+                RequestCreationOutcome::OtpStepUpRequired => {
+                    return Err(P2pStepUpError::StillRequired.into());
+                }
+            }
+        }
+    };
     Ok(RequestCreateResult::new(prepared.plan, created))
 }
 

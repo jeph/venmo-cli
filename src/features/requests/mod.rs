@@ -23,8 +23,9 @@ pub(crate) use plans::{
 };
 pub(crate) use ports::{PendingRequestsPage, PendingRequestsPageRequest, RequestsApi};
 pub(crate) use ports::{
-    RequestAcceptanceApi, RequestApprovalEligibility, RequestApprovalEligibilityApi,
-    RequestApprovalNotificationApi, RequestCancellationApi, RequestCreationApi, RequestDeclineApi,
-    RequestLookupApi,
+    RequestAcceptanceApi, RequestAcceptanceOutcome, RequestAcceptanceVerification,
+    RequestApprovalEligibility, RequestApprovalEligibilityApi, RequestApprovalNotificationApi,
+    RequestCancellationApi, RequestCreationApi, RequestCreationOutcome,
+    RequestCreationVerification, RequestDeclineApi, RequestLookupApi,
 };
 pub(crate) use preflight::RequestMutationPreflightError;

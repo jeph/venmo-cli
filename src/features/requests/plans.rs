@@ -83,11 +83,11 @@ pub struct AcceptRequestPlan {
     account: Account,
     request: RequestRecord,
     balance: Balance,
-    modern_funding: Option<ModernAcceptFunding>,
+    funding: Option<AcceptanceFunding>,
 }
 
 #[derive(Eq, PartialEq)]
-struct ModernAcceptFunding {
+struct AcceptanceFunding {
     notification_id: RequestNotificationId,
     source: PeerFundingSource,
     source_selection: PeerFundingSourceSelection,
@@ -217,12 +217,12 @@ impl AcceptRequestPlan {
             account,
             request,
             balance,
-            modern_funding: None,
+            funding: None,
         }
     }
 
     #[must_use]
-    pub(crate) fn with_modern_funding(
+    pub(crate) fn with_funding(
         self,
         notification_id: RequestNotificationId,
         source: PeerFundingSource,
@@ -232,7 +232,7 @@ impl AcceptRequestPlan {
         protected: bool,
     ) -> Self {
         Self {
-            modern_funding: Some(ModernAcceptFunding {
+            funding: Some(AcceptanceFunding {
                 notification_id,
                 source,
                 source_selection,
@@ -261,43 +261,38 @@ impl AcceptRequestPlan {
 
     #[must_use]
     pub fn funding_source(&self) -> Option<&PeerFundingSource> {
-        self.modern_funding.as_ref().map(|funding| &funding.source)
+        self.funding.as_ref().map(|funding| &funding.source)
     }
 
     #[must_use]
     pub fn funding_source_selection(&self) -> Option<PeerFundingSourceSelection> {
-        self.modern_funding
+        self.funding
             .as_ref()
             .map(|funding| funding.source_selection)
     }
 
     #[must_use]
-    pub const fn uses_modern_funding(&self) -> bool {
-        self.modern_funding.is_some()
-    }
-
-    #[must_use]
     pub(crate) fn approval_notification_id(&self) -> Option<&RequestNotificationId> {
-        self.modern_funding
+        self.funding
             .as_ref()
             .map(|funding| &funding.notification_id)
     }
 
     #[must_use]
     pub(crate) fn eligibility_token(&self) -> Option<&EligibilityToken> {
-        self.modern_funding
+        self.funding
             .as_ref()
             .map(|funding| &funding.eligibility_token)
     }
 
     #[must_use]
     pub(crate) fn approval_fees(&self) -> Option<&RequestApprovalFees> {
-        self.modern_funding.as_ref().map(|funding| &funding.fees)
+        self.funding.as_ref().map(|funding| &funding.fees)
     }
 
     #[must_use]
     pub const fn approval_fee_cents(&self) -> Option<u64> {
-        match &self.modern_funding {
+        match &self.funding {
             Some(funding) if funding.protected => Some(funding.fees.total_cents()),
             Some(_) | None => None,
         }
@@ -305,7 +300,7 @@ impl AcceptRequestPlan {
 
     #[must_use]
     pub const fn is_purchase_protected(&self) -> bool {
-        match &self.modern_funding {
+        match &self.funding {
             Some(funding) => funding.protected,
             None => false,
         }
@@ -331,6 +326,7 @@ pub struct AcceptedRequest {
 }
 
 impl AcceptedRequest {
+    #[cfg(test)]
     #[must_use]
     pub(crate) const fn new(payment_id: PaymentId, status: FinancialStatus) -> Self {
         Self {

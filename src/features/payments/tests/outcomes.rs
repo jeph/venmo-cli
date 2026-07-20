@@ -110,17 +110,23 @@ pub(super) fn pay_outcome(result: Result<PayResult, PayError>) -> PayOutcome {
                 PayFailure::Confirmation(PromptFailure::from(&source))
             }
             PayError::Create { source } => PayFailure::Create(source.kind()),
-            PayError::StepUpPromptRequired => PayFailure::StepUpPromptRequired,
-            PayError::StepUpIssue { source } => PayFailure::StepUpIssue(source.kind()),
-            PayError::StepUpPrompt { source } => {
+            PayError::StepUp(P2pStepUpError::PromptRequired) => PayFailure::StepUpPromptRequired,
+            PayError::StepUp(P2pStepUpError::Issue { source }) => {
+                PayFailure::StepUpIssue(source.kind())
+            }
+            PayError::StepUp(P2pStepUpError::Prompt { source }) => {
                 PayFailure::StepUpPrompt(PromptFailure::from(&source))
             }
-            PayError::StepUpVerify { source } => PayFailure::StepUpVerify(source.kind()),
-            PayError::StepUpOtpIncorrect
-            | PayError::StepUpOtpExpired
-            | PayError::StepUpOtpUnexpected
-            | PayError::StepUpOtpTooManyAttempts
-            | PayError::StepUpStillRequired => PayFailure::StepUpRejected,
+            PayError::StepUp(P2pStepUpError::Verify { source }) => {
+                PayFailure::StepUpVerify(source.kind())
+            }
+            PayError::StepUp(
+                P2pStepUpError::OtpIncorrect
+                | P2pStepUpError::OtpExpired
+                | P2pStepUpError::OtpUnexpected
+                | P2pStepUpError::OtpTooManyAttempts
+                | P2pStepUpError::StillRequired,
+            ) => PayFailure::StepUpRejected,
         }),
     }
 }

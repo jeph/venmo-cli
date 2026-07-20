@@ -3,14 +3,15 @@ use std::str::FromStr;
 
 use serde_json::Value;
 
-use crate::features::payments::{EligibilityToken, FinancialStatus, PaymentId, PeerFundingSource};
+use crate::features::payments::{EligibilityToken, PeerFundingSource};
 use crate::features::people::User;
 use crate::features::requests::{
     AcceptRequestPlan, AcceptedRequest, CancelRequestPlan, CancelledRequest, CreateRequestPlan,
-    CreatedRequest, DeclineRequestPlan, DeclinedRequest, PendingRequestsPage,
-    PendingRequestsPageRequest, RequestAcceptanceApi, RequestAction, RequestApprovalEligibility,
-    RequestApprovalEligibilityApi, RequestApprovalFee, RequestApprovalFees,
-    RequestApprovalNotificationApi, RequestCancellationApi, RequestCreationApi, RequestDeclineApi,
+    DeclineRequestPlan, DeclinedRequest, PendingRequestsPage, PendingRequestsPageRequest,
+    RequestAcceptanceApi, RequestAcceptanceOutcome, RequestAcceptanceVerification, RequestAction,
+    RequestApprovalEligibility, RequestApprovalEligibilityApi, RequestApprovalFee,
+    RequestApprovalFees, RequestApprovalNotificationApi, RequestCancellationApi,
+    RequestCreationApi, RequestCreationOutcome, RequestCreationVerification, RequestDeclineApi,
     RequestDirection, RequestId, RequestLookupApi, RequestNotificationId, RequestRecord,
     RequestStatus, RequestsApi, RequestsBefore,
 };
@@ -19,7 +20,8 @@ use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
 use super::super::dto::{
     CreateRequestRequest, FundedRequestApproval, FundedRequestApprovalFee, PaymentEnvelope,
     PaymentRecordDto, PaymentsEnvelope, RequestApprovalEligibilityEnvelope, RequestApprovalFeeDto,
-    RequestApprovalMetadata, RequestApprovalNotificationsEnvelope, UpdatePaymentRequest,
+    RequestApprovalMetadata, RequestApprovalNotificationsEnvelope, RequestVerificationMetadata,
+    UpdatePaymentRequest,
 };
 use super::super::transport::{ApiSession, ApiTransport, FormBody, HttpRequest, JsonBody};
 use super::error::VenmoApiError;
@@ -30,13 +32,11 @@ use super::payments::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RequestMutation {
-    Accept,
     Decline,
     Cancel,
 }
 
 enum RequestMutationStatus {
-    Accepted(FinancialStatus),
     Declined(RequestStatus),
     Cancelled(RequestStatus),
 }
@@ -108,7 +108,6 @@ fn request_approval_fee_contract_error<T>() -> Result<T, VenmoApiError> {
 impl RequestMutation {
     const fn operation(self) -> &'static str {
         match self {
-            Self::Accept => REQUEST_ACCEPTANCE_OPERATION,
             Self::Decline => REQUEST_DECLINE_OPERATION,
             Self::Cancel => REQUEST_CANCELLATION_OPERATION,
         }
@@ -116,7 +115,6 @@ impl RequestMutation {
 
     const fn wire_action(self) -> &'static str {
         match self {
-            Self::Accept => "approve",
             Self::Decline => "deny",
             Self::Cancel => "cancel",
         }
@@ -124,7 +122,6 @@ impl RequestMutation {
 
     const fn allows_response_action(self, action: RequestAction) -> bool {
         match self {
-            Self::Accept => matches!(action, RequestAction::Pay | RequestAction::Charge),
             Self::Decline => matches!(action, RequestAction::Charge),
             Self::Cancel => matches!(action, RequestAction::Charge),
         }
@@ -150,20 +147,6 @@ impl RequestMutation {
         status: RequestStatus,
     ) -> Result<RequestMutationStatus, VenmoApiError> {
         match self {
-            Self::Accept => {
-                let status = match status.as_str() {
-                    "settled" => FinancialStatus::Settled,
-                    "pending" => FinancialStatus::Pending,
-                    "held" => FinancialStatus::Held,
-                    _ => {
-                        return financial_contract_unknown(
-                            self.operation(),
-                            "the response contained an unsupported accepted-payment status",
-                        );
-                    }
-                };
-                Ok(RequestMutationStatus::Accepted(status))
-            }
             Self::Decline => {
                 if status.as_str() != "cancelled" {
                     return financial_contract_unknown(
@@ -211,7 +194,10 @@ impl RequestMappingContext {
         matches!(self, Self::PendingList)
     }
 }
-use super::response::{decode_success, require_financial_success_json};
+use super::response::{
+    decode_success, is_p2p_otp_step_up_required, p2p_otp_step_up_session_id,
+    require_financial_success_json,
+};
 use super::support::{
     bounded_optional_text, map_user, parse_timestamp, require_query_value, validate_page_count,
     validate_query_keys,
@@ -223,13 +209,18 @@ use super::{
     REQUEST_LIST_OPERATION, VenmoApiClient,
 };
 
+const SMS_OTP_METHOD: &str = "sms_otp";
+const SMS_OTP_METHODS: &[&str] = &[SMS_OTP_METHOD];
+const SMS_OTP_VERIFIED_STATUS: &str = "sms_otp_verified";
+
 impl<T: ApiTransport> VenmoApiClient<T> {
     async fn create_peer_request(
         &self,
         access_token: &AccessToken,
         device_id: &DeviceId,
         plan: &CreateRequestPlan,
-    ) -> Result<CreatedRequest, VenmoApiError> {
+        verification: RequestCreationVerification,
+    ) -> Result<RequestCreationOutcome, VenmoApiError> {
         let creation = PeerCreation::Request;
         let request_id = plan.request_id().to_string();
         let amount = money_json_number(plan.amount(), creation)?;
@@ -239,6 +230,11 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             audience: plan.visibility().as_str(),
             amount: &amount,
             note: plan.note().as_str(),
+            metadata: matches!(verification, RequestCreationVerification::SmsOtpVerified)
+                .then_some(RequestVerificationMetadata {
+                    verification_method: SMS_OTP_METHODS,
+                    verification_status: SMS_OTP_VERIFIED_STATUS,
+                }),
         })
         .map_err(|_| VenmoApiError::RequestEncoding {
             operation: REQUEST_CREATION_OPERATION,
@@ -250,6 +246,9 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 HttpRequest::financial_json_post("/payments", &["payments"], &[], body),
             )
             .await?;
+        if is_p2p_otp_step_up_required(&response) {
+            return Ok(RequestCreationOutcome::OtpStepUpRequired);
+        }
         let value = require_financial_success_json(creation.operation(), response)?;
         let payment = parse_created_record(creation, value)?;
         validate_created_request(
@@ -260,6 +259,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             plan.note(),
             plan.visibility(),
         )
+        .map(RequestCreationOutcome::Created)
     }
 
     async fn accept_incoming_request(
@@ -267,21 +267,10 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         access_token: &AccessToken,
         device_id: &DeviceId,
         plan: &AcceptRequestPlan,
-    ) -> Result<AcceptedRequest, VenmoApiError> {
-        if plan.uses_modern_funding() {
-            return self
-                .accept_source_funded_request(access_token, device_id, plan)
-                .await;
-        }
-        let payment = self
-            .update_incoming_request(
-                access_token,
-                device_id,
-                plan.request().id(),
-                RequestMutation::Accept,
-            )
-            .await?;
-        validate_accepted_request(payment, plan)
+        verification: RequestAcceptanceVerification,
+    ) -> Result<RequestAcceptanceOutcome, VenmoApiError> {
+        self.accept_source_funded_request(access_token, device_id, plan, verification)
+            .await
     }
 
     async fn fetch_request_approval_notification_id(
@@ -426,7 +415,8 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         access_token: &AccessToken,
         device_id: &DeviceId,
         plan: &AcceptRequestPlan,
-    ) -> Result<AcceptedRequest, VenmoApiError> {
+        verification: RequestAcceptanceVerification,
+    ) -> Result<RequestAcceptanceOutcome, VenmoApiError> {
         let funding = plan
             .funding_source()
             .ok_or(VenmoApiError::RequestEncoding {
@@ -469,12 +459,21 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                     .collect::<Result<Vec<_>, VenmoApiError>>()
             })
             .transpose()?;
+        let verification_uuid = match verification {
+            RequestAcceptanceVerification::Unverified => None,
+            RequestAcceptanceVerification::SmsOtpVerified(session_id) => {
+                Some(session_id.to_string())
+            }
+        };
         let body = JsonBody::encode(&FundedRequestApproval {
             funding_source_id: funding.method().id().as_str(),
             eligibility_token: token.expose(),
             fees: wire_fees.as_deref(),
             metadata: RequestApprovalMetadata {
                 quasi_cash_disclaimer_viewed: false,
+                verification_method: verification_uuid.as_ref().map(|_| SMS_OTP_METHODS),
+                verification_status: verification_uuid.as_ref().map(|_| SMS_OTP_VERIFIED_STATUS),
+                uuid: verification_uuid.as_deref(),
             },
         })
         .map_err(|_| VenmoApiError::RequestEncoding {
@@ -492,6 +491,11 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 ),
             )
             .await?;
+        if let Some(session_id) =
+            p2p_otp_step_up_session_id(REQUEST_ACCEPTANCE_OPERATION, &response)?
+        {
+            return Ok(RequestAcceptanceOutcome::OtpStepUpRequired(session_id));
+        }
         let value = require_financial_success_json(REQUEST_ACCEPTANCE_OPERATION, response)?;
         if !value.is_object() {
             return financial_contract_unknown(
@@ -505,7 +509,9 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 "the source-funded approval requires an unsupported continuation",
             );
         }
-        Ok(AcceptedRequest::source_funded())
+        Ok(RequestAcceptanceOutcome::Accepted(
+            AcceptedRequest::source_funded(),
+        ))
     }
 
     async fn decline_incoming_request(
@@ -698,8 +704,9 @@ impl<T: ApiTransport> RequestCreationApi for VenmoApiClient<T> {
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
         plan: &'a CreateRequestPlan,
-    ) -> impl Future<Output = Result<CreatedRequest, Self::Error>> + Send + 'a {
-        self.create_peer_request(access_token, device_id, plan)
+        verification: RequestCreationVerification,
+    ) -> impl Future<Output = Result<RequestCreationOutcome, Self::Error>> + Send + 'a {
+        self.create_peer_request(access_token, device_id, plan, verification)
     }
 }
 
@@ -710,8 +717,9 @@ impl<T: ApiTransport> RequestAcceptanceApi for VenmoApiClient<T> {
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
         plan: &'a AcceptRequestPlan,
-    ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a {
-        self.accept_incoming_request(access_token, device_id, plan)
+        verification: RequestAcceptanceVerification,
+    ) -> impl Future<Output = Result<RequestAcceptanceOutcome, Self::Error>> + Send + 'a {
+        self.accept_incoming_request(access_token, device_id, plan, verification)
     }
 }
 
@@ -821,38 +829,6 @@ fn parse_updated_payment(
     Ok(TimestampedPaymentRecord::new(payment, created_at))
 }
 
-fn validate_accepted_request(
-    payment: TimestampedPaymentRecord,
-    plan: &AcceptRequestPlan,
-) -> Result<AcceptedRequest, VenmoApiError> {
-    let mutation = RequestMutation::Accept;
-    let operation = mutation.operation();
-    let status =
-        validate_updated_record(mutation, &payment, plan.request(), plan.account().user_id())?;
-    let status = match status {
-        RequestMutationStatus::Accepted(status) => status,
-        RequestMutationStatus::Declined(_) => {
-            return financial_contract_unknown(
-                operation,
-                "request acceptance produced a decline-status validation result",
-            );
-        }
-        RequestMutationStatus::Cancelled(_) => {
-            return financial_contract_unknown(
-                operation,
-                "request acceptance produced a cancellation-status validation result",
-            );
-        }
-    };
-    let payment_id = PaymentId::from_str(&payment.payment().id.as_str()).map_err(|_| {
-        VenmoApiError::FinancialOutcomeUnknown {
-            operation,
-            problem: "the response contained an invalid accepted-payment ID",
-        }
-    })?;
-    Ok(AcceptedRequest::new(payment_id, status))
-}
-
 fn validate_declined_request(
     payment: TimestampedPaymentRecord,
     plan: &DeclineRequestPlan,
@@ -863,12 +839,6 @@ fn validate_declined_request(
         validate_updated_record(mutation, &payment, plan.request(), plan.account().user_id())?;
     let status = match status {
         RequestMutationStatus::Declined(status) => status,
-        RequestMutationStatus::Accepted(_) => {
-            return financial_contract_unknown(
-                operation,
-                "request decline produced an acceptance-status validation result",
-            );
-        }
         RequestMutationStatus::Cancelled(_) => {
             return financial_contract_unknown(
                 operation,
@@ -889,7 +859,7 @@ fn validate_cancelled_request(
         validate_updated_record(mutation, &payment, plan.request(), plan.account().user_id())?;
     let status = match status {
         RequestMutationStatus::Cancelled(status) => status,
-        RequestMutationStatus::Accepted(_) | RequestMutationStatus::Declined(_) => {
+        RequestMutationStatus::Declined(_) => {
             return financial_contract_unknown(
                 operation,
                 "request cancellation produced a different mutation-status validation result",
@@ -907,7 +877,7 @@ fn validate_updated_record(
 ) -> Result<RequestMutationStatus, VenmoApiError> {
     let operation = mutation.operation();
     let record = payment.payment();
-    if mutation != RequestMutation::Accept && record.id.as_str() != request.id().as_str() {
+    if record.id.as_str() != request.id().as_str() {
         return financial_contract_unknown(
             operation,
             "the response returned a different request ID",
@@ -957,26 +927,11 @@ fn validate_updated_record(
                 operation,
                 problem: "the mutation plan omitted the original creation timestamp",
             })?;
-    match mutation {
-        RequestMutation::Accept
-            if response_created_at.unix_timestamp_nanos()
-                < expected_created_at.unix_timestamp_nanos() =>
-        {
-            return financial_contract_unknown(
-                operation,
-                "the accepted payment predates the original request",
-            );
-        }
-        RequestMutation::Decline | RequestMutation::Cancel
-            if response_created_at.unix_timestamp_nanos()
-                != expected_created_at.unix_timestamp_nanos() =>
-        {
-            return financial_contract_unknown(
-                operation,
-                "the response returned a different creation timestamp",
-            );
-        }
-        RequestMutation::Accept | RequestMutation::Decline | RequestMutation::Cancel => {}
+    if response_created_at.unix_timestamp_nanos() != expected_created_at.unix_timestamp_nanos() {
+        return financial_contract_unknown(
+            operation,
+            "the response returned a different creation timestamp",
+        );
     }
     let status = RequestStatus::from_str(&record.status).map_err(|_| {
         VenmoApiError::FinancialOutcomeUnknown {

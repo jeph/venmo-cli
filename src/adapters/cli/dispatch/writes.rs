@@ -90,10 +90,10 @@ pub(super) async fn run_request_create<R, A, G, P, W, E, M, S>(
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
-    A: CurrentAccountApi + UserLookupApi + UserSearchApi + RequestCreationApi,
+    A: CurrentAccountApi + UserLookupApi + UserSearchApi + RequestCreationApi + PaymentStepUpApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
     G: ClientRequestIdGenerator,
-    P: DefaultNoConfirmation,
+    P: DefaultNoConfirmation + PaymentStepUpInput,
     W: Write,
     E: Write,
     M: FnOnce() -> Result<S, AppError>,
@@ -112,8 +112,11 @@ where
     write_and_flush(stderr, &prepared, output::write_request_create_details)?;
     let authorized = request_create::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
-    let result =
-        protect_with_interruption(request_create::execute(api, authorized), interruption).await??;
+    let result = protect_with_interruption(
+        request_create::execute(api, prompt, authorized),
+        interruption,
+    )
+    .await??;
     write_and_flush(stdout, &result, output::write_request_create_result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())
@@ -139,9 +142,10 @@ where
         + PeerFundingApi
         + RequestApprovalNotificationApi
         + RequestApprovalEligibilityApi
-        + RequestAcceptanceApi,
+        + RequestAcceptanceApi
+        + PaymentStepUpApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
-    P: DefaultNoConfirmation,
+    P: DefaultNoConfirmation + PaymentStepUpInput,
     W: Write,
     E: Write,
     M: FnOnce() -> Result<S, AppError>,
@@ -161,7 +165,7 @@ where
     let authorized = accept::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
-        protect_with_interruption(accept::execute(api, authorized), interruption).await??;
+        protect_with_interruption(accept::execute(api, prompt, authorized), interruption).await??;
     write_and_flush(stdout, &result, output::write_accept_result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())

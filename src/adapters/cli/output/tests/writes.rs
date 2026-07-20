@@ -403,7 +403,7 @@ fn synthetic_accept_plan_with_balance_and_amount(
 
 fn synthetic_external_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
     Ok(
-        synthetic_accept_plan_with_balance_and_amount(0, 100)?.with_modern_funding(
+        synthetic_accept_plan_with_balance_and_amount(0, 100)?.with_funding(
             RequestNotificationId::from_str("notification-1")?,
             PeerFundingSource::external(PeerFundingMethod::new(
                 PaymentMethod::new(

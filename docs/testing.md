@@ -26,7 +26,7 @@ rejection of nonpayment records. Detail tests preserve absolute payment actor/ta
 | Layer | Primary contract |
 | --- | --- |
 | Shared and feature-model unit tests | Parsing, invariants, exact value behavior, redaction, and failure classification |
-| Feature tests | Orchestration, capability use, ordered calls, zero/one-write behavior except the exact same-UUID payment step-up continuation, no automatic retry, and complete outcomes |
+| Feature tests | Orchestration, capability use, ordered calls, zero/one-write behavior except an exact one-time P2P step-up continuation, no automatic retry, and complete outcomes |
 | Venmo adapter tests | Exact request shape, credential mode, response mapping, bounds, fixed-origin continuation validation, and transport error classification |
 | Credential adapter tests | Exact codec compatibility and native-adapter behavior through a scripted backend |
 | CLI adapter tests | Argument grammar, dispatch, logging/precondition order, private terminal seams, prompts, interruption handling, deterministic time-zone conversion and UTC fallback, rendering, error categories, and output failures |
@@ -122,10 +122,8 @@ relationship-state selection, default-No and `--yes`, interruption ties, post-tr
 ambiguity, and authoritative user-detail reconciliation. Tests must leave an unexpected second
 mutation response unconsumed to prove there is no retry.
 
-Request-acceptance coverage proves both funding branches, explicit source selection, and explicit
-protection. Sufficient balance must skip payment methods and approval eligibility before the legacy
-action-only write only for a default unprotected acceptance. Every shortfall, explicit `--source`,
-and `--protect` plan must first resolve exactly one
+Request-acceptance coverage proves current-route balance and external funding, explicit source
+selection, and explicit protection. Every plan must first resolve exactly one
 unacknowledged notification by matching its payment ID to the canonical pending-request ID. Tests
 cover both direct root `id`/`payment.id` notifications and current
 `additional_properties.request.id`/`additional_properties.request.payment.id` wrappers, retain the
@@ -165,14 +163,19 @@ that protected fields and the same UUID survive while
 verification fields are merged. Fee and eligibility tokens remain redacted from every transcript
 and `Debug` value. These tests are service-free; no protected live mutation is a routine test.
 
-Payment step-up coverage is entirely service-free. Exact transcripts prove an initial creation
+P2P step-up coverage is entirely service-free. Exact transcripts prove an initial payment,
+request-creation, or request-acceptance
 challenge, terminal-capability check, one SMS issue, one hidden six-digit prompt, one verification,
-and at most one verified creation using the same immutable plan and UUID. Wire tests pin `/graphql`,
+and at most one verified continuation using the same immutable plan. Payment and request creation
+retain the client UUID; acceptance uses the valid server UUID from root challenge metadata. Wire tests pin `/graphql`,
 the P2P issue/validate documents and inputs, `validated: true` precedence over reason metadata,
 known false-result rejection reasons, and the exact verified-payment metadata. Tests must prove the
 OTP is redacted and that noninteractive use, issuance failure, prompt
 failure, incorrect/expired/unexpected OTP, excessive attempts, malformed responses, and a repeated
-challenge stop without another payment submission.
+challenge stop without another financial submission. Detector tests require exact HTTP 403 and root
+title `OTP_STEP_UP_REQUIRED`; code-only, wrong-status, wrong-title, and nested-title responses do not
+enter step-up. Acceptance tests fail closed on missing or invalid server UUIDs and prove preservation
+of source, eligibility token, fees, quasi-cash metadata, and request-action ID.
 
 Payment rejection tests map only exact HTTP/status/root-code dossiers. HTTP 403/root `1360` must
 render the 10-minute duplicate explanation, and HTTP 403/root `10100` must say that Venmo's
@@ -207,7 +210,7 @@ Use **exact assertions** for contracts where any changed byte, field, order, or 
 
 - command/help schemas, rendered tables, sanitized errors, exit codes, and stream
   placement;
-- the complete ordered feature transcript, including zero/one write or the exact payment step-up
+- the complete ordered feature transcript, including zero/one write or an exact P2P step-up
   continuation, and no automatic retry;
 - HTTP method, fixed origin, route, query, required headers, content type, body, credential mode,
   operation class, and response-capture mode;

@@ -1,5 +1,9 @@
+use std::str::FromStr;
+
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+
+use crate::shared::ClientRequestId;
 
 use super::super::transport::HttpResponse;
 use super::PAYMENT_CREATION_OPERATION;
@@ -61,13 +65,47 @@ pub(super) fn require_financial_success_json(
     Ok(value)
 }
 
-pub(super) fn is_payment_otp_step_up_required(response: &HttpResponse) -> bool {
-    matches!(response.status().as_u16(), 400 | 403)
+pub(super) fn is_p2p_otp_step_up_required(response: &HttpResponse) -> bool {
+    response.status().as_u16() == 403
         && serde_json::from_slice::<Value>(response.body())
             .ok()
-            .and_then(|value| extract_root_error_code(&value))
+            .and_then(|value| {
+                value
+                    .get("error")?
+                    .as_object()?
+                    .get("title")?
+                    .as_str()
+                    .map(str::to_owned)
+            })
             .as_deref()
-            == Some("1396")
+            == Some("OTP_STEP_UP_REQUIRED")
+}
+
+pub(super) fn p2p_otp_step_up_session_id(
+    operation: &'static str,
+    response: &HttpResponse,
+) -> Result<Option<ClientRequestId>, VenmoApiError> {
+    if !is_p2p_otp_step_up_required(response) {
+        return Ok(None);
+    }
+    let value =
+        serde_json::from_slice::<Value>(response.body()).map_err(|_| VenmoApiError::Contract {
+            operation,
+            problem: "the SMS-verification challenge was not valid JSON",
+        })?;
+    let session_id = value
+        .pointer("/error/metadata/uuid")
+        .and_then(Value::as_str)
+        .ok_or(VenmoApiError::Contract {
+            operation,
+            problem: "the SMS-verification challenge omitted its session UUID",
+        })?;
+    ClientRequestId::from_str(session_id)
+        .map(Some)
+        .map_err(|_| VenmoApiError::Contract {
+            operation,
+            problem: "the SMS-verification challenge contained an invalid session UUID",
+        })
 }
 
 pub(super) fn require_state_write_success_json(

@@ -249,7 +249,7 @@ async fn otp_step_up_issues_prompts_verifies_and_continues_once_with_the_same_pl
             request_id: fixed_request_id(),
         },
         Call::ReadPaymentOtp {
-            prompt: "Venmo SMS payment-verification code".to_owned(),
+            prompt: "Venmo SMS verification code".to_owned(),
         },
         Call::VerifyPaymentOtp {
             session: RedactedSecret::Redacted,

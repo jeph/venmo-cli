@@ -242,34 +242,165 @@ async fn request_detail_preserves_terminal_state_for_mutation_preflight() -> Tes
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn request_acceptance_uses_exact_approve_update_and_validates_settlement() -> TestResult {
-    for (action, actor_id, target_id) in [("charge", "456", "123"), ("pay", "123", "456")] {
-        let server = MockServer::start().await;
-        let mut response = updated_payment_body(action, "settled", actor_id, target_id);
-        response["data"]["id"] = Value::String("payment-1".to_owned());
-        response["data"]["date_created"] = Value::String("2026-07-14T23:50:08Z".to_owned());
-        Mock::given(method("PUT"))
-            .and(path("/v1/payments/request-1"))
-            .and(header("accept", "application/json; charset=utf-8"))
-            .and(header("content-type", "application/json"))
-            .and(header("authorization", "Bearer synthetic-token"))
-            .and(header("device-id", "synthetic-device"))
-            .and(body_string(r#"{"action":"approve"}"#))
-            .respond_with(ResponseTemplate::new(200).set_body_json(response))
-            .mount(&server)
+async fn balance_funded_request_acceptance_uses_the_current_options_route() -> TestResult {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/v1/requests/notification-1"))
+        .and(header("accept", "application/json; charset=utf-8"))
+        .and(header("content-type", "application/json"))
+        .and(header("authorization", "Bearer synthetic-token"))
+        .and(header("device-id", "synthetic-device"))
+        .and(body_string(
+            r#"{"funding_source_id":"balance-1","eligibility_token":"synthetic-approval-token","metadata":{"quasi_cash_disclaimer_viewed":false}}"#,
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data":{"url":null}
+        })))
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let (token, device_id) = test_session()?;
+    let accepted = client
+        .accept_request(
+            &token,
+            &device_id,
+            &accept_plan()?,
+            RequestAcceptanceVerification::Unverified,
+        )
+        .await?;
+    assert!(matches!(accepted, RequestAcceptanceOutcome::Accepted(_)));
+    assert_request_count(&server, 1).await;
+    assert_requests_have_no_query(&server).await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_acceptance_maps_server_step_up_uuid_and_preserves_the_plan_when_verified()
+-> TestResult {
+    let session_id = ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?;
+    let challenge = scripted_json_response(
+        403,
+        serde_json::json!({
+            "error": {
+                "code":1396,
+                "title":"OTP_STEP_UP_REQUIRED",
+                "metadata":{"uuid":session_id.to_string()}
+            }
+        }),
+    )?;
+    let (client, transport) = scripted_client([Ok(challenge)])?;
+    let (token, device_id) = test_session()?;
+    let plan = source_funded_accept_plan_with_fees(RequestApprovalFees::present(
+        vec![synthetic_approval_fee(25)],
+        25,
+    ))?;
+
+    let result = client
+        .accept_request(
+            &token,
+            &device_id,
+            &plan,
+            RequestAcceptanceVerification::Unverified,
+        )
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |outcome| {
+            assert_eq!(
+                outcome,
+                RequestAcceptanceOutcome::OtpStepUpRequired(session_id)
+            );
+        }),
+        &transport,
+    );
+    assert_eq!(
+        observed,
+        ScriptedObservation::expected(
+            Ok(()),
+            vec![authenticated_request(
+                Method::PUT,
+                "/requests/{request-id}",
+                &["requests", "notification-1"],
+                &[],
+                Some(br#"{"funding_source_id":"bank-1","eligibility_token":"synthetic-approval-token","fees":[{"product_uri":"venmo://fees/request-approval","applied_to":"transaction","fee_token":"synthetic-fee-token","base_fee_amount":25,"fee_percentage":2.5,"calculated_fee_amount_in_cents":25}],"metadata":{"quasi_cash_disclaimer_viewed":false}}"#),
+                OperationClass::FinancialWrite,
+            )]
+        )
+    );
+
+    let verified_body = format!(
+        concat!(
+            r#"{{"funding_source_id":"bank-1","eligibility_token":"synthetic-approval-token","#,
+            r#""fees":[{{"product_uri":"venmo://fees/request-approval","applied_to":"transaction","#,
+            r#""fee_token":"synthetic-fee-token","base_fee_amount":25,"fee_percentage":2.5,"#,
+            r#""calculated_fee_amount_in_cents":25}}],"metadata":{{"quasi_cash_disclaimer_viewed":false,"#,
+            r#""verification_method":["sms_otp"],"verification_status":"sms_otp_verified","#,
+            r#""uuid":"{}"}}}}"#,
+        ),
+        session_id
+    );
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/v1/requests/notification-1"))
+        .and(body_string(verified_body))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data":{"url":null}
+        })))
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let outcome = client
+        .accept_request(
+            &token,
+            &device_id,
+            &plan,
+            RequestAcceptanceVerification::SmsOtpVerified(session_id),
+        )
+        .await?;
+    assert!(matches!(outcome, RequestAcceptanceOutcome::Accepted(_)));
+    assert_request_count(&server, 1).await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_acceptance_rejects_step_up_without_a_valid_server_uuid() -> TestResult {
+    let (token, device_id) = test_session()?;
+    for metadata in [
+        serde_json::json!({}),
+        serde_json::json!({"uuid":"not-a-uuid"}),
+    ] {
+        let challenge = scripted_json_response(
+            403,
+            serde_json::json!({
+                "error": {
+                    "title":"OTP_STEP_UP_REQUIRED",
+                    "metadata":metadata
+                }
+            }),
+        )?;
+        let (client, transport) = scripted_client([Ok(challenge)])?;
+        let result = client
+            .accept_request(
+                &token,
+                &device_id,
+                &accept_plan()?,
+                RequestAcceptanceVerification::Unverified,
+            )
             .await;
-        let client = test_client(&server)?;
-        let (token, device_id) = test_session()?;
-        let accepted = client
-            .accept_request(&token, &device_id, &accept_plan()?)
-            .await?;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
         assert_eq!(
-            accepted.payment_id().map(PaymentId::as_str),
-            Some("payment-1")
+            observed,
+            ScriptedObservation::expected(
+                Err(ApiErrorSnapshot::contract(REQUEST_ACCEPTANCE_OPERATION)),
+                vec![authenticated_request(
+                    Method::PUT,
+                    "/requests/{request-id}",
+                    &["requests", "notification-1"],
+                    &[],
+                    Some(br#"{"funding_source_id":"balance-1","eligibility_token":"synthetic-approval-token","metadata":{"quasi_cash_disclaimer_viewed":false}}"#),
+                    OperationClass::FinancialWrite,
+                )]
+            )
         );
-        assert_eq!(accepted.status(), Some(FinancialStatus::Settled));
-        assert_request_count(&server, 1).await;
-        assert_requests_have_no_query(&server).await;
     }
     Ok(())
 }
@@ -564,16 +695,17 @@ async fn source_funded_request_acceptance_uses_modern_options_route() -> TestRes
                 vec![synthetic_approval_fee(25)],
                 25,
             ))?,
+            RequestAcceptanceVerification::Unverified,
         )
         .await;
     let observed = ScriptedObservation::observed(
         project_result(result, |accepted| {
-            (accepted.payment_id().is_none(), accepted.status().is_none())
+            matches!(accepted, RequestAcceptanceOutcome::Accepted(_))
         }),
         &transport,
     );
     let expected = ScriptedObservation::expected(
-        Ok((true, true)),
+        Ok(true),
         vec![authenticated_request(
             Method::PUT,
             "/requests/{request-id}",
@@ -603,6 +735,7 @@ async fn source_funded_acceptance_continuations_and_malformed_success_are_ambigu
                 &token,
                 &device_id,
                 &source_funded_unprotected_accept_plan()?,
+                RequestAcceptanceVerification::Unverified,
             )
             .await;
         let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
@@ -740,33 +873,27 @@ async fn cancel_rejects_every_unproven_terminal_response_as_ambiguous() -> TestR
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn request_update_mismatches_and_unverified_errors_are_ambiguous() -> TestResult {
-    let mut invalid_payment_id = updated_payment_body("pay", "settled", "123", "456");
-    invalid_payment_id["data"]["id"] = Value::String("bad id".to_owned());
-    let mut predating_payment = updated_payment_body("pay", "settled", "123", "456");
-    predating_payment["data"]["id"] = Value::String("payment-1".to_owned());
-    predating_payment["data"]["date_created"] = Value::String("2026-07-11T11:59:59Z".to_owned());
+async fn current_request_acceptance_unverified_errors_are_ambiguous() -> TestResult {
     for (status, body) in [
-        (200, updated_payment_body("pay", "settled", "456", "123")),
-        (200, invalid_payment_id),
-        (200, predating_payment),
-        (
-            200,
-            serde_json::json!({"data":{"id":"request-1","status":"settled"}}),
-        ),
+        (200, serde_json::json!([])),
         (400, serde_json::json!({"error":{"code":2901}})),
         (401, serde_json::json!({"error":{"code":"unauthorized"}})),
     ] {
         let server = MockServer::start().await;
         Mock::given(method("PUT"))
-            .and(path("/v1/payments/request-1"))
+            .and(path("/v1/requests/notification-1"))
             .respond_with(ResponseTemplate::new(status).set_body_json(body))
             .mount(&server)
             .await;
         let client = test_client(&server)?;
         let (token, device_id) = test_session()?;
         let result = client
-            .accept_request(&token, &device_id, &accept_plan()?)
+            .accept_request(
+                &token,
+                &device_id,
+                &accept_plan()?,
+                RequestAcceptanceVerification::Unverified,
+            )
             .await;
         assert!(if status >= 400 {
             matches!(

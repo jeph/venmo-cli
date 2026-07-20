@@ -83,8 +83,8 @@ eligibility, and explicit funding options on `PUT /v1/requests/{request-action-i
 production wraps some request notifications at `additional_properties.request`; a separately
 approved bounded client-1 read confirmed distinct outer notification, nested request-action, and
 nested payment IDs without retaining values. Native code includes applied fees only when Purchase Protection
-is selected. The CLI uses the branch after any balance shortfall, explicit `--source`, or explicit
-`--protect`, only with its deterministic automatic/explicit peer-source policy and a valid
+is selected. The CLI uses this route for every acceptance, only with its deterministic
+automatic/explicit peer-source policy and a valid
 eligibility token. Unprotected approval
 omits returned fees. Protected approval strictly validates and submits normalized fee objects and
 shows the eligibility amount as an estimated seller deduction with estimated recipient proceeds.
@@ -94,9 +94,10 @@ removed the pending request, and produced exactly one matching settled $20 activ
 client-1 authorization for that F4S branch. Residual gaps
 remain: the successful object does not prove the actual debit source or final fee beyond the
 eligibility response; explicit source selection and protected approval have not received separate
-live validation; and
-request-acceptance webview/SMS-step-up continuations are unsupported. Payment creation's separately
-evidenced P2P SMS continuation is implemented with the same UUID and one verified submission, and
+live validation. Signer-verified Android 26.13.0 establishes the acceptance SMS-step-up contract;
+the CLI implements its exact HTTP-403/root-title detector, server challenge UUID, shared hidden
+prompt, and one verified continuation. That continuation has not been validated live. Payment
+creation's separately evidenced P2P SMS continuation is implemented with the same UUID and one verified submission, and
 one explicit-bank-source live payment completed and reconciled through that flow. The response and
 activity do not prove the actual debit source or final fee. No output may claim either, and no
 request-acceptance continuation may be retried.

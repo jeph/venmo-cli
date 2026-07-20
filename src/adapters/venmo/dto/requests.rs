@@ -14,6 +14,8 @@ pub(crate) struct CreateRequestRequest<'a> {
     pub audience: &'static str,
     pub amount: &'a serde_json::Number,
     pub note: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<RequestVerificationMetadata<'a>>,
 }
 
 #[derive(Deserialize)]
@@ -81,7 +83,7 @@ pub(crate) struct FundedRequestApproval<'a> {
     pub eligibility_token: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fees: Option<&'a [FundedRequestApprovalFee<'a>]>,
-    pub metadata: RequestApprovalMetadata,
+    pub metadata: RequestApprovalMetadata<'a>,
 }
 
 #[derive(Serialize)]
@@ -97,6 +99,18 @@ pub(crate) struct FundedRequestApprovalFee<'a> {
 }
 
 #[derive(Serialize)]
-pub(crate) struct RequestApprovalMetadata {
+pub(crate) struct RequestApprovalMetadata<'a> {
     pub quasi_cash_disclaimer_viewed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_method: Option<&'a [&'a str]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_status: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct RequestVerificationMetadata<'a> {
+    pub verification_method: &'a [&'a str],
+    pub verification_status: &'a str,
 }

@@ -410,7 +410,7 @@ async fn payment_creation_sends_exact_candidate_body_and_validates_success() -> 
 #[tokio::test(flavor = "current_thread")]
 async fn payment_creation_maps_current_otp_step_up_and_resubmits_verified_metadata() -> TestResult {
     let (token, device_id) = test_session()?;
-    for status in [400, 403] {
+    for status in [403] {
         let step_up_response = scripted_json_response(
             status,
             serde_json::json!({
@@ -503,10 +503,10 @@ async fn payment_otp_graphql_calls_match_the_current_app_contract() -> TestResul
     let otp = OtpCode::parse_owned("123456".to_owned())?;
 
     client
-        .issue_payment_otp(&token, &device_id, &request_id)
+        .issue_p2p_otp(&token, &device_id, &request_id)
         .await?;
     let verification = client
-        .verify_payment_otp(&token, &device_id, &request_id, &otp)
+        .verify_p2p_otp(&token, &device_id, &request_id, &otp)
         .await?;
 
     assert_eq!(verification, PaymentOtpVerification::Verified);
@@ -539,7 +539,7 @@ async fn payment_otp_verification_preserves_known_rejection_reasons() -> TestRes
 
         assert_eq!(
             client
-                .verify_payment_otp(&token, &device_id, &request_id, &otp)
+                .verify_p2p_otp(&token, &device_id, &request_id, &otp)
                 .await?,
             expected
         );
@@ -568,7 +568,7 @@ async fn payment_otp_verification_prioritizes_validated_success_over_reason_code
 
         assert_eq!(
             client
-                .verify_payment_otp(&token, &device_id, &request_id, &otp)
+                .verify_p2p_otp(&token, &device_id, &request_id, &otp)
                 .await?,
             PaymentOtpVerification::Verified
         );
@@ -608,12 +608,79 @@ async fn request_creation_sends_negative_amount_without_payment_only_fields() ->
                 &token,
                 &device_id,
                 &request_plan_with_visibility(visibility)?,
+                RequestCreationVerification::Unverified,
             )
             .await?;
+        let RequestCreationOutcome::Created(created) = created else {
+            return Err(io::Error::other("request unexpectedly required OTP").into());
+        };
         assert_eq!(created.id().as_str(), "request-1");
         assert_eq!(created.status().as_str(), "pending");
         assert_request_count(&server, 1).await;
     }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_creation_maps_current_otp_step_up_and_reuses_its_uuid_when_verified() -> TestResult
+{
+    let (token, device_id) = test_session()?;
+    let challenge = scripted_json_response(
+        403,
+        serde_json::json!({
+            "error":{"code":1396,"title":"OTP_STEP_UP_REQUIRED"}
+        }),
+    )?;
+    let (client, transport) = scripted_client([Ok(challenge)])?;
+
+    let result = client
+        .create_request(
+            &token,
+            &device_id,
+            &request_plan()?,
+            RequestCreationVerification::Unverified,
+        )
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |outcome| {
+            assert_eq!(outcome, RequestCreationOutcome::OtpStepUpRequired);
+        }),
+        &transport,
+    );
+    assert_eq!(
+        observed,
+        ScriptedObservation::expected(
+            Ok(()),
+            vec![payment_creation_request(REQUEST_CREATION_REQUEST_BODY)]
+        )
+    );
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/payments"))
+        .and(body_string(REQUEST_CREATION_VERIFIED_REQUEST_BODY))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(created_payment_body(
+                "request-1",
+                "charge",
+                "pending",
+                "123",
+                "456",
+            )),
+        )
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let outcome = client
+        .create_request(
+            &token,
+            &device_id,
+            &request_plan()?,
+            RequestCreationVerification::SmsOtpVerified,
+        )
+        .await?;
+    assert!(matches!(outcome, RequestCreationOutcome::Created(_)));
+    assert_request_count(&server, 1).await;
     Ok(())
 }
 
@@ -677,8 +744,12 @@ async fn creation_accepts_a_supported_response_audience_no_more_public_than_requ
             &token,
             &device_id,
             &request_plan_with_visibility(Visibility::Friends)?,
+            RequestCreationVerification::Unverified,
         )
         .await?;
+    let RequestCreationOutcome::Created(request) = request else {
+        return Err(io::Error::other("request unexpectedly required OTP").into());
+    };
 
     assert_eq!(request.id().as_str(), "request-1");
     assert_request_count(&request_server, 1).await;
@@ -709,7 +780,12 @@ async fn request_creation_cannot_validate_a_payment_action_or_status() -> TestRe
 
         // Execute once.
         let result = client
-            .create_request(&token, &device_id, &request_plan()?)
+            .create_request(
+                &token,
+                &device_id,
+                &request_plan()?,
+                RequestCreationVerification::Unverified,
+            )
             .await;
         let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
 
@@ -846,6 +922,7 @@ async fn request_creation_missing_or_more_public_audience_is_ambiguous() -> Test
                 &token,
                 &device_id,
                 &request_plan_with_visibility(Visibility::Friends)?,
+                RequestCreationVerification::Unverified,
             )
             .await;
         let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
@@ -959,7 +1036,12 @@ async fn only_dossier_known_payment_errors_are_confirmed_rejections() -> TestRes
 
     // Execute once.
     let request_result = client
-        .create_request(&token, &device_id, &request_plan()?)
+        .create_request(
+            &token,
+            &device_id,
+            &request_plan()?,
+            RequestCreationVerification::Unverified,
+        )
         .await;
     let observed =
         ScriptedObservation::observed(project_result(request_result, |_| ()), &transport);

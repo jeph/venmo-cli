@@ -5,11 +5,12 @@ use super::validation::{
     RequestMutationValidationError, validate_complete_request, validate_private_audience,
 };
 use super::{
-    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestApprovalEligibilityApi,
-    RequestApprovalFees, RequestApprovalNotificationApi, RequestId, RequestLookupApi,
-    RequestMutationPreflightError,
+    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestAcceptanceOutcome,
+    RequestAcceptanceVerification, RequestApprovalEligibilityApi, RequestApprovalFees,
+    RequestApprovalNotificationApi, RequestId, RequestLookupApi, RequestMutationPreflightError,
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
+use crate::features::p2p_step_up::{self, P2pStepUpApi, P2pStepUpError, P2pStepUpInput};
 use crate::features::payments::confirmation::{self, DefaultNoConfirmationError};
 use crate::features::payments::funding::{self, FundingSelectionError};
 use crate::features::payments::{
@@ -119,6 +120,8 @@ pub enum AcceptError {
         #[source]
         source: ApiOperationFailure,
     },
+    #[error(transparent)]
+    StepUp(#[from] P2pStepUpError),
 }
 
 impl AcceptError {
@@ -140,6 +143,7 @@ impl AcceptError {
             Self::ConfirmationRequired => ApplicationFailureKind::Usage,
             Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
             Self::Confirmation { source } => prompt_failure_kind(source),
+            Self::StepUp(source) => source.failure_kind(),
         }
     }
 }
@@ -191,68 +195,64 @@ where
         .map_err(|source| AcceptError::Balance {
             source: ApiOperationFailure::new(source),
         })?;
-    let balance_covers_request = u64::try_from(balance.available().cents())
-        .is_ok_and(|available_cents| available_cents >= request.amount().cents());
     let mut plan = AcceptRequestPlan::new(account, request, balance);
-    if protect || requested_source.is_some() || !balance_covers_request {
-        let notification_id = api
-            .request_approval_notification_id(
-                credential.access_token(),
-                credential.device_id(),
-                plan.request().id(),
-            )
-            .await
-            .map_err(|source| AcceptError::NotificationLookup {
-                source: ApiOperationFailure::new(source),
-            })?;
-        let sources = api
-            .peer_funding_sources(credential.access_token(), credential.device_id())
-            .await
-            .map_err(|source| AcceptError::FundingMethods {
-                source: ApiOperationFailure::new(source),
-            })?;
-        let (funding_source, funding_source_selection) = funding::select_source(
-            &sources,
-            plan.balance(),
-            plan.request().amount(),
-            requested_source,
-        )?
-        .into_parts();
-        let note = plan
-            .request()
-            .note()
-            .ok_or(RequestMutationValidationError::InvalidNote)?;
-        let eligibility = api
-            .request_approval_eligibility(
-                credential.access_token(),
-                credential.device_id(),
-                plan.request().counterparty(),
-                plan.request().amount().cents(),
-                note,
-                &funding_source,
-            )
-            .await
-            .map_err(|source| AcceptError::Eligibility {
-                source: ApiOperationFailure::new(source),
-            })?;
-        let (eligibility_token, fees) = eligibility.into_parts();
-        let fees = if protect {
-            if fees.total_cents() > plan.request().amount().cents() {
-                return Err(AcceptError::ProtectionFeeExceedsAmount);
-            }
-            fees
-        } else {
-            RequestApprovalFees::omitted()
-        };
-        plan = plan.with_modern_funding(
-            notification_id,
-            funding_source,
-            funding_source_selection,
-            eligibility_token,
-            fees,
-            protect,
-        );
-    }
+    let notification_id = api
+        .request_approval_notification_id(
+            credential.access_token(),
+            credential.device_id(),
+            plan.request().id(),
+        )
+        .await
+        .map_err(|source| AcceptError::NotificationLookup {
+            source: ApiOperationFailure::new(source),
+        })?;
+    let sources = api
+        .peer_funding_sources(credential.access_token(), credential.device_id())
+        .await
+        .map_err(|source| AcceptError::FundingMethods {
+            source: ApiOperationFailure::new(source),
+        })?;
+    let (funding_source, funding_source_selection) = funding::select_source(
+        &sources,
+        plan.balance(),
+        plan.request().amount(),
+        requested_source,
+    )?
+    .into_parts();
+    let note = plan
+        .request()
+        .note()
+        .ok_or(RequestMutationValidationError::InvalidNote)?;
+    let eligibility = api
+        .request_approval_eligibility(
+            credential.access_token(),
+            credential.device_id(),
+            plan.request().counterparty(),
+            plan.request().amount().cents(),
+            note,
+            &funding_source,
+        )
+        .await
+        .map_err(|source| AcceptError::Eligibility {
+            source: ApiOperationFailure::new(source),
+        })?;
+    let (eligibility_token, fees) = eligibility.into_parts();
+    let fees = if protect {
+        if fees.total_cents() > plan.request().amount().cents() {
+            return Err(AcceptError::ProtectionFeeExceedsAmount);
+        }
+        fees
+    } else {
+        RequestApprovalFees::omitted()
+    };
+    plan = plan.with_funding(
+        notification_id,
+        funding_source,
+        funding_source_selection,
+        eligibility_token,
+        fees,
+        protect,
+    );
     Ok(PreparedAccept::new(credential, plan))
 }
 
@@ -277,24 +277,49 @@ where
     Ok(AuthorizedAccept(prepared))
 }
 
-pub(crate) async fn execute<A>(
+pub(crate) async fn execute<A, P>(
     api: &A,
+    prompt: &P,
     authorized: AuthorizedAccept,
 ) -> Result<AcceptResult, AcceptError>
 where
-    A: RequestAcceptanceApi,
+    A: RequestAcceptanceApi + P2pStepUpApi,
+    P: P2pStepUpInput,
 {
     let AuthorizedAccept(prepared) = authorized;
-    let accepted = api
+    let first_attempt = api
         .accept_request(
             prepared.credential.access_token(),
             prepared.credential.device_id(),
             &prepared.plan,
+            RequestAcceptanceVerification::Unverified,
         )
         .await
         .map_err(|source| AcceptError::Accept {
             source: ApiOperationFailure::new(source),
         })?;
+    let accepted = match first_attempt {
+        RequestAcceptanceOutcome::Accepted(accepted) => accepted,
+        RequestAcceptanceOutcome::OtpStepUpRequired(session_id) => {
+            p2p_step_up::complete(api, prompt, &prepared.credential, &session_id).await?;
+            match api
+                .accept_request(
+                    prepared.credential.access_token(),
+                    prepared.credential.device_id(),
+                    &prepared.plan,
+                    RequestAcceptanceVerification::SmsOtpVerified(session_id),
+                )
+                .await
+                .map_err(|source| AcceptError::Accept {
+                    source: ApiOperationFailure::new(source),
+                })? {
+                RequestAcceptanceOutcome::Accepted(accepted) => accepted,
+                RequestAcceptanceOutcome::OtpStepUpRequired(_) => {
+                    return Err(P2pStepUpError::StillRequired.into());
+                }
+            }
+        }
+    };
     Ok(AcceptResult::new(prepared.plan, accepted))
 }
 

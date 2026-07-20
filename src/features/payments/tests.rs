@@ -10,9 +10,10 @@ use time::OffsetDateTime;
 
 use super::*;
 use crate::features::auth::{PromptAvailability, PromptError};
+use crate::features::p2p_step_up::P2pStepUpError;
 use crate::features::payments::{
     BlankSourceEligibility, EligibilityToken, FinancialStatus, FinancialValidationError, PaymentId,
-    PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSource,
+    PaymentOtpVerification, PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSource,
     PeerFundingSourceSelection, PeerFundingSources, ProtectedPaymentEligibility,
     PurchaseProtectionFee,
 };

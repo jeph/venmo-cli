@@ -186,8 +186,12 @@ abstractions that weaken bounds or make side-effect order harder to review.
 Protected peer payment remains a feature-level branch after deterministic source selection: the
 feature chooses ordinary versus protected eligibility and owns the immutable fee-bearing plan,
 while the Venmo adapter alone owns form encoding, fee DTO validation/serialization, protected
-transaction metadata, and response-type proof. OTP continuation consumes the same plan rather than
-reconstructing or weakening protected fields.
+transaction metadata, and response-type proof. A shared feature-level P2P step-up helper owns the
+interactive-only one-SMS/one-hidden-prompt/one-verification sequence for payment, request creation,
+and request acceptance. Each operation owns its immutable continuation and correlation ID: client
+UUID for creation, server challenge UUID for acceptance. The adapter alone recognizes exact
+HTTP-403/root-title challenges and merges verified metadata. No flow reconstructs or weakens the
+original plan, loops, or falls back to a legacy acceptance route.
 
 ## Related documentation
 

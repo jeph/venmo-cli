@@ -71,6 +71,11 @@ Protected-payment loopback tests retain the exact source-bound form eligibility 
 creation contracts, including the singleton fee and merged OTP metadata. They are synthetic
 serialization/validation tests only and do not authorize a protected live payment.
 
+Shared P2P step-up tests retain the exact interactive prompt and one-shot issue/verify sequence.
+Request-creation tests prove same-client-UUID metadata continuation; request-acceptance tests prove
+server-UUID extraction, current request-action routing, preservation of funding/token/fees, and
+fail-closed handling of malformed challenges. They are service-free and authorize no live write.
+
 ## Historical live read-contract probes
 
 The ignored probes under `src/adapters/venmo/client/tests/live.rs` preserve the bounded,

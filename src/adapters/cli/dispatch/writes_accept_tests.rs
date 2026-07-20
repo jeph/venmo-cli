@@ -14,19 +14,23 @@ use super::tests::{ErrorVariant, ResultSnapshot, failure_snapshot, snapshot_resu
 use crate::adapters::cli::args::{AcceptArgs, Cli, Command, RequestsOperation};
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::adapters::cli::output::TimestampFormatter;
-use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
+use crate::features::auth::{CurrentAccountApi, OtpCode, PromptAvailability, PromptError};
+use crate::features::p2p_step_up::{P2pOtpVerification, P2pStepUpApi, P2pStepUpInput};
 use crate::features::payments::{
-    DefaultNoConfirmation, FinancialStatus, PaymentId, PeerFundingApi, PeerFundingSource,
-    PeerFundingSources,
+    DefaultNoConfirmation, EligibilityToken, FinancialStatus, PaymentId, PeerFundingApi,
+    PeerFundingSource, PeerFundingSources,
 };
 use crate::features::people::{User, UserLookupApi, UserProfileKind};
 use crate::features::requests::{
-    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestAction,
-    RequestApprovalEligibility, RequestApprovalEligibilityApi, RequestApprovalNotificationApi,
+    AcceptRequestPlan, AcceptedRequest, RequestAcceptanceApi, RequestAcceptanceOutcome,
+    RequestAcceptanceVerification, RequestAction, RequestApprovalEligibility,
+    RequestApprovalEligibilityApi, RequestApprovalFees, RequestApprovalNotificationApi,
     RequestDirection, RequestId, RequestLookupApi, RequestNotificationId, RequestRecord,
     RequestStatus,
 };
-use crate::features::wallet::{Balance, BalanceApi, PaymentMethodId, SignedUsdAmount};
+use crate::features::wallet::{
+    Balance, BalanceApi, PaymentMethod, PaymentMethodId, SignedUsdAmount,
+};
 use crate::shared::test_support::Observed;
 use crate::shared::{
     AccessToken, Account, ApiFailure, ApiFailureKind, CredentialCapability, CredentialEnvelope,
@@ -396,7 +400,17 @@ impl PeerFundingApi for FakeAcceptApi {
         self.transcript
             .borrow_mut()
             .push(AcceptCall::FundingMethods);
-        ready(Err(FakeApiError))
+        let Ok(balance_id) = PaymentMethodId::from_str("balance-1") else {
+            return ready(Err(FakeApiError));
+        };
+        let balance = PaymentMethod::new(
+            balance_id,
+            Some("Venmo balance".to_owned()),
+            Some("balance".to_owned()),
+            None,
+            true,
+        );
+        ready(Ok(PeerFundingSources::new(Some(balance), Vec::new())))
     }
 }
 
@@ -412,7 +426,7 @@ impl RequestApprovalNotificationApi for FakeAcceptApi {
         self.transcript
             .borrow_mut()
             .push(AcceptCall::ApprovalNotification);
-        ready(Err(FakeApiError))
+        ready(RequestNotificationId::from_str("notification-1").map_err(|_| FakeApiError))
     }
 }
 
@@ -431,7 +445,11 @@ impl RequestApprovalEligibilityApi for FakeAcceptApi {
         self.transcript
             .borrow_mut()
             .push(AcceptCall::ApprovalEligibility);
-        ready(Err(FakeApiError))
+        ready(
+            EligibilityToken::parse_owned("synthetic-approval-token".to_owned())
+                .map(|token| RequestApprovalEligibility::new(token, RequestApprovalFees::omitted()))
+                .map_err(|_| FakeApiError),
+        )
     }
 }
 
@@ -443,7 +461,8 @@ impl RequestAcceptanceApi for FakeAcceptApi {
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
         plan: &'a AcceptRequestPlan,
-    ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a {
+        _verification: RequestAcceptanceVerification,
+    ) -> impl Future<Output = Result<RequestAcceptanceOutcome, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(AcceptCall::Accept {
             plan: AcceptPlanCall::from(plan),
         });
@@ -454,6 +473,29 @@ impl RequestAcceptanceApi for FakeAcceptApi {
             .pop_front()
             .unwrap_or(WriteStep::Failure);
         AcceptFuture::new(step)
+    }
+}
+
+impl P2pStepUpApi for FakeAcceptApi {
+    type Error = FakeApiError;
+
+    fn issue_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a crate::shared::ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError))
+    }
+
+    fn verify_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a crate::shared::ClientRequestId,
+        _otp: &'a OtpCode,
+    ) -> impl Future<Output = Result<P2pOtpVerification, Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError))
     }
 }
 
@@ -472,11 +514,15 @@ impl AcceptFuture {
 }
 
 impl Future for AcceptFuture {
-    type Output = Result<AcceptedRequest, FakeApiError>;
+    type Output = Result<RequestAcceptanceOutcome, FakeApiError>;
 
     fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
         match self.step {
-            WriteStep::Success => Poll::Ready(accepted_request().map_err(|_| FakeApiError)),
+            WriteStep::Success => Poll::Ready(
+                accepted_request()
+                    .map(RequestAcceptanceOutcome::Accepted)
+                    .map_err(|_| FakeApiError),
+            ),
             WriteStep::Pending => Poll::Pending,
             WriteStep::Failure => Poll::Ready(Err(FakeApiError)),
         }
@@ -516,6 +562,14 @@ impl DefaultNoConfirmation for FakePrompt {
                 source: io::Error::other("synthetic acceptance confirmation failure"),
             }),
         }
+    }
+}
+
+impl P2pStepUpInput for FakePrompt {
+    fn read_p2p_otp(&self, _prompt: &str) -> Result<OtpCode, PromptError> {
+        Err(PromptError::Interaction {
+            source: io::Error::other("unexpected acceptance OTP prompt"),
+        })
     }
 }
 

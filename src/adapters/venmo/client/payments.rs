@@ -25,7 +25,7 @@ use super::super::dto::{
 use super::super::transport::{ApiSession, ApiTransport, FormBody, HttpRequest, JsonBody};
 use super::error::{ApiCodeSuffix, VenmoApiError};
 use super::response::{
-    decode_success, is_payment_otp_step_up_required, require_financial_success_json,
+    decode_success, is_p2p_otp_step_up_required, require_financial_success_json,
 };
 use super::support::parse_timestamp_value;
 use super::{
@@ -321,7 +321,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 HttpRequest::financial_json_post("/payments", &["payments"], &[], body),
             )
             .await?;
-        if is_payment_otp_step_up_required(&response) {
+        if is_p2p_otp_step_up_required(&response) {
             return Ok(PaymentCreationOutcome::OtpStepUpRequired);
         }
         let value = require_financial_success_json(creation.operation(), response)?;
@@ -561,7 +561,7 @@ impl<T: ApiTransport> PaymentCreationApi for VenmoApiClient<T> {
 impl<T: ApiTransport> PaymentStepUpApi for VenmoApiClient<T> {
     type Error = VenmoApiError;
 
-    fn issue_payment_otp<'a>(
+    fn issue_p2p_otp<'a>(
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
@@ -570,7 +570,7 @@ impl<T: ApiTransport> PaymentStepUpApi for VenmoApiClient<T> {
         self.send_payment_otp(access_token, device_id, request_id)
     }
 
-    fn verify_payment_otp<'a>(
+    fn verify_p2p_otp<'a>(
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,

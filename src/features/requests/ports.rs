@@ -5,7 +5,7 @@ use super::{
 };
 use crate::features::payments::{EligibilityToken, PeerFundingSource};
 use crate::features::people::User;
-use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, UserId};
+use crate::shared::{AccessToken, ApiFailure, ClientRequestId, DeviceId, Limit, UserId};
 use std::future::Future;
 
 pub(crate) trait RequestCreationApi {
@@ -16,7 +16,20 @@ pub(crate) trait RequestCreationApi {
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
         plan: &'a CreateRequestPlan,
-    ) -> impl Future<Output = Result<CreatedRequest, Self::Error>> + Send + 'a;
+        verification: RequestCreationVerification,
+    ) -> impl Future<Output = Result<RequestCreationOutcome, Self::Error>> + Send + 'a;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RequestCreationVerification {
+    Unverified,
+    SmsOtpVerified,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RequestCreationOutcome {
+    Created(CreatedRequest),
+    OtpStepUpRequired,
 }
 
 pub(crate) trait RequestAcceptanceApi {
@@ -27,7 +40,20 @@ pub(crate) trait RequestAcceptanceApi {
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
         plan: &'a AcceptRequestPlan,
-    ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a;
+        verification: RequestAcceptanceVerification,
+    ) -> impl Future<Output = Result<RequestAcceptanceOutcome, Self::Error>> + Send + 'a;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RequestAcceptanceVerification {
+    Unverified,
+    SmsOtpVerified(ClientRequestId),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RequestAcceptanceOutcome {
+    Accepted(AcceptedRequest),
+    OtpStepUpRequired(ClientRequestId),
 }
 
 pub(crate) struct RequestApprovalEligibility {

@@ -6,16 +6,20 @@ mod ports;
 mod preflight;
 mod validation;
 
+pub(crate) use crate::features::p2p_step_up::{
+    P2pOtpVerification as PaymentOtpVerification, P2pStepUpApi as PaymentStepUpApi,
+    P2pStepUpInput as PaymentStepUpInput,
+};
 pub(crate) use model::{
     CreatedPayment, EligibilityToken, FinancialStatus, PayPlan, PaymentId, PeerFundingFee,
     PeerFundingMethod, PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection,
     PeerFundingSources, PurchaseProtectionFee,
 };
+pub(crate) use ports::DefaultNoConfirmation;
 pub(crate) use ports::{
     BlankSourceEligibility, BlankSourceEligibilityApi, PaymentCreationApi, PaymentCreationOutcome,
-    PaymentOtpVerification, PaymentStepUpApi, PaymentVerification, PeerFundingApi,
-    ProtectedPaymentEligibility, ProtectedPaymentEligibilityApi,
+    PaymentVerification, PeerFundingApi, ProtectedPaymentEligibility,
+    ProtectedPaymentEligibilityApi,
 };
-pub(crate) use ports::{DefaultNoConfirmation, PaymentStepUpInput};
 pub(crate) use preflight::{PeerPreflightError, prepare as prepare_peer_preflight};
 pub(crate) use validation::{FinancialValidationError, validate_account, validate_recipient};

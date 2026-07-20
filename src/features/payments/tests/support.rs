@@ -476,7 +476,7 @@ impl PaymentCreationApi for FakeApi {
 impl PaymentStepUpApi for FakeApi {
     type Error = FakeApiError;
 
-    fn issue_payment_otp<'a>(
+    fn issue_p2p_otp<'a>(
         &'a self,
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
@@ -489,7 +489,7 @@ impl PaymentStepUpApi for FakeApi {
         ready(self.otp_issue)
     }
 
-    fn verify_payment_otp<'a>(
+    fn verify_p2p_otp<'a>(
         &'a self,
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
@@ -575,10 +575,7 @@ impl DefaultNoConfirmation for FakePrompt {
 }
 
 impl PaymentStepUpInput for FakePrompt {
-    fn read_payment_otp(
-        &self,
-        prompt: &str,
-    ) -> Result<crate::features::auth::OtpCode, PromptError> {
+    fn read_p2p_otp(&self, prompt: &str) -> Result<crate::features::auth::OtpCode, PromptError> {
         self.transcript.borrow_mut().push(Call::ReadPaymentOtp {
             prompt: prompt.to_owned(),
         });

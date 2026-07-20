@@ -30,10 +30,9 @@ use crate::features::auth::{
 };
 use crate::features::payments::{
     BlankSourceEligibilityApi, EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi,
-    PaymentCreationOutcome, PaymentId, PaymentOtpVerification, PaymentStepUpApi,
-    PaymentVerification, PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
-    PeerFundingSource, PeerFundingSourceSelection, ProtectedPaymentEligibilityApi,
-    PurchaseProtectionFee,
+    PaymentCreationOutcome, PaymentOtpVerification, PaymentStepUpApi, PaymentVerification,
+    PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSource,
+    PeerFundingSourceSelection, ProtectedPaymentEligibilityApi, PurchaseProtectionFee,
 };
 use crate::features::people::{
     FriendsApi, FriendsPageRequest, FriendshipMutationApi, FriendshipStatus, User, UserLookupApi,
@@ -41,11 +40,12 @@ use crate::features::people::{
 };
 use crate::features::requests::{
     AcceptRequestPlan, CancelRequestPlan, CreateRequestPlan, DeclineRequestPlan,
-    PendingRequestsPageRequest, RequestAcceptanceApi, RequestAction, RequestApprovalEligibilityApi,
+    PendingRequestsPageRequest, RequestAcceptanceApi, RequestAcceptanceOutcome,
+    RequestAcceptanceVerification, RequestAction, RequestApprovalEligibilityApi,
     RequestApprovalFee, RequestApprovalFees, RequestApprovalNotificationApi,
-    RequestCancellationApi, RequestCreationApi, RequestDeclineApi, RequestDirection, RequestId,
-    RequestLookupApi, RequestNotificationId, RequestRecord, RequestStatus, RequestsApi,
-    RequestsBefore,
+    RequestCancellationApi, RequestCreationApi, RequestCreationOutcome,
+    RequestCreationVerification, RequestDeclineApi, RequestDirection, RequestId, RequestLookupApi,
+    RequestNotificationId, RequestRecord, RequestStatus, RequestsApi, RequestsBefore,
 };
 use crate::features::transfers::{
     TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix, TransferOptionsApi,
@@ -55,8 +55,8 @@ use crate::features::wallet::{
     Balance, BalanceApi, PaymentMethod, PaymentMethodId, PaymentMethodsApi, SignedUsdAmount,
 };
 use crate::shared::{
-    AccessToken, Account, ApiFailure, ApiFailureKind, DeviceId, Limit, Money, Note, Offset, UserId,
-    Username, Visibility,
+    AccessToken, Account, ApiFailure, ApiFailureKind, ClientRequestId, DeviceId, Limit, Money,
+    Note, Offset, UserId, Username, Visibility,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -123,6 +123,11 @@ const VERIFY_PAYMENT_OTP_REQUEST_BODY: &str = concat!(
 const REQUEST_CREATION_REQUEST_BODY: &str = concat!(
     r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
     r#""audience":"private","amount":-0.01,"note":"Synthetic note"}"#,
+);
+const REQUEST_CREATION_VERIFIED_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"private","amount":-0.01,"note":"Synthetic note","#,
+    r#""metadata":{"verification_method":["sms_otp"],"verification_status":"sms_otp_verified"}}"#,
 );
 const REQUEST_CREATION_FRIENDS_REQUEST_BODY: &str = concat!(
     r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
@@ -827,6 +832,20 @@ fn accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
             SignedUsdAmount::from_cents(1),
             SignedUsdAmount::from_cents(0),
         ),
+    )
+    .with_funding(
+        RequestNotificationId::from_str("notification-1")?,
+        PeerFundingSource::balance(PaymentMethod::new(
+            PaymentMethodId::from_str("balance-1")?,
+            Some("Venmo balance".to_owned()),
+            Some("balance".to_owned()),
+            None,
+            true,
+        )),
+        PeerFundingSourceSelection::Automatic,
+        EligibilityToken::parse_owned("synthetic-approval-token".to_owned())?,
+        RequestApprovalFees::omitted(),
+        false,
     ))
 }
 
@@ -839,7 +858,7 @@ fn source_funded_unprotected_accept_plan() -> Result<AcceptRequestPlan, Box<dyn 
             SignedUsdAmount::from_cents(0),
         ),
     )
-    .with_modern_funding(
+    .with_funding(
         RequestNotificationId::from_str("notification-1")?,
         PeerFundingSource::external(zero_fee_peer_method()?),
         PeerFundingSourceSelection::Automatic,
@@ -860,7 +879,7 @@ fn source_funded_accept_plan_with_fees(
             SignedUsdAmount::from_cents(0),
         ),
     )
-    .with_modern_funding(
+    .with_funding(
         RequestNotificationId::from_str("notification-1")?,
         PeerFundingSource::external(zero_fee_peer_method()?),
         PeerFundingSourceSelection::Automatic,

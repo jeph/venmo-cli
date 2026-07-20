@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::error::Error;
 use std::future::{Future, ready};
 use std::rc::Rc;
@@ -7,7 +8,8 @@ use std::str::FromStr;
 use time::OffsetDateTime;
 
 use super::*;
-use crate::features::auth::PromptAvailability;
+use crate::features::auth::{OtpCode, PromptAvailability};
+use crate::features::p2p_step_up::{P2pOtpVerification, P2pStepUpApi, P2pStepUpInput};
 use crate::features::payments::FinancialValidationError;
 use crate::features::people::{
     User, UserProfileKind, UserSearchPage, UserSearchPageRequest, UserSearchQuery,
@@ -129,6 +131,7 @@ fn project(result: Result<RequestCreateResult, RequestCreateError>) -> CreateOut
             RequestCreateError::ConfirmationDeclined => CreateFailure::ConfirmationDeclined,
             RequestCreateError::Confirmation { .. } => CreateFailure::Confirmation,
             RequestCreateError::Create { source } => CreateFailure::Create(source.kind()),
+            RequestCreateError::StepUp(_) => CreateFailure::Create(ApiFailureKind::Rejected),
         }),
     }
 }
@@ -293,12 +296,36 @@ impl RequestCreationApi for FakeApi {
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
         plan: &'a CreateRequestPlan,
-    ) -> impl Future<Output = Result<CreatedRequest, Self::Error>> + Send + 'a {
+        _verification: RequestCreationVerification,
+    ) -> impl Future<Output = Result<RequestCreationOutcome, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(Call::CreateRequest {
             session: RedactedSecret::Redacted,
             plan: Box::new(CreatePlanCall::from(plan)),
         });
-        ready(self.creation.clone())
+        ready(self.creation.clone().map(RequestCreationOutcome::Created))
+    }
+}
+
+impl P2pStepUpApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn issue_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError(ApiFailureKind::Internal)))
+    }
+
+    fn verify_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a ClientRequestId,
+        _otp: &'a OtpCode,
+    ) -> impl Future<Output = Result<P2pOtpVerification, Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError(ApiFailureKind::Internal)))
     }
 }
 
@@ -360,6 +387,22 @@ impl DefaultNoConfirmation for UnusedPrompt {
     }
 }
 
+impl P2pStepUpInput for UnusedPrompt {
+    fn read_p2p_otp(&self, _prompt: &str) -> Result<OtpCode, PromptError> {
+        Err(PromptError::Interaction {
+            source: std::io::Error::other("unexpected synthetic OTP prompt"),
+        })
+    }
+}
+
+impl P2pStepUpInput for FakePrompt {
+    fn read_p2p_otp(&self, _prompt: &str) -> Result<OtpCode, PromptError> {
+        Err(PromptError::Interaction {
+            source: std::io::Error::other("unexpected synthetic OTP prompt"),
+        })
+    }
+}
+
 impl ClientRequestIdGenerator for FixedGenerator {
     fn generate(&self) -> ClientRequestId {
         let request_id = fixed_request_id();
@@ -380,7 +423,7 @@ async fn run_create(
 ) -> Result<RequestCreateResult, RequestCreateError> {
     let prepared = prepare_create(reader, api, generator, amount, note, visibility).await?;
     let authorized = authorize(&UnusedPrompt, prepared, true)?;
-    execute(api, authorized).await
+    execute(api, &UnusedPrompt, authorized).await
 }
 
 async fn prepare_create(
@@ -468,6 +511,168 @@ async fn create_uses_complete_arguments_and_exactly_one_ordered_write() -> TestR
     Ok(())
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CreateStepUpCall {
+    Create(RequestCreationVerification, ClientRequestId),
+    Issue(ClientRequestId),
+    Prompt(String),
+    Verify(ClientRequestId, String),
+}
+
+struct CreateStepUpApi {
+    outcomes: RefCell<VecDeque<RequestCreationOutcome>>,
+    calls: RefCell<Vec<CreateStepUpCall>>,
+}
+
+impl RequestCreationApi for CreateStepUpApi {
+    type Error = FakeApiError;
+
+    fn create_request<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        plan: &'a CreateRequestPlan,
+        verification: RequestCreationVerification,
+    ) -> impl Future<Output = Result<RequestCreationOutcome, Self::Error>> + Send + 'a {
+        self.calls
+            .borrow_mut()
+            .push(CreateStepUpCall::Create(verification, plan.request_id()));
+        ready(
+            self.outcomes
+                .borrow_mut()
+                .pop_front()
+                .ok_or(FakeApiError(ApiFailureKind::Internal)),
+        )
+    }
+}
+
+impl P2pStepUpApi for CreateStepUpApi {
+    type Error = FakeApiError;
+
+    fn issue_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        session_id: &'a ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        self.calls
+            .borrow_mut()
+            .push(CreateStepUpCall::Issue(*session_id));
+        ready(Ok(()))
+    }
+
+    fn verify_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        session_id: &'a ClientRequestId,
+        otp: &'a OtpCode,
+    ) -> impl Future<Output = Result<P2pOtpVerification, Self::Error>> + Send + 'a {
+        self.calls.borrow_mut().push(CreateStepUpCall::Verify(
+            *session_id,
+            otp.expose().to_owned(),
+        ));
+        ready(Ok(P2pOtpVerification::Verified))
+    }
+}
+
+struct CreateStepUpPrompt<'a> {
+    calls: &'a RefCell<Vec<CreateStepUpCall>>,
+}
+
+impl PromptAvailability for CreateStepUpPrompt<'_> {
+    fn can_prompt(&self) -> bool {
+        true
+    }
+}
+
+impl P2pStepUpInput for CreateStepUpPrompt<'_> {
+    fn read_p2p_otp(&self, prompt: &str) -> Result<OtpCode, PromptError> {
+        self.calls
+            .borrow_mut()
+            .push(CreateStepUpCall::Prompt(prompt.to_owned()));
+        OtpCode::parse_owned("123456".to_owned()).map_err(|_| PromptError::Interaction {
+            source: std::io::Error::other("synthetic OTP was invalid"),
+        })
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_creation_step_up_uses_the_plan_uuid_and_one_verified_continuation() -> TestResult {
+    let plan = CreateRequestPlan::new(
+        fixed_request_id(),
+        account("123")?,
+        financial_user("456", UserProfileKind::Personal)?,
+        Money::from_cents(1)?,
+        Note::from_str("Synthetic note")?,
+        Visibility::Private,
+    );
+    let api = CreateStepUpApi {
+        outcomes: RefCell::new(VecDeque::from([
+            RequestCreationOutcome::OtpStepUpRequired,
+            RequestCreationOutcome::Created(created_request()?),
+        ])),
+        calls: RefCell::new(Vec::new()),
+    };
+    let prompt = CreateStepUpPrompt { calls: &api.calls };
+    let authorized = AuthorizedRequest(PreparedRequest::new(credential()?.envelope, plan));
+
+    let result = execute(&api, &prompt, authorized).await?;
+
+    assert_eq!(result.created().id().as_str(), "request-1");
+    assert_eq!(
+        api.calls.into_inner(),
+        vec![
+            CreateStepUpCall::Create(RequestCreationVerification::Unverified, fixed_request_id(),),
+            CreateStepUpCall::Issue(fixed_request_id()),
+            CreateStepUpCall::Prompt("Venmo SMS verification code".to_owned()),
+            CreateStepUpCall::Verify(fixed_request_id(), "123456".to_owned()),
+            CreateStepUpCall::Create(
+                RequestCreationVerification::SmsOtpVerified,
+                fixed_request_id(),
+            ),
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_creation_stops_after_one_verified_continuation() -> TestResult {
+    let plan = CreateRequestPlan::new(
+        fixed_request_id(),
+        account("123")?,
+        financial_user("456", UserProfileKind::Personal)?,
+        Money::from_cents(1)?,
+        Note::from_str("Synthetic note")?,
+        Visibility::Private,
+    );
+    let api = CreateStepUpApi {
+        outcomes: RefCell::new(VecDeque::from([
+            RequestCreationOutcome::OtpStepUpRequired,
+            RequestCreationOutcome::OtpStepUpRequired,
+        ])),
+        calls: RefCell::new(Vec::new()),
+    };
+    let prompt = CreateStepUpPrompt { calls: &api.calls };
+    let authorized = AuthorizedRequest(PreparedRequest::new(credential()?.envelope, plan));
+
+    let result = execute(&api, &prompt, authorized).await;
+
+    assert!(matches!(
+        result,
+        Err(RequestCreateError::StepUp(P2pStepUpError::StillRequired))
+    ));
+    assert_eq!(
+        api.calls
+            .borrow()
+            .iter()
+            .filter(|call| matches!(call, CreateStepUpCall::Create(..)))
+            .count(),
+        2
+    );
+    Ok(())
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn creation_confirmation_required_declined_failed_and_yes_paths_are_distinct() -> TestResult {
     #[derive(Clone, Copy)]
@@ -528,7 +733,7 @@ async fn creation_confirmation_required_declined_failed_and_yes_paths_are_distin
                 }),
             ) => {}
             (Expected::Confirmed, Ok(authorized)) => {
-                execute(&api, authorized).await?;
+                execute(&api, &UnusedPrompt, authorized).await?;
             }
             _ => return Err(std::io::Error::other("unexpected confirmation outcome").into()),
         }

@@ -8,7 +8,8 @@ use super::output::sanitize_terminal_text;
 use crate::features::auth::{
     AccountPassword, AuthenticationInput, LoginIdentifier, OtpCode, PromptAvailability, PromptError,
 };
-use crate::features::payments::{DefaultNoConfirmation, PaymentStepUpInput};
+use crate::features::p2p_step_up::P2pStepUpInput;
+use crate::features::payments::DefaultNoConfirmation;
 use crate::shared::DeviceId;
 
 /// Immutable snapshot of the process streams relevant to safe prompting.
@@ -110,8 +111,8 @@ impl DefaultNoConfirmation for DialoguerPrompt {
     }
 }
 
-impl PaymentStepUpInput for DialoguerPrompt {
-    fn read_payment_otp(&self, prompt: &str) -> Result<OtpCode, PromptError> {
+impl P2pStepUpInput for DialoguerPrompt {
+    fn read_p2p_otp(&self, prompt: &str) -> Result<OtpCode, PromptError> {
         let raw = read_hidden(&self.term, prompt)?;
         OtpCode::parse_owned(raw).map_err(|source| PromptError::InvalidOtpCode { source })
     }

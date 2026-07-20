@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::error::Error;
 use std::future::{Future, ready};
 use std::io;
@@ -8,7 +9,8 @@ use std::str::FromStr;
 use time::OffsetDateTime;
 
 use super::*;
-use crate::features::auth::PromptAvailability;
+use crate::features::auth::{OtpCode, PromptAvailability};
+use crate::features::p2p_step_up::{P2pOtpVerification, P2pStepUpApi, P2pStepUpInput};
 use crate::features::payments::funding::FundingSelectionError;
 use crate::features::payments::{
     EligibilityToken, FinancialStatus, PaymentId, PeerFundingApi, PeerFundingFee,
@@ -22,9 +24,9 @@ use crate::features::requests::{
 };
 use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
 use crate::shared::{
-    AccessToken, Account, ApiFailureKind, CredentialAccessError, CredentialCapability,
-    CredentialFailureKind, CredentialFormat, CredentialStoreFailure, DeviceId, LoadedCredential,
-    Money, UserId, Username,
+    AccessToken, Account, ApiFailureKind, ClientRequestId, CredentialAccessError,
+    CredentialCapability, CredentialFailureKind, CredentialFormat, CredentialStoreFailure,
+    DeviceId, LoadedCredential, Money, UserId, Username,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -237,6 +239,7 @@ fn project(result: Result<AcceptResult, AcceptError>) -> AcceptOutcome {
                 AcceptFailure::Confirmation(PromptFailure::Interaction)
             }
             AcceptError::Accept { source } => AcceptFailure::Accept(source.kind()),
+            AcceptError::StepUp(_) => AcceptFailure::Accept(ApiFailureKind::Rejected),
         }),
     }
 }
@@ -538,12 +541,40 @@ impl RequestAcceptanceApi for FakeApi {
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
         plan: &'a AcceptRequestPlan,
-    ) -> impl Future<Output = Result<AcceptedRequest, Self::Error>> + Send + 'a {
+        _verification: RequestAcceptanceVerification,
+    ) -> impl Future<Output = Result<RequestAcceptanceOutcome, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(Call::Accept {
             session: RedactedSecret::Redacted,
             plan: Box::new(AcceptPlanCall::from(plan)),
         });
-        ready(self.accepted.clone())
+        ready(
+            self.accepted
+                .clone()
+                .map(RequestAcceptanceOutcome::Accepted),
+        )
+    }
+}
+
+impl P2pStepUpApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn issue_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a crate::shared::ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError(ApiFailureKind::Internal)))
+    }
+
+    fn verify_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _session_id: &'a crate::shared::ClientRequestId,
+        _otp: &'a OtpCode,
+    ) -> impl Future<Output = Result<P2pOtpVerification, Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError(ApiFailureKind::Internal)))
     }
 }
 
@@ -592,6 +623,14 @@ impl DefaultNoConfirmation for FakePrompt {
     }
 }
 
+impl P2pStepUpInput for FakePrompt {
+    fn read_p2p_otp(&self, _prompt: &str) -> Result<OtpCode, PromptError> {
+        Err(PromptError::Interaction {
+            source: io::Error::other("unexpected synthetic OTP prompt"),
+        })
+    }
+}
+
 async fn run_accept(
     reader: &FakeReader,
     api: &FakeApi,
@@ -601,7 +640,7 @@ async fn run_accept(
 ) -> Result<AcceptResult, AcceptError> {
     let prepared = prepare_with_protection(reader, api, request_id, None, false).await?;
     let authorized = authorize(prompt, prepared, assume_yes)?;
-    execute(api, authorized).await
+    execute(api, prompt, authorized).await
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -623,7 +662,15 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
     let prompt = FakePrompt::new(false, PromptScript::Answer(false), Rc::clone(&transcript));
 
     // Complete expected final outcome and state.
-    let plan = AcceptRequestPlan::new(account.clone(), final_request.clone(), balance.clone());
+    let plan = AcceptRequestPlan::new(account.clone(), final_request.clone(), balance.clone())
+        .with_funding(
+            RequestNotificationId::from_str("notification-1")?,
+            PeerFundingSource::balance(balance_funding_method()?),
+            PeerFundingSourceSelection::Automatic,
+            eligibility_token()?,
+            RequestApprovalFees::omitted(),
+            false,
+        );
     let expected = Observation::new(
         AcceptOutcome::Success(Box::new(AcceptResult::new(plan, accepted))),
         vec![
@@ -632,15 +679,29 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
             request_lookup_call(&request_id)?,
             user_lookup_call(requester.user_id()),
             balance_call(),
+            Call::ApprovalNotification {
+                session: RedactedSecret::Redacted,
+                request_id: request_id.clone(),
+            },
+            Call::FundingMethods {
+                session: RedactedSecret::Redacted,
+            },
+            Call::ApprovalEligibility {
+                session: RedactedSecret::Redacted,
+                requester_id: requester.user_id().clone(),
+                amount_cents: initial_request.amount().cents(),
+                note: "Synthetic request".to_owned(),
+                funding_source_id: PaymentMethodId::from_str("balance-1")?,
+            },
             Call::Accept {
                 session: RedactedSecret::Redacted,
                 plan: Box::new(AcceptPlanCall {
                     account,
                     request: final_request,
                     balance,
-                    notification_id: None,
-                    funding_source_id: None,
-                    funding_source_selection: None,
+                    notification_id: Some(RequestNotificationId::from_str("notification-1")?),
+                    funding_source_id: Some(PaymentMethodId::from_str("balance-1")?),
+                    funding_source_selection: Some(PeerFundingSourceSelection::Automatic),
                     approval_fee_cents: None,
                     protected: false,
                 }),
@@ -659,6 +720,175 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
     Ok(())
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum AcceptStepUpCall {
+    Accept(RequestAcceptanceVerification),
+    Issue(ClientRequestId),
+    Prompt(String),
+    Verify(ClientRequestId, String),
+}
+
+struct AcceptStepUpApi {
+    outcomes: RefCell<VecDeque<RequestAcceptanceOutcome>>,
+    calls: RefCell<Vec<AcceptStepUpCall>>,
+}
+
+impl RequestAcceptanceApi for AcceptStepUpApi {
+    type Error = FakeApiError;
+
+    fn accept_request<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _plan: &'a AcceptRequestPlan,
+        verification: RequestAcceptanceVerification,
+    ) -> impl Future<Output = Result<RequestAcceptanceOutcome, Self::Error>> + Send + 'a {
+        self.calls
+            .borrow_mut()
+            .push(AcceptStepUpCall::Accept(verification));
+        ready(
+            self.outcomes
+                .borrow_mut()
+                .pop_front()
+                .ok_or(FakeApiError(ApiFailureKind::Internal)),
+        )
+    }
+}
+
+impl P2pStepUpApi for AcceptStepUpApi {
+    type Error = FakeApiError;
+
+    fn issue_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        session_id: &'a ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        self.calls
+            .borrow_mut()
+            .push(AcceptStepUpCall::Issue(*session_id));
+        ready(Ok(()))
+    }
+
+    fn verify_p2p_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        session_id: &'a ClientRequestId,
+        otp: &'a OtpCode,
+    ) -> impl Future<Output = Result<P2pOtpVerification, Self::Error>> + Send + 'a {
+        self.calls.borrow_mut().push(AcceptStepUpCall::Verify(
+            *session_id,
+            otp.expose().to_owned(),
+        ));
+        ready(Ok(P2pOtpVerification::Verified))
+    }
+}
+
+struct AcceptStepUpPrompt<'a> {
+    calls: &'a RefCell<Vec<AcceptStepUpCall>>,
+}
+
+impl PromptAvailability for AcceptStepUpPrompt<'_> {
+    fn can_prompt(&self) -> bool {
+        true
+    }
+}
+
+impl P2pStepUpInput for AcceptStepUpPrompt<'_> {
+    fn read_p2p_otp(&self, prompt: &str) -> Result<OtpCode, PromptError> {
+        self.calls
+            .borrow_mut()
+            .push(AcceptStepUpCall::Prompt(prompt.to_owned()));
+        OtpCode::parse_owned("123456".to_owned()).map_err(|_| PromptError::Interaction {
+            source: io::Error::other("synthetic OTP was invalid"),
+        })
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_acceptance_step_up_uses_the_server_uuid_and_one_verified_continuation()
+-> TestResult {
+    let session_id = ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?;
+    let api = AcceptStepUpApi {
+        outcomes: RefCell::new(VecDeque::from([
+            RequestAcceptanceOutcome::OtpStepUpRequired(session_id),
+            RequestAcceptanceOutcome::Accepted(accepted_request()?),
+        ])),
+        calls: RefCell::new(Vec::new()),
+    };
+    let prompt = AcceptStepUpPrompt { calls: &api.calls };
+    let authorized = AuthorizedAccept(PreparedAccept::new(
+        loaded_credential()?.envelope,
+        step_up_accept_plan()?,
+    ));
+
+    let result = execute(&api, &prompt, authorized).await?;
+
+    assert_eq!(
+        result.accepted().payment_id().map(PaymentId::as_str),
+        Some("payment-1")
+    );
+    assert_eq!(
+        api.calls.into_inner(),
+        vec![
+            AcceptStepUpCall::Accept(RequestAcceptanceVerification::Unverified),
+            AcceptStepUpCall::Issue(session_id),
+            AcceptStepUpCall::Prompt("Venmo SMS verification code".to_owned()),
+            AcceptStepUpCall::Verify(session_id, "123456".to_owned()),
+            AcceptStepUpCall::Accept(RequestAcceptanceVerification::SmsOtpVerified(session_id)),
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_acceptance_stops_after_one_verified_continuation() -> TestResult {
+    let session_id = ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?;
+    let api = AcceptStepUpApi {
+        outcomes: RefCell::new(VecDeque::from([
+            RequestAcceptanceOutcome::OtpStepUpRequired(session_id),
+            RequestAcceptanceOutcome::OtpStepUpRequired(session_id),
+        ])),
+        calls: RefCell::new(Vec::new()),
+    };
+    let prompt = AcceptStepUpPrompt { calls: &api.calls };
+    let authorized = AuthorizedAccept(PreparedAccept::new(
+        loaded_credential()?.envelope,
+        step_up_accept_plan()?,
+    ));
+
+    let result = execute(&api, &prompt, authorized).await;
+
+    assert!(matches!(
+        result,
+        Err(AcceptError::StepUp(P2pStepUpError::StillRequired))
+    ));
+    assert_eq!(
+        api.calls
+            .borrow()
+            .iter()
+            .filter(|call| matches!(call, AcceptStepUpCall::Accept(_)))
+            .count(),
+        2
+    );
+    Ok(())
+}
+
+fn step_up_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
+    let balance = sufficient_balance();
+    Ok(
+        AcceptRequestPlan::new(account("123")?, standard_request()?, balance.clone()).with_funding(
+            RequestNotificationId::from_str("notification-1")?,
+            PeerFundingSource::balance(balance_funding_method()?),
+            PeerFundingSourceSelection::Automatic,
+            eligibility_token()?,
+            RequestApprovalFees::omitted(),
+            false,
+        ),
+    )
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn insufficient_balance_uses_selected_external_funding_before_one_accept_write() -> TestResult
 {
@@ -673,7 +903,7 @@ async fn insufficient_balance_uses_selected_external_funding_before_one_accept_w
         );
         let funding = funding_method("bank-1", true)?;
         let plan = AcceptRequestPlan::new(account("123")?, final_request.clone(), balance.clone())
-            .with_modern_funding(
+            .with_funding(
                 RequestNotificationId::from_str("notification-1")?,
                 PeerFundingSource::external(funding.clone()),
                 PeerFundingSourceSelection::Automatic,
@@ -819,7 +1049,7 @@ async fn explicit_protection_preserves_recipient_fee_and_uses_external_approval(
     let balance = sufficient_balance();
     let funding = funding_method("bank-1", true)?;
     let plan = AcceptRequestPlan::new(account("123")?, final_request.clone(), balance.clone())
-        .with_modern_funding(
+        .with_funding(
             RequestNotificationId::from_str("notification-1")?,
             PeerFundingSource::external(funding.clone()),
             PeerFundingSourceSelection::Automatic,
@@ -872,7 +1102,7 @@ async fn explicit_protection_preserves_recipient_fee_and_uses_external_approval(
 
     let prepared = prepare_with_protection(&reader, &api, &request_id, None, true).await?;
     let authorized = authorize(&prompt, prepared, true)?;
-    let result = execute(&api, authorized).await;
+    let result = execute(&api, &prompt, authorized).await;
     let observed = Observation::new(project(result), transcript.borrow().clone());
 
     assert_eq!(observed, expected);
@@ -1190,12 +1420,13 @@ async fn confirmation_required_declined_cancelled_failed_and_confirmed_are_disti
         let prompt = FakePrompt::new(interactive, prompt_script, Rc::clone(&transcript));
 
         // Complete expected final outcome and state.
-        let mut expected_calls = preparation_calls(&request_id, &standard_request()?)?;
+        let mut expected_calls =
+            modern_balance_preparation_calls(&request_id, &standard_request()?)?;
         expected_calls.extend(prompt_calls);
         if matches!(case, ConfirmationCase::Confirmed) {
             let write = successful_calls(&request_id)?
                 .into_iter()
-                .nth(5)
+                .last()
                 .ok_or_else(|| io::Error::other("missing synthetic accept call"))?;
             expected_calls.push(write);
         }
@@ -1255,7 +1486,7 @@ fn failure_case(
             ReaderScript::Present,
             script.with_accepted(Err(FakeApiError(ApiFailureKind::AmbiguousWrite))),
             AcceptFailure::Accept(ApiFailureKind::AmbiguousWrite),
-            6,
+            9,
         ),
     })
 }
@@ -1290,13 +1521,19 @@ fn confirmation_case(case: ConfirmationCase) -> Result<ConfirmationExpectation, 
         ),
         ConfirmationCase::Confirmed => {
             let request = standard_request()?.with_counterparty(financial_requester()?);
+            let plan = AcceptRequestPlan::new(account("123")?, request, sufficient_balance())
+                .with_funding(
+                    RequestNotificationId::from_str("notification-1")?,
+                    PeerFundingSource::balance(balance_funding_method()?),
+                    PeerFundingSourceSelection::Automatic,
+                    eligibility_token()?,
+                    RequestApprovalFees::omitted(),
+                    false,
+                );
             (
                 true,
                 PromptScript::Answer(true),
-                AcceptOutcome::Success(Box::new(AcceptResult::new(
-                    AcceptRequestPlan::new(account("123")?, request, sufficient_balance()),
-                    accepted_request()?,
-                ))),
+                AcceptOutcome::Success(Box::new(AcceptResult::new(plan, accepted_request()?))),
                 confirmation_calls(),
             )
         }
@@ -1319,16 +1556,16 @@ fn successful_calls(request_id: &RequestId) -> Result<Vec<Call>, Box<dyn Error>>
         .with_counterparty(financial_requester()?);
     let account = account("123")?;
     let balance = sufficient_balance();
-    let mut calls = preparation_calls(request_id, &initial_request)?;
+    let mut calls = modern_balance_preparation_calls(request_id, &initial_request)?;
     calls.push(Call::Accept {
         session: RedactedSecret::Redacted,
         plan: Box::new(AcceptPlanCall {
             account,
             request: final_request,
             balance,
-            notification_id: None,
-            funding_source_id: None,
-            funding_source_selection: None,
+            notification_id: Some(RequestNotificationId::from_str("notification-1")?),
+            funding_source_id: Some(PaymentMethodId::from_str("balance-1")?),
+            funding_source_selection: Some(PeerFundingSourceSelection::Automatic),
             approval_fee_cents: None,
             protected: false,
         }),
@@ -1347,6 +1584,30 @@ fn preparation_calls(
         user_lookup_call(returned_request.counterparty().user_id()),
         balance_call(),
     ])
+}
+
+fn modern_balance_preparation_calls(
+    request_id: &RequestId,
+    returned_request: &RequestRecord,
+) -> Result<Vec<Call>, Box<dyn Error>> {
+    let mut calls = preparation_calls(request_id, returned_request)?;
+    calls.extend([
+        Call::ApprovalNotification {
+            session: RedactedSecret::Redacted,
+            request_id: request_id.clone(),
+        },
+        Call::FundingMethods {
+            session: RedactedSecret::Redacted,
+        },
+        Call::ApprovalEligibility {
+            session: RedactedSecret::Redacted,
+            requester_id: returned_request.counterparty().user_id().clone(),
+            amount_cents: returned_request.amount().cents(),
+            note: returned_request.note().unwrap_or_default().to_owned(),
+            funding_source_id: PaymentMethodId::from_str("balance-1")?,
+        },
+    ]);
+    Ok(calls)
 }
 
 const fn current_account_call() -> Call {
