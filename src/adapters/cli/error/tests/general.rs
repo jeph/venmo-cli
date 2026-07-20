@@ -12,6 +12,7 @@ use crate::features::people::info::UserInfoError;
 use crate::features::people::users::UserSearchError;
 use crate::features::requests::RequestMutationPreflightError;
 use crate::features::requests::accept::AcceptError;
+use crate::features::requests::cancel::CancelError;
 use crate::features::requests::create::RequestCreateError;
 use crate::features::requests::decline::DeclineError;
 use crate::features::requests::info::RequestInfoError;
@@ -41,6 +42,7 @@ enum AppErrorVariant {
     RequestCreate,
     Accept,
     Decline,
+    Cancel,
     UserSearch,
     UserInfo,
     Friends,
@@ -103,6 +105,9 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         )),
         AppError::from(AcceptError::ConfirmationRequired),
         AppError::from(DeclineError::Preflight(
+            RequestMutationPreflightError::Credential(CredentialAccessError::Missing),
+        )),
+        AppError::from(CancelError::Preflight(
             RequestMutationPreflightError::Credential(CredentialAccessError::Missing),
         )),
         AppError::from(UserSearchError::Internal {
@@ -176,6 +181,7 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         classification(AppErrorVariant::RequestCreate, ErrorCategory::Credential),
         classification(AppErrorVariant::Accept, ErrorCategory::Usage),
         classification(AppErrorVariant::Decline, ErrorCategory::Credential),
+        classification(AppErrorVariant::Cancel, ErrorCategory::Credential),
         classification(AppErrorVariant::UserSearch, ErrorCategory::Internal),
         classification(AppErrorVariant::UserInfo, ErrorCategory::ApiContract),
         classification(AppErrorVariant::Friends, ErrorCategory::ApiContract),
@@ -238,6 +244,7 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::RequestCreate { .. } => AppErrorVariant::RequestCreate,
         AppError::Accept { .. } => AppErrorVariant::Accept,
         AppError::Decline { .. } => AppErrorVariant::Decline,
+        AppError::Cancel { .. } => AppErrorVariant::Cancel,
         AppError::UserSearch { .. } => AppErrorVariant::UserSearch,
         AppError::UserInfo { .. } => AppErrorVariant::UserInfo,
         AppError::Friends { .. } => AppErrorVariant::Friends,

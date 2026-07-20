@@ -1,7 +1,7 @@
 use super::{
-    AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, CreatedRequest, DeclineRequestPlan,
-    DeclinedRequest, RequestApprovalFees, RequestId, RequestNotificationId, RequestRecord,
-    RequestsBefore,
+    AcceptRequestPlan, AcceptedRequest, CancelRequestPlan, CancelledRequest, CreateRequestPlan,
+    CreatedRequest, DeclineRequestPlan, DeclinedRequest, RequestApprovalFees, RequestId,
+    RequestNotificationId, RequestRecord, RequestsBefore,
 };
 use crate::features::payments::{EligibilityToken, PeerFundingSource};
 use crate::features::people::User;
@@ -82,6 +82,17 @@ pub(crate) trait RequestDeclineApi {
         device_id: &'a DeviceId,
         plan: &'a DeclineRequestPlan,
     ) -> impl Future<Output = Result<DeclinedRequest, Self::Error>> + Send + 'a;
+}
+
+pub(crate) trait RequestCancellationApi {
+    type Error: ApiFailure;
+
+    fn cancel_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a CancelRequestPlan,
+    ) -> impl Future<Output = Result<CancelledRequest, Self::Error>> + Send + 'a;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

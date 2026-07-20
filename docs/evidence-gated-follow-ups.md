@@ -83,6 +83,23 @@ one explicit-bank-source live payment completed and reconciled through that flow
 activity do not prove the actual debit source or final fee. No output may claim either, and no
 request-acceptance continuation may be retried.
 
+## Outgoing request cancellation
+
+`requests cancel` implements the narrow outgoing-charge contract independently from incoming
+decline and completed-payment cancellation. Signer-verified Venmo Android 26.13.0 calls
+form-urlencoded `PUT /v1/payments/{id}` with `action=cancel`, returns a
+`BaseSingleObjectResponse<Payment>`, and obtains cancellable outgoing charges with
+`status=pending,held`, `actor=self`, and `action=charge`. Historical `deet/govenmo` independently
+uses the same form action and parses returned payment data. The maintained Python fork uses the
+same endpoint/action with JSON, so current native form encoding controls.
+
+The CLI requires an authoritative self→counterparty open charge, shows default-No confirmation,
+sends one write, and requires exact terminal `cancelled` proof. It never treats this as reversal of
+a completed payment, incoming denial, friend-request cancellation, or reminder. Exact synthetic
+coverage proves the request and response contract, but current client-1 authorization has not yet
+received a controlled live cancellation. Any live canary requires separate owner approval and an
+identified harmless outgoing request; routine tests must remain service-free.
+
 ## Friendship mutation session authorization
 
 `friends add` and `friends remove` retain exact synthetic contracts derived from signer-verified

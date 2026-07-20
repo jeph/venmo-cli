@@ -277,6 +277,24 @@ impl<'a> HttpRequest<'a> {
         )
     }
 
+    #[must_use]
+    pub(in crate::adapters::venmo) fn financial_form_put(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+        form_body: FormBody,
+    ) -> Self {
+        Self::new(
+            Method::PUT,
+            route_template,
+            path_segments,
+            query,
+            RequestBodies::form(form_body),
+            OperationClass::FinancialWrite,
+            ResponseCapture::None,
+        )
+    }
+
     pub(in crate::adapters::venmo) fn password_login_json_post(
         route_template: &'static str,
         path_segments: &'a [&'a str],

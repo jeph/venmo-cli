@@ -138,10 +138,14 @@ Protected plans must reject a fee above the request amount, submit normalized fe
 the estimated seller deduction plus recipient proceeds without increasing the payer amount. Webview
 or malformed success is ambiguous and never retried.
 
-All three request mutations have exact prepare/render/authorize/execute coverage. Detail output is
+All four request mutations have exact prepare/render/authorize/execute coverage. Detail output is
 flushed before confirmation, default-No rejection and cancellation send zero writes, off-TTY use
 requires `--yes`, and `--yes` skips only the prompt. Output failure before authorization prevents
 signal installation and the write; post-write output failure retains ambiguous-result semantics.
+Outgoing cancellation tests additionally pin exact outgoing ownership, `pending`/`held` state
+acceptance, form-urlencoded `action=cancel`, self-to-counterparty response orientation, exact
+terminal `cancelled` status, and rejection of incoming, payment, stale, or mismatched records. An
+exact one-request assertion proves the mutation is never retried.
 
 Payment step-up coverage is entirely service-free. Exact transcripts prove an initial creation
 challenge, terminal-capability check, one SMS issue, one hidden six-digit prompt, one verification,
@@ -216,7 +220,7 @@ test.
 Debug precondition coverage injects a recording/failing logging initializer into the private
 dispatch seam. Complete state equality proves noninteractive login makes zero initializer and
 executor calls. Delegated fake
-commands, including `requests accept` and `requests decline`, prove initialization occurs first and
+commands, including `requests accept`, `requests decline`, and `requests cancel`, prove initialization occurs first and
 that an initialization error prevents execution.
 These tests never install the real process-global subscriber.
 

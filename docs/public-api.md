@@ -21,7 +21,7 @@ and black-box tests.
 - Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`, `UserInfoArgs`.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
-  `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `RequestDirectionArg`.
+  `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `CancelArgs`, `RequestDirectionArg`.
 - Transfers: `TransferArgs`, `TransferOperation`, `TransferOutArgs`, `TransferAmountArg`,
   `TransferSpeedArg`.
 - Payment commands: `PayArgs`, `PayOperation`, `PayUserArgs`, `VisibilityArg`.
@@ -92,14 +92,15 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 
 - `RequestId`, `RequestAction`, `RequestDirection`, `RequestDirectionFilter`, `RequestStatus`,
   `RequestStatusParseError`, `RequestRecord`, `RequestsBefore`.
-- `CreatedRequest`, `AcceptedRequest`, `DeclinedRequest`.
-- `CreateRequestPlan`, `AcceptRequestPlan`, `DeclineRequestPlan`.
+- `CreatedRequest`, `AcceptedRequest`, `DeclinedRequest`, `CancelledRequest`.
+- `CreateRequestPlan`, `AcceptRequestPlan`, `DeclineRequestPlan`, `CancelRequestPlan`.
 - `AcceptRequestPlan` exposes the internally selected optional backup method but not its secret
   eligibility token or fee tokens. It exposes whether Purchase Protection was selected and, only
   then, the checked aggregate seller-fee estimate and recipient-proceeds estimate for frontend
   rendering. `AcceptedRequest` payment ID/status are optional because the modern
   source-funded approval success object does not guarantee either field.
-- `RequestCreateResult`, `AcceptResult`, `DeclineResult`, `RequestsResult`, `RequestInfoResult`.
+- `RequestCreateResult`, `AcceptResult`, `DeclineResult`, `CancelResult`, `RequestsResult`,
+  `RequestInfoResult`.
 
 ### Transfers
 
@@ -143,8 +144,9 @@ Clap schema:
   `RequestsOperation::Info(RequestInfoArgs)` variants in exhaustive matches.
 - Request actions are consolidated under `Command::Requests`: exhaustive `RequestsOperation`
   matches must also handle `Create(RequestArgs)`, `Accept(AcceptArgs)`, and
-  `Decline(DeclineArgs)`. The former top-level `Command::Request`, `Command::Accept`, and
-  `Command::Decline` variants and command forms have no compatibility aliases.
+  `Decline(DeclineArgs)`, plus outgoing `Cancel(CancelArgs)`. The former top-level
+  `Command::Request`, `Command::Accept`, and `Command::Decline` variants and command forms have no
+  compatibility aliases.
 - `UserInfoResult` and `RequestInfoResult` are now available from `venmo_cli::model`.
 - `UserInfoArgs` exposes `username: Username` rather than a user-ID field. `Username` and
   `RecipientInput` normalize usernames with or without `@`; no command argument exposes `UserId` as

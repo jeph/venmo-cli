@@ -78,7 +78,7 @@ fn invalid_before_usage_errors_are_redacted_and_service_free() -> TestResult {
 
 #[test]
 fn invalid_request_mutation_ids_are_redacted_and_service_free() -> TestResult {
-    for command in ["accept", "decline"] {
+    for command in ["accept", "decline", "cancel"] {
         for raw in [
             "sensitive request id".to_owned(),
             "sensitive\u{202e}request".to_owned(),

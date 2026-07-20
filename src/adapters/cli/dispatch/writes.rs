@@ -11,16 +11,16 @@ use crate::features::people::friendship::{self, FriendshipIntent};
 use crate::features::people::{FriendshipMutationApi, UserLookupApi, UserSearchApi};
 use crate::features::requests::{
     RequestAcceptanceApi, RequestApprovalEligibilityApi, RequestApprovalNotificationApi,
-    RequestCreationApi, RequestDeclineApi, RequestLookupApi,
+    RequestCancellationApi, RequestCreationApi, RequestDeclineApi, RequestLookupApi,
 };
-use crate::features::requests::{accept, create as request_create, decline};
+use crate::features::requests::{accept, cancel, create as request_create, decline};
 use crate::features::transfers::out as transfer_out;
 use crate::features::transfers::{TransferOptionsApi, TransferOutCreationApi};
 use crate::features::wallet::BalanceApi;
 use crate::shared::{ApiFailure, ClientRequestIdGenerator, CredentialReader};
 
 use super::super::args::{
-    AcceptArgs, DeclineArgs, FriendAddArgs, FriendRemoveArgs, PayUserArgs, RequestArgs,
+    AcceptArgs, CancelArgs, DeclineArgs, FriendAddArgs, FriendRemoveArgs, PayUserArgs, RequestArgs,
     TransferOutArgs,
 };
 use super::super::{error::AppError, output};
@@ -196,6 +196,40 @@ where
     let result =
         protect_with_interruption(decline::execute(api, authorized), interruption).await??;
     write_and_flush(stdout, &result, output::write_decline_result)
+        .map_err(|source| AppError::FinancialResultOutput { source })?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_cancel_with<R, A, P, W, E, M, S>(
+    args: CancelArgs,
+    store: &R,
+    api: &A,
+    prompt: &P,
+    timestamps: &output::TimestampFormatter,
+    stdout: &mut W,
+    stderr: &mut E,
+    make_interruption: M,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: CurrentAccountApi + RequestLookupApi + RequestCancellationApi,
+    <A as CurrentAccountApi>::Error: ApiFailure,
+    P: DefaultNoConfirmation,
+    W: Write,
+    E: Write,
+    M: FnOnce() -> Result<S, AppError>,
+    S: Future<Output = Result<(), AppError>>,
+{
+    let prepared = cancel::prepare(store, api, &args.request_id).await?;
+    write_and_flush(stderr, &prepared, |writer, prepared| {
+        output::write_cancel_details(writer, prepared, timestamps)
+    })?;
+    let authorized = cancel::authorize(prompt, prepared, args.yes)?;
+    let interruption = make_interruption()?;
+    let result =
+        protect_with_interruption(cancel::execute(api, authorized), interruption).await??;
+    write_and_flush(stdout, &result, output::write_cancel_result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())
 }
@@ -448,3 +482,7 @@ mod accept_handler_tests;
 #[cfg(test)]
 #[path = "writes_decline_tests.rs"]
 mod decline_handler_tests;
+
+#[cfg(test)]
+#[path = "writes_cancel_tests.rs"]
+mod cancel_handler_tests;

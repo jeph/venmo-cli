@@ -225,6 +225,7 @@ fn debug_command_name(command: &Command) -> &'static str {
             RequestsOperation::Create(_) => "requests.create",
             RequestsOperation::Accept(_) => "requests.accept",
             RequestsOperation::Decline(_) => "requests.decline",
+            RequestsOperation::Cancel(_) => "requests.cancel",
             RequestsOperation::Info(_) => "requests.info",
         },
         Command::Transfer(args) => match args.operation {

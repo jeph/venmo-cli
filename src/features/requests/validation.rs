@@ -8,10 +8,18 @@ pub enum RequestMutationValidationError {
     #[error("the request is not an incoming request addressed to the active account")]
     NotIncoming,
 
+    #[error("the request is not an outgoing request made by the active account")]
+    NotOutgoing,
+
     #[error(
         "the request is not in the exact pending state required for this operation; refresh `venmo requests list`"
     )]
     NotPending,
+
+    #[error(
+        "the request is not in a pending or held state that can be cancelled; refresh `venmo requests list`"
+    )]
+    NotOpen,
 
     #[error("the request does not have a verified private audience")]
     UnverifiedAudience,
@@ -22,13 +30,13 @@ pub enum RequestMutationValidationError {
     #[error("the request omitted a supported audience")]
     UnsupportedAudience,
 
-    #[error("the request omitted a complete requester identity")]
+    #[error("the request omitted a complete counterparty identity")]
     IncompleteRequester,
 
     #[error("the request omitted its creation timestamp")]
     MissingCreationTime,
 
-    #[error("the record is not an incoming payment request")]
+    #[error("the record is not a payment request")]
     NotChargeRequest,
 
     #[error("the authoritative request lookup returned a different request ID")]
@@ -40,7 +48,9 @@ impl RequestMutationValidationError {
     pub const fn failure_kind(self) -> ApplicationFailureKind {
         match self {
             Self::NotIncoming
+            | Self::NotOutgoing
             | Self::NotPending
+            | Self::NotOpen
             | Self::UnverifiedAudience
             | Self::NotChargeRequest => ApplicationFailureKind::Usage,
             Self::InvalidNote
@@ -99,6 +109,18 @@ pub fn validate_incoming_pending(
     }
     if request.status().as_str() != "pending" {
         return Err(RequestMutationValidationError::NotPending);
+    }
+    Ok(())
+}
+
+pub fn validate_outgoing_open(
+    request: &RequestRecord,
+) -> Result<(), RequestMutationValidationError> {
+    if request.direction() != RequestDirection::Outgoing {
+        return Err(RequestMutationValidationError::NotOutgoing);
+    }
+    if !request.status().is_pending_or_held() {
+        return Err(RequestMutationValidationError::NotOpen);
     }
     Ok(())
 }

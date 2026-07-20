@@ -17,8 +17,8 @@ pub use reads::{
     UserSearchArgs, UsersArgs, UsersOperation,
 };
 pub use requests::{
-    AcceptArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs,
-    RequestsListArgs, RequestsOperation,
+    AcceptArgs, CancelArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs,
+    RequestsArgs, RequestsListArgs, RequestsOperation,
 };
 pub use transfers::{
     TransferAmountArg, TransferArgs, TransferOperation, TransferOutArgs, TransferSpeedArg,

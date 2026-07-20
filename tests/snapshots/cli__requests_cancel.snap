@@ -1,0 +1,20 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Cancel an outgoing request without sending money
+
+Usage: cancel [OPTIONS] <REQUEST_ID>
+
+Arguments:
+  <REQUEST_ID>
+          Canonical outgoing request ID
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Cancellation sends no money and cannot reverse a completed payment. Confirmation defaults to No and requires both stdin and stderr to be terminals unless `--yes` is supplied. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app.

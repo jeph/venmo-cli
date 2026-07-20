@@ -174,6 +174,7 @@ pub(super) fn requests_args() -> TestResult<RequestsListArgs> {
             RequestsOperation::Create(_)
             | RequestsOperation::Accept(_)
             | RequestsOperation::Decline(_)
+            | RequestsOperation::Cancel(_)
             | RequestsOperation::Info(_) => {
                 Err(io::Error::other("request-list arguments parsed as another operation").into())
             }
@@ -189,7 +190,8 @@ pub(super) fn request_info_args() -> TestResult<RequestInfoArgs> {
             RequestsOperation::List(_)
             | RequestsOperation::Create(_)
             | RequestsOperation::Accept(_)
-            | RequestsOperation::Decline(_) => {
+            | RequestsOperation::Decline(_)
+            | RequestsOperation::Cancel(_) => {
                 Err(io::Error::other("request-info arguments parsed as another operation").into())
             }
         },

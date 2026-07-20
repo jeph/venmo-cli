@@ -39,11 +39,12 @@ use crate::features::people::{
     UserProfileKind, UserSearchApi, UserSearchPageRequest, UserSearchQuery, lookup,
 };
 use crate::features::requests::{
-    AcceptRequestPlan, CreateRequestPlan, DeclineRequestPlan, PendingRequestsPageRequest,
-    RequestAcceptanceApi, RequestAction, RequestApprovalEligibilityApi, RequestApprovalFee,
-    RequestApprovalFees, RequestApprovalNotificationApi, RequestCreationApi, RequestDeclineApi,
-    RequestDirection, RequestId, RequestLookupApi, RequestNotificationId, RequestRecord,
-    RequestStatus, RequestsApi, RequestsBefore,
+    AcceptRequestPlan, CancelRequestPlan, CreateRequestPlan, DeclineRequestPlan,
+    PendingRequestsPageRequest, RequestAcceptanceApi, RequestAction, RequestApprovalEligibilityApi,
+    RequestApprovalFee, RequestApprovalFees, RequestApprovalNotificationApi,
+    RequestCancellationApi, RequestCreationApi, RequestDeclineApi, RequestDirection, RequestId,
+    RequestLookupApi, RequestNotificationId, RequestRecord, RequestStatus, RequestsApi,
+    RequestsBefore,
 };
 use crate::features::transfers::{
     TransferInstrument, TransferInstrumentId, TransferInstrumentSuffix, TransferOptionsApi,
@@ -745,6 +746,22 @@ fn incoming_request() -> Result<RequestRecord, Box<dyn Error>> {
     .with_audience(Some("private".to_owned())))
 }
 
+fn outgoing_request(status: &str) -> Result<RequestRecord, Box<dyn Error>> {
+    let created_at = parse_timestamp_value("2026-07-11T12:00:00")
+        .map_err(|()| io::Error::other("invalid synthetic request timestamp"))?;
+    Ok(RequestRecord::new(
+        RequestId::from_str("request-1")?,
+        RequestAction::Charge,
+        RequestDirection::Outgoing,
+        financial_user("456", "recipient")?,
+        Money::from_cents(1)?,
+        Some("Synthetic request".to_owned()),
+        Some(created_at),
+        RequestStatus::from_str(status)?,
+    )
+    .with_audience(Some("private".to_owned())))
+}
+
 fn accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
     Ok(AcceptRequestPlan::new(
         test_account()?,
@@ -811,6 +828,13 @@ fn decline_plan() -> Result<DeclineRequestPlan, Box<dyn Error>> {
     Ok(DeclineRequestPlan::new(
         test_account()?,
         incoming_request()?,
+    ))
+}
+
+fn cancel_plan(status: &str) -> Result<CancelRequestPlan, Box<dyn Error>> {
+    Ok(CancelRequestPlan::new(
+        test_account()?,
+        outgoing_request(status)?,
     ))
 }
 

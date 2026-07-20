@@ -53,6 +53,7 @@ pub(super) const REQUEST_APPROVAL_ELIGIBILITY_OPERATION: &str = "request-approva
 pub(super) const REQUEST_APPROVAL_NOTIFICATION_OPERATION: &str =
     "request-approval notification lookup";
 pub(super) const REQUEST_DECLINE_OPERATION: &str = "request decline";
+pub(super) const REQUEST_CANCELLATION_OPERATION: &str = "request cancellation";
 pub(super) const REQUEST_DETAIL_OPERATION: &str = "request detail";
 pub(super) const REQUEST_LIST_OPERATION: &str = "pending-request listing";
 pub(super) const USER_LOOKUP_OPERATION: &str = "user lookup";

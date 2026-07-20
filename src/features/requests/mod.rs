@@ -1,4 +1,5 @@
 pub(crate) mod accept;
+pub(crate) mod cancel;
 pub(crate) mod continuation;
 pub(crate) mod create;
 pub(crate) mod decline;
@@ -17,12 +18,13 @@ pub(crate) use model::{
     RequestNotificationId, RequestRecord, RequestStatus,
 };
 pub(crate) use plans::{
-    AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, DeclineRequestPlan, DeclinedRequest,
-    RequestApprovalFee, RequestApprovalFees,
+    AcceptRequestPlan, AcceptedRequest, CancelRequestPlan, CancelledRequest, CreateRequestPlan,
+    DeclineRequestPlan, DeclinedRequest, RequestApprovalFee, RequestApprovalFees,
 };
 pub(crate) use ports::{PendingRequestsPage, PendingRequestsPageRequest, RequestsApi};
 pub(crate) use ports::{
     RequestAcceptanceApi, RequestApprovalEligibility, RequestApprovalEligibilityApi,
-    RequestApprovalNotificationApi, RequestCreationApi, RequestDeclineApi, RequestLookupApi,
+    RequestApprovalNotificationApi, RequestCancellationApi, RequestCreationApi, RequestDeclineApi,
+    RequestLookupApi,
 };
 pub(crate) use preflight::RequestMutationPreflightError;

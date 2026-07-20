@@ -28,6 +28,9 @@ pub enum RequestsOperation {
     /// Decline an incoming request without sending money.
     Decline(DeclineArgs),
 
+    /// Cancel an outgoing request without sending money.
+    Cancel(CancelArgs),
+
     /// Show information about one open request.
     Info(RequestInfoArgs),
 }
@@ -119,6 +122,20 @@ pub struct AcceptArgs {
 )]
 pub struct DeclineArgs {
     /// Canonical incoming request ID.
+    #[arg(value_name = "REQUEST_ID", value_parser = RedactedRequestIdParser)]
+    pub request_id: RequestId,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long)]
+    pub yes: bool,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "Cancellation sends no money and cannot reverse a completed payment. Confirmation defaults to No and requires both stdin and stderr to be terminals unless `--yes` is supplied. Exit code 3 means the request state must be verified independently. Do not retry; check `requests list` and the official Venmo app."
+)]
+pub struct CancelArgs {
+    /// Canonical outgoing request ID.
     #[arg(value_name = "REQUEST_ID", value_parser = RedactedRequestIdParser)]
     pub request_id: RequestId,
 

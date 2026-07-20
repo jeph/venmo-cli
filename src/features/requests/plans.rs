@@ -429,3 +429,65 @@ impl fmt::Debug for DeclinedRequest {
             .finish()
     }
 }
+
+#[derive(Eq, PartialEq)]
+pub struct CancelRequestPlan {
+    account: Account,
+    request: RequestRecord,
+}
+
+impl CancelRequestPlan {
+    #[must_use]
+    pub(crate) const fn new(account: Account, request: RequestRecord) -> Self {
+        Self { account, request }
+    }
+
+    #[must_use]
+    pub const fn account(&self) -> &Account {
+        &self.account
+    }
+
+    #[must_use]
+    pub const fn request(&self) -> &RequestRecord {
+        &self.request
+    }
+}
+
+impl fmt::Debug for CancelRequestPlan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("CancelRequestPlan([REDACTED])")
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct CancelledRequest {
+    request_id: RequestId,
+    status: RequestStatus,
+}
+
+impl CancelledRequest {
+    #[must_use]
+    pub(crate) const fn new(request_id: RequestId, status: RequestStatus) -> Self {
+        Self { request_id, status }
+    }
+
+    #[must_use]
+    pub const fn request_id(&self) -> &RequestId {
+        &self.request_id
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> &RequestStatus {
+        &self.status
+    }
+}
+
+impl fmt::Debug for CancelledRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CancelledRequest")
+            .field("request_id", &REDACTED)
+            .field("status", &self.status)
+            .finish()
+    }
+}

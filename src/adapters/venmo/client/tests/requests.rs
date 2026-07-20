@@ -633,6 +633,86 @@ async fn request_decline_uses_deny_not_cancel_and_requires_terminal_response() -
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn outgoing_request_cancel_uses_current_app_form_contract_for_pending_and_held() -> TestResult
+{
+    for status in ["pending", "held"] {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/payments/request-1"))
+            .and(header("accept", "application/json; charset=utf-8"))
+            .and(header("content-type", "application/x-www-form-urlencoded"))
+            .and(header("authorization", "Bearer synthetic-token"))
+            .and(header("device-id", "synthetic-device"))
+            .and(body_string("action=cancel"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(updated_payment_body(
+                    "charge",
+                    "cancelled",
+                    "123",
+                    "456",
+                )),
+            )
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let cancelled = client
+            .cancel_request(&token, &device_id, &cancel_plan(status)?)
+            .await?;
+        assert_eq!(cancelled.request_id().as_str(), "request-1");
+        assert_eq!(cancelled.status().as_str(), "cancelled");
+        assert_request_count(&server, 1).await;
+        assert_requests_have_no_query(&server).await;
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancel_rejects_every_unproven_terminal_response_as_ambiguous() -> TestResult {
+    let mut wrong_id = updated_payment_body("charge", "cancelled", "123", "456");
+    wrong_id["data"]["id"] = Value::String("request-2".to_owned());
+    let mut wrong_created_at = updated_payment_body("charge", "cancelled", "123", "456");
+    wrong_created_at["data"]["date_created"] = Value::String("2026-07-11T12:00:01".to_owned());
+    for (status, body) in [
+        (200, updated_payment_body("charge", "pending", "123", "456")),
+        (200, updated_payment_body("pay", "cancelled", "123", "456")),
+        (
+            200,
+            updated_payment_body("charge", "cancelled", "456", "123"),
+        ),
+        (200, wrong_id),
+        (200, wrong_created_at),
+        (400, serde_json::json!({"error":{"code":2901}})),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/payments/request-1"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .mount(&server)
+            .await;
+        let client = test_client(&server)?;
+        let (token, device_id) = test_session()?;
+        let result = client
+            .cancel_request(&token, &device_id, &cancel_plan("pending")?)
+            .await;
+        assert!(if status >= 400 {
+            matches!(
+                result,
+                Err(VenmoApiError::FinancialHttpOutcomeUnknown { .. })
+            )
+        } else {
+            matches!(result, Err(VenmoApiError::FinancialOutcomeUnknown { .. }))
+        });
+        assert_eq!(
+            result.as_ref().err().map(ApiFailure::kind),
+            Some(ApiFailureKind::AmbiguousWrite)
+        );
+        assert_request_count(&server, 1).await;
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn request_update_mismatches_and_unverified_errors_are_ambiguous() -> TestResult {
     let mut invalid_payment_id = updated_payment_body("pay", "settled", "123", "456");
     invalid_payment_id["data"]["id"] = Value::String("bad id".to_owned());

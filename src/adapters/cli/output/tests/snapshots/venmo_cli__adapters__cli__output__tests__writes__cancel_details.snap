@@ -1,0 +1,13 @@
+---
+source: src/adapters/cli/output/tests/writes.rs
+expression: cancel_details
+---
+Outgoing request cancellation details:
+  Request ID: request-1
+  Requested from: @recipient (Synthetic\nrecipient) (ID 456)
+  Amount: $0.01
+  Note: Synthetic\nrequest
+  Audience: friends
+  Current request status: held
+  Created: 1969-12-31T16:00:00
+  Action: cancel this exact outgoing request without sending money.

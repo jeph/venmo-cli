@@ -11,6 +11,7 @@ use crate::features::people::friendship::FriendshipMutationError;
 use crate::features::people::info::UserInfoError;
 use crate::features::people::users::{UserSearchError, UserSearchFailureKind};
 use crate::features::requests::accept::AcceptError;
+use crate::features::requests::cancel::CancelError;
 use crate::features::requests::create::RequestCreateError;
 use crate::features::requests::decline::DeclineError;
 use crate::features::requests::info::RequestInfoError;
@@ -154,6 +155,12 @@ pub enum AppError {
     },
 
     #[error(transparent)]
+    Cancel {
+        #[from]
+        source: CancelError,
+    },
+
+    #[error(transparent)]
     UserSearch {
         #[from]
         source: UserSearchError,
@@ -249,6 +256,7 @@ impl AppError {
             Self::RequestCreate { source } => application_failure_category(source.failure_kind()),
             Self::Accept { source } => application_failure_category(source.failure_kind()),
             Self::Decline { source } => application_failure_category(source.failure_kind()),
+            Self::Cancel { source } => application_failure_category(source.failure_kind()),
             Self::UserSearch { source } => match source.failure_kind() {
                 UserSearchFailureKind::Credential => ErrorCategory::Credential,
                 UserSearchFailureKind::Api(kind) => api_failure_category(kind),

@@ -6,10 +6,11 @@ use serde_json::Value;
 use crate::features::payments::{EligibilityToken, FinancialStatus, PaymentId, PeerFundingSource};
 use crate::features::people::User;
 use crate::features::requests::{
-    AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, CreatedRequest, DeclineRequestPlan,
-    DeclinedRequest, PendingRequestsPage, PendingRequestsPageRequest, RequestAcceptanceApi,
-    RequestAction, RequestApprovalEligibility, RequestApprovalEligibilityApi, RequestApprovalFee,
-    RequestApprovalFees, RequestApprovalNotificationApi, RequestCreationApi, RequestDeclineApi,
+    AcceptRequestPlan, AcceptedRequest, CancelRequestPlan, CancelledRequest, CreateRequestPlan,
+    CreatedRequest, DeclineRequestPlan, DeclinedRequest, PendingRequestsPage,
+    PendingRequestsPageRequest, RequestAcceptanceApi, RequestAction, RequestApprovalEligibility,
+    RequestApprovalEligibilityApi, RequestApprovalFee, RequestApprovalFees,
+    RequestApprovalNotificationApi, RequestCancellationApi, RequestCreationApi, RequestDeclineApi,
     RequestDirection, RequestId, RequestLookupApi, RequestNotificationId, RequestRecord,
     RequestStatus, RequestsApi, RequestsBefore,
 };
@@ -31,11 +32,13 @@ use super::payments::{
 enum RequestMutation {
     Accept,
     Decline,
+    Cancel,
 }
 
 enum RequestMutationStatus {
     Accepted(FinancialStatus),
     Declined(RequestStatus),
+    Cancelled(RequestStatus),
 }
 
 const MAX_REQUEST_APPROVAL_FEES: usize = 16;
@@ -107,6 +110,7 @@ impl RequestMutation {
         match self {
             Self::Accept => REQUEST_ACCEPTANCE_OPERATION,
             Self::Decline => REQUEST_DECLINE_OPERATION,
+            Self::Cancel => REQUEST_CANCELLATION_OPERATION,
         }
     }
 
@@ -114,6 +118,7 @@ impl RequestMutation {
         match self {
             Self::Accept => "approve",
             Self::Decline => "deny",
+            Self::Cancel => "cancel",
         }
     }
 
@@ -121,14 +126,19 @@ impl RequestMutation {
         match self {
             Self::Accept => matches!(action, RequestAction::Pay | RequestAction::Charge),
             Self::Decline => matches!(action, RequestAction::Charge),
+            Self::Cancel => matches!(action, RequestAction::Charge),
         }
     }
 
     fn expected_parties<'a>(
+        self,
         response_action: RequestAction,
         request: &'a RequestRecord,
         account_id: &'a UserId,
     ) -> (&'a UserId, &'a UserId) {
+        if self == Self::Cancel {
+            return (account_id, request.counterparty().user_id());
+        }
         match response_action {
             RequestAction::Pay => (account_id, request.counterparty().user_id()),
             RequestAction::Charge => (request.counterparty().user_id(), account_id),
@@ -162,6 +172,15 @@ impl RequestMutation {
                     );
                 }
                 Ok(RequestMutationStatus::Declined(status))
+            }
+            Self::Cancel => {
+                if status.as_str() != "cancelled" {
+                    return financial_contract_unknown(
+                        self.operation(),
+                        "the response did not prove the outgoing request reached the supported terminal state",
+                    );
+                }
+                Ok(RequestMutationStatus::Cancelled(status))
             }
         }
     }
@@ -199,8 +218,9 @@ use super::support::{
 };
 use super::{
     REQUEST_ACCEPTANCE_OPERATION, REQUEST_APPROVAL_ELIGIBILITY_OPERATION,
-    REQUEST_APPROVAL_NOTIFICATION_OPERATION, REQUEST_CREATION_OPERATION, REQUEST_DECLINE_OPERATION,
-    REQUEST_DETAIL_OPERATION, REQUEST_LIST_OPERATION, VenmoApiClient,
+    REQUEST_APPROVAL_NOTIFICATION_OPERATION, REQUEST_CANCELLATION_OPERATION,
+    REQUEST_CREATION_OPERATION, REQUEST_DECLINE_OPERATION, REQUEST_DETAIL_OPERATION,
+    REQUEST_LIST_OPERATION, VenmoApiClient,
 };
 
 impl<T: ApiTransport> VenmoApiClient<T> {
@@ -482,6 +502,32 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         validate_declined_request(payment, plan)
     }
 
+    async fn cancel_outgoing_request(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        plan: &CancelRequestPlan,
+    ) -> Result<CancelledRequest, VenmoApiError> {
+        let operation = REQUEST_CANCELLATION_OPERATION;
+        let body = FormBody::pairs(&[("action", RequestMutation::Cancel.wire_action())])
+            .map_err(|_| VenmoApiError::RequestEncoding { operation })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::financial_form_put(
+                    "/payments/{payment-id}",
+                    &["payments", plan.request().id().as_str()],
+                    &[],
+                    body,
+                ),
+            )
+            .await?;
+        let value = require_financial_success_json(operation, response)?;
+        let payment = parse_updated_payment(operation, value)?;
+        validate_cancelled_request(payment, plan)
+    }
+
     async fn update_incoming_request(
         &self,
         access_token: &AccessToken,
@@ -646,6 +692,19 @@ impl<T: ApiTransport> RequestAcceptanceApi for VenmoApiClient<T> {
     }
 }
 
+impl<T: ApiTransport> RequestCancellationApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn cancel_request<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        plan: &'a CancelRequestPlan,
+    ) -> impl Future<Output = Result<CancelledRequest, Self::Error>> + Send + 'a {
+        self.cancel_outgoing_request(access_token, device_id, plan)
+    }
+}
+
 impl<T: ApiTransport> RequestApprovalEligibilityApi for VenmoApiClient<T> {
     type Error = VenmoApiError;
 
@@ -755,6 +814,12 @@ fn validate_accepted_request(
                 "request acceptance produced a decline-status validation result",
             );
         }
+        RequestMutationStatus::Cancelled(_) => {
+            return financial_contract_unknown(
+                operation,
+                "request acceptance produced a cancellation-status validation result",
+            );
+        }
     };
     let payment_id = PaymentId::from_str(&payment.payment().id.as_str()).map_err(|_| {
         VenmoApiError::FinancialOutcomeUnknown {
@@ -781,8 +846,34 @@ fn validate_declined_request(
                 "request decline produced an acceptance-status validation result",
             );
         }
+        RequestMutationStatus::Cancelled(_) => {
+            return financial_contract_unknown(
+                operation,
+                "request decline produced a cancellation-status validation result",
+            );
+        }
     };
     Ok(DeclinedRequest::new(plan.request().id().clone(), status))
+}
+
+fn validate_cancelled_request(
+    payment: TimestampedPaymentRecord,
+    plan: &CancelRequestPlan,
+) -> Result<CancelledRequest, VenmoApiError> {
+    let mutation = RequestMutation::Cancel;
+    let operation = mutation.operation();
+    let status =
+        validate_updated_record(mutation, &payment, plan.request(), plan.account().user_id())?;
+    let status = match status {
+        RequestMutationStatus::Cancelled(status) => status,
+        RequestMutationStatus::Accepted(_) | RequestMutationStatus::Declined(_) => {
+            return financial_contract_unknown(
+                operation,
+                "request cancellation produced a different mutation-status validation result",
+            );
+        }
+    };
+    Ok(CancelledRequest::new(plan.request().id().clone(), status))
 }
 
 fn validate_updated_record(
@@ -793,7 +884,7 @@ fn validate_updated_record(
 ) -> Result<RequestMutationStatus, VenmoApiError> {
     let operation = mutation.operation();
     let record = payment.payment();
-    if mutation == RequestMutation::Decline && record.id.as_str() != request.id().as_str() {
+    if mutation != RequestMutation::Accept && record.id.as_str() != request.id().as_str() {
         return financial_contract_unknown(
             operation,
             "the response returned a different request ID",
@@ -813,7 +904,7 @@ fn validate_updated_record(
         return financial_contract_unknown(operation, "the response returned a different action");
     }
     let (expected_actor, expected_target) =
-        RequestMutation::expected_parties(response_action, request, account_id);
+        mutation.expected_parties(response_action, request, account_id);
     let amount = Money::from_str(&record.amount.as_str()).map_err(|_| {
         VenmoApiError::FinancialOutcomeUnknown {
             operation,
@@ -853,7 +944,7 @@ fn validate_updated_record(
                 "the accepted payment predates the original request",
             );
         }
-        RequestMutation::Decline
+        RequestMutation::Decline | RequestMutation::Cancel
             if response_created_at.unix_timestamp_nanos()
                 != expected_created_at.unix_timestamp_nanos() =>
         {
@@ -862,7 +953,7 @@ fn validate_updated_record(
                 "the response returned a different creation timestamp",
             );
         }
-        RequestMutation::Accept | RequestMutation::Decline => {}
+        RequestMutation::Accept | RequestMutation::Decline | RequestMutation::Cancel => {}
     }
     let status = RequestStatus::from_str(&record.status).map_err(|_| {
         VenmoApiError::FinancialOutcomeUnknown {

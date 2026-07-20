@@ -16,7 +16,7 @@ marked `ignored` are manual contracts and must not be included in routine verifi
 
 Routine contributors must not run an ignored test by name, enable ignored tests, run a live schema
 probe, use the production keychain entry, or invoke a real `pay user`, request-creation, `accept`,
-`decline`, `friends add`, `friends remove`, or transfer operation for development or verification.
+`decline`, `requests cancel`, `friends add`, `friends remove`, or transfer operation for development or verification.
 Do not turn a product command into a test step. Separately authorized owner/release procedures are
 outside routine contribution and are not initiated by these docs.
 

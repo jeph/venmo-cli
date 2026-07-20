@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use super::validation::{
     RequestMutationValidationError, validate_complete_request, validate_incoming_pending,
-    validate_request_id,
+    validate_outgoing_open, validate_request_id,
 };
 use super::{RequestId, RequestLookupApi, RequestRecord};
 use crate::features::auth::CurrentAccountApi;
@@ -38,7 +38,7 @@ pub enum RequestMutationPreflightError {
     #[error(transparent)]
     Account(#[from] FinancialValidationError),
 
-    #[error("failed to load the authoritative incoming request: {source}")]
+    #[error("failed to load the authoritative request: {source}")]
     RequestLookup {
         #[source]
         source: ApiOperationFailure,
@@ -71,6 +71,38 @@ where
     A: CurrentAccountApi + RequestLookupApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
 {
+    let preflight = load(credentials, api, request_id).await?;
+    validate_incoming_pending(&preflight.request)?;
+    validate_complete_request(&preflight.request)?;
+    Ok(preflight)
+}
+
+pub(crate) async fn prepare_outgoing<R, A>(
+    credentials: &R,
+    api: &A,
+    request_id: &RequestId,
+) -> Result<RequestMutationPreflight, RequestMutationPreflightError>
+where
+    R: CredentialReader,
+    A: CurrentAccountApi + RequestLookupApi,
+    <A as CurrentAccountApi>::Error: ApiFailure,
+{
+    let preflight = load(credentials, api, request_id).await?;
+    validate_outgoing_open(&preflight.request)?;
+    validate_complete_request(&preflight.request)?;
+    Ok(preflight)
+}
+
+async fn load<R, A>(
+    credentials: &R,
+    api: &A,
+    request_id: &RequestId,
+) -> Result<RequestMutationPreflight, RequestMutationPreflightError>
+where
+    R: CredentialReader,
+    A: CurrentAccountApi + RequestLookupApi,
+    <A as CurrentAccountApi>::Error: ApiFailure,
+{
     let credential = require_credential(credentials)?.envelope;
     let account = api
         .current_account(credential.access_token(), credential.device_id())
@@ -91,8 +123,6 @@ where
             source: ApiOperationFailure::new(source),
         })?;
     validate_request_id(&request, request_id)?;
-    validate_incoming_pending(&request)?;
-    validate_complete_request(&request)?;
     Ok(RequestMutationPreflight {
         credential,
         account,

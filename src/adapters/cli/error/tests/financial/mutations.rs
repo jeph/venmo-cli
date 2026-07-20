@@ -5,6 +5,7 @@ use crate::features::payments::FinancialValidationError;
 use crate::features::payments::funding::FundingSelectionError;
 use crate::features::requests::RequestMutationPreflightError;
 use crate::features::requests::accept::AcceptError;
+use crate::features::requests::cancel::CancelError;
 use crate::features::requests::decline::DeclineError;
 use crate::features::requests::validation::RequestMutationValidationError;
 use crate::shared::{ApiFailureKind, CredentialAccessError};
@@ -192,6 +193,34 @@ fn request_mutation_variants_have_deliberate_categories() {
         ),
         (
             AppError::from(DeclineError::Decline {
+                source: api_operation_failure(ApiFailureKind::AmbiguousWrite),
+            }),
+            ErrorCategory::AmbiguousWrite,
+        ),
+        (
+            AppError::from(CancelError::Preflight(
+                RequestMutationPreflightError::RequestValidation(
+                    RequestMutationValidationError::NotOutgoing,
+                ),
+            )),
+            ErrorCategory::Usage,
+        ),
+        (
+            AppError::from(CancelError::ConfirmationRequired),
+            ErrorCategory::Usage,
+        ),
+        (
+            AppError::from(CancelError::ConfirmationDeclined),
+            ErrorCategory::Cancelled,
+        ),
+        (
+            AppError::from(CancelError::Confirmation {
+                source: PromptError::Cancelled,
+            }),
+            ErrorCategory::Cancelled,
+        ),
+        (
+            AppError::from(CancelError::Cancel {
                 source: api_operation_failure(ApiFailureKind::AmbiguousWrite),
             }),
             ErrorCategory::AmbiguousWrite,

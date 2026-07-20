@@ -71,6 +71,31 @@ fn direct_request_creation_dispatches_to_create() {
 }
 
 #[test]
+fn outgoing_request_cancellation_parses_only_an_id_and_confirmation_override() {
+    let parsed = Cli::try_parse_from(["venmo", "requests", "cancel", "request-123", "--yes"]);
+    assert!(parsed.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Requests(args)
+            if matches!(&args.operation, RequestsOperation::Cancel(args)
+                if args.request_id.as_str() == "request-123" && args.yes)
+    )));
+    for arguments in [
+        &["venmo", "requests", "cancel"][..],
+        &["venmo", "requests", "cancel", "request id"][..],
+        &[
+            "venmo",
+            "requests",
+            "cancel",
+            "request-123",
+            "--source",
+            "bank-1",
+        ][..],
+    ] {
+        assert_rejected(arguments);
+    }
+}
+
+#[test]
 fn required_payment_and_request_notes_are_positional() {
     for prefix in [
         &["venmo", "pay", "user"][..],
@@ -116,7 +141,8 @@ fn user_and_request_info_parse_exact_typed_inputs() {
                 RequestsOperation::List(_)
                 | RequestsOperation::Create(_)
                 | RequestsOperation::Accept(_)
-                | RequestsOperation::Decline(_) => None,
+                | RequestsOperation::Decline(_)
+                | RequestsOperation::Cancel(_) => None,
             },
             _ => None,
         },
@@ -449,6 +475,7 @@ fn request_direction_is_a_typed_enum() {
                 RequestsOperation::Create(_)
                 | RequestsOperation::Accept(_)
                 | RequestsOperation::Decline(_)
+                | RequestsOperation::Cancel(_)
                 | RequestsOperation::Info(_) => None,
             },
             _ => None,
@@ -773,6 +800,7 @@ fn every_command_has_a_help_snapshot() {
         ("requests_create", &["requests", "create"]),
         ("requests_accept", &["requests", "accept"]),
         ("requests_decline", &["requests", "decline"]),
+        ("requests_cancel", &["requests", "cancel"]),
         ("requests_info", &["requests", "info"]),
         ("transfer", &["transfer"]),
         ("transfer_options", &["transfer", "options"]),
@@ -813,6 +841,7 @@ fn request_visibility(cli: Cli) -> Option<VisibilityArg> {
             RequestsOperation::List(_)
             | RequestsOperation::Accept(_)
             | RequestsOperation::Decline(_)
+            | RequestsOperation::Cancel(_)
             | RequestsOperation::Info(_) => None,
         },
         _ => None,

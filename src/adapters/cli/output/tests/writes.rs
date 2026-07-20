@@ -2,8 +2,9 @@ use std::error::Error;
 use std::str::FromStr;
 
 use super::super::{
-    write_accept_details, write_accept_result, write_decline_details, write_decline_result,
-    write_pay_details, write_pay_result, write_request_create_details, write_request_create_result,
+    write_accept_details, write_accept_result, write_cancel_details, write_cancel_result,
+    write_decline_details, write_decline_result, write_pay_details, write_pay_result,
+    write_request_create_details, write_request_create_result,
 };
 use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{
@@ -12,12 +13,14 @@ use crate::features::payments::{
 };
 use crate::features::people::{User, UserProfileKind};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
+use crate::features::requests::cancel::{CancelResult, PreparedCancel};
 use crate::features::requests::create::{PreparedRequest, RequestCreateResult};
 use crate::features::requests::decline::{DeclineResult, PreparedDecline};
 use crate::features::requests::{
-    AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, CreatedRequest, DeclineRequestPlan,
-    DeclinedRequest, RequestAction, RequestApprovalFee, RequestApprovalFees, RequestDirection,
-    RequestId, RequestNotificationId, RequestRecord, RequestStatus,
+    AcceptRequestPlan, AcceptedRequest, CancelRequestPlan, CancelledRequest, CreateRequestPlan,
+    CreatedRequest, DeclineRequestPlan, DeclinedRequest, RequestAction, RequestApprovalFee,
+    RequestApprovalFees, RequestDirection, RequestId, RequestNotificationId, RequestRecord,
+    RequestStatus,
 };
 use crate::features::wallet::{Balance, PaymentMethod, PaymentMethodId, SignedUsdAmount};
 use crate::shared::{
@@ -132,6 +135,26 @@ fn accept_and_decline_output_is_complete_sanitized_and_truthful() -> TestResult 
     let decline_output = String::from_utf8(decline_output)?;
     insta::assert_snapshot!("decline_result", decline_output);
     assert!(!decline_output.contains("Synthetic\nrequest"));
+
+    let cancel_prepared = PreparedCancel::new(synthetic_credential()?, synthetic_cancel_plan()?);
+    let mut cancel_details = Vec::new();
+    write_cancel_details(&mut cancel_details, &cancel_prepared, &timestamps)?;
+    let cancel_details = String::from_utf8(cancel_details)?;
+    insta::assert_snapshot!("cancel_details", cancel_details);
+    assert!(!cancel_details.contains("Synthetic\nrequest"));
+
+    let cancel = CancelResult::new(
+        synthetic_cancel_plan()?,
+        CancelledRequest::new(
+            RequestId::from_str("request-1")?,
+            RequestStatus::from_str("cancelled")?,
+        ),
+    );
+    let mut cancel_output = Vec::new();
+    write_cancel_result(&mut cancel_output, &cancel)?;
+    let cancel_output = String::from_utf8(cancel_output)?;
+    insta::assert_snapshot!("cancel_result", cancel_output);
+    assert!(!cancel_output.contains("Synthetic\nrequest"));
     Ok(())
 }
 
@@ -343,5 +366,32 @@ fn synthetic_decline_plan() -> Result<DeclineRequestPlan, Box<dyn Error>> {
             Some("Synthetic owner".to_owned()),
         ),
         synthetic_incoming_request()?,
+    ))
+}
+
+fn synthetic_cancel_plan() -> Result<CancelRequestPlan, Box<dyn Error>> {
+    let request = RequestRecord::new(
+        RequestId::from_str("request-1")?,
+        RequestAction::Charge,
+        RequestDirection::Outgoing,
+        User::new(
+            UserId::from_str("456")?,
+            Some(Username::from_bare("recipient")?),
+            Some("Synthetic\nrecipient".to_owned()),
+        )
+        .with_financial_attributes(UserProfileKind::Personal, true),
+        Money::from_cents(1)?,
+        Some("Synthetic\nrequest".to_owned()),
+        Some(time::OffsetDateTime::UNIX_EPOCH),
+        RequestStatus::from_str("held")?,
+    )
+    .with_audience(Some("friends".to_owned()));
+    Ok(CancelRequestPlan::new(
+        Account::new(
+            UserId::from_str("123")?,
+            Username::from_bare("owner")?,
+            Some("Synthetic owner".to_owned()),
+        ),
+        request,
     ))
 }

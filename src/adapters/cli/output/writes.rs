@@ -5,6 +5,7 @@ use crate::features::payments::{
     FinancialStatus, PeerFundingFee, PeerFundingSource, PeerFundingSourceSelection,
 };
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
+use crate::features::requests::cancel::{CancelResult, PreparedCancel};
 use crate::features::requests::create::{PreparedRequest, RequestCreateResult};
 use crate::features::requests::decline::{DeclineResult, PreparedDecline};
 
@@ -334,6 +335,79 @@ pub(crate) fn write_decline_details<W: Write>(
     writeln!(
         writer,
         "  Action: decline this exact incoming request without sending money."
+    )
+}
+
+pub(crate) fn write_cancel_result<W: Write>(
+    writer: &mut W,
+    result: &CancelResult,
+) -> io::Result<()> {
+    writeln!(
+        writer,
+        "Request ID: {}",
+        sanitize_terminal_text(result.cancelled().request_id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Server status: {}",
+        sanitize_terminal_text(result.cancelled().status().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Request cancelled for: {}",
+        sanitize_terminal_text(&financial_user_label(
+            result.plan().request().counterparty()
+        ))
+    )?;
+    writeln!(
+        writer,
+        "Amount requested: ${}",
+        result.plan().request().amount()
+    )?;
+    writeln!(writer, "Money sent: no")
+}
+
+pub(crate) fn write_cancel_details<W: Write>(
+    writer: &mut W,
+    prepared: &PreparedCancel,
+    timestamps: &TimestampFormatter,
+) -> io::Result<()> {
+    let request = prepared.plan().request();
+    writeln!(writer, "Outgoing request cancellation details:")?;
+    writeln!(
+        writer,
+        "  Request ID: {}",
+        sanitize_terminal_text(request.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "  Requested from: {} (ID {})",
+        sanitize_terminal_text(&financial_user_label(request.counterparty())),
+        request.counterparty().user_id()
+    )?;
+    writeln!(writer, "  Amount: ${}", request.amount())?;
+    writeln!(
+        writer,
+        "  Note: {}",
+        sanitize_terminal_text(request.note().unwrap_or(""))
+    )?;
+    writeln!(
+        writer,
+        "  Audience: {}",
+        sanitize_terminal_text(request.audience().unwrap_or("(not provided)"))
+    )?;
+    writeln!(
+        writer,
+        "  Current request status: {}",
+        sanitize_terminal_text(request.status().as_str())
+    )?;
+    if let Some(created_at) = request.created_at() {
+        let created_at = timestamps.format(created_at)?;
+        writeln!(writer, "  Created: {created_at}")?;
+    }
+    writeln!(
+        writer,
+        "  Action: cancel this exact outgoing request without sending money."
     )
 }
 

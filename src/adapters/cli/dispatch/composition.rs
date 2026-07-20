@@ -168,6 +168,22 @@ where
                 )
                 .await
             }
+            RequestsOperation::Cancel(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                let timestamps = provider.timestamps();
+                writes::run_cancel_with(
+                    args,
+                    &store,
+                    &api,
+                    &prompt,
+                    &timestamps,
+                    stdout,
+                    stderr,
+                    writes::production_financial_interruption,
+                )
+                .await
+            }
             RequestsOperation::Info(args) => {
                 let (store, api) = provider.credential_store_and_api()?;
                 let timestamps = provider.timestamps();

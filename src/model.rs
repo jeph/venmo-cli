@@ -25,6 +25,7 @@ pub use crate::features::people::user::{
 };
 pub use crate::features::people::users::UserSearchResult;
 pub use crate::features::requests::accept::AcceptResult;
+pub use crate::features::requests::cancel::CancelResult;
 pub use crate::features::requests::continuation::RequestsBefore;
 pub use crate::features::requests::create::RequestCreateResult;
 pub use crate::features::requests::decline::DeclineResult;
@@ -35,7 +36,8 @@ pub use crate::features::requests::model::{
     RequestRecord, RequestStatus, RequestStatusParseError,
 };
 pub use crate::features::requests::plans::{
-    AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, DeclineRequestPlan, DeclinedRequest,
+    AcceptRequestPlan, AcceptedRequest, CancelRequestPlan, CancelledRequest, CreateRequestPlan,
+    DeclineRequestPlan, DeclinedRequest,
 };
 pub use crate::features::transfers::model::{
     CreatedTransfer, TransferFeeMetadata, TransferId, TransferInstrument, TransferInstrumentId,

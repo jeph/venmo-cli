@@ -174,6 +174,10 @@ fn debug_command_names_are_static_and_argument_free() -> TestResult {
             "requests.decline",
         ),
         (
+            &["venmo", "requests", "cancel", "private-request"][..],
+            "requests.cancel",
+        ),
+        (
             &["venmo", "requests", "info", "private-request"][..],
             "requests.info",
         ),

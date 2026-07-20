@@ -151,6 +151,29 @@ fn id_direction_state_and_private_audience_tables_compare_whole_results() -> Tes
         assert_eq!(validate_incoming_pending(&record), expected);
     }
 
+    for (direction, status, expected) in [
+        (RequestDirection::Outgoing, "pending", Ok(())),
+        (RequestDirection::Outgoing, "held", Ok(())),
+        (
+            RequestDirection::Incoming,
+            "pending",
+            Err(RequestMutationValidationError::NotOutgoing),
+        ),
+        (
+            RequestDirection::Outgoing,
+            "cancelled",
+            Err(RequestMutationValidationError::NotOpen),
+        ),
+        (
+            RequestDirection::Outgoing,
+            "settled",
+            Err(RequestMutationValidationError::NotOpen),
+        ),
+    ] {
+        let record = complete_request("request-1", direction, status, "private")?;
+        assert_eq!(validate_outgoing_open(&record), expected);
+    }
+
     for (audience, expected) in [
         ("private", Ok(())),
         (
