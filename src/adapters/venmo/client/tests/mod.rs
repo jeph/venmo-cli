@@ -685,7 +685,7 @@ fn created_payment_body_with_visibility(
 fn protected_created_payment_body() -> Value {
     let mut body = created_payment_body("payment-1", "pay", "settled", "123", "456");
     body["data"]["payment"]["amount"] = Value::String("1.00".to_owned());
-    body["data"]["payment"]["type"] = Value::String("goods_services_protected".to_owned());
+    body["data"]["payment"]["type"] = Value::String("payment_protected".to_owned());
     body
 }
 

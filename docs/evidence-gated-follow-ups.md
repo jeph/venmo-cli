@@ -54,15 +54,17 @@ that exact method.
 ## Protected peer-payment validation
 
 Signer-verified Venmo Android 26.13.0 establishes the implemented source-bound form eligibility
-request, exact buyer-protection product-URI prefix, complete singleton fee forwarding,
-`goods_services_protected` transaction type, quasi-cash metadata, protected response type, and
-preservation through the same-UUID SMS continuation. Current official guidance establishes that
-the seller fee is deducted from proceeds and that tagging does not guarantee item coverage. Exact
-service-free tests pin those boundaries. No live protected payment has been attempted: a future
-validation requires a separately authorized legitimate purchase, not a fake penny transfer,
-because the tag generally cannot be removed and may have seller fee/tax effects. Until reconciled,
-do not claim live client-1 authorization, actual debit source, final seller fee, tax treatment, or
-item eligibility.
+request, exact buyer-protection product-URI prefix, complete singleton fee forwarding, request
+`transaction_type: goods_services_protected`, quasi-cash metadata, response
+`type: payment_protected`, and preservation through the same-UUID SMS continuation. Current
+official guidance establishes that the seller fee is deducted from proceeds and that tagging does
+not guarantee item coverage. Exact service-free tests pin those boundaries. One owner-authorized,
+non-retried $1 client-1 validation on 2026-07-20 received eligibility 201 and payment 200 without
+OTP and reconciled to exactly one settled matching payment. A bounded read-only payment-detail
+probe confirmed `type: payment_protected`; the first validator had incorrectly required the
+request-side value in the response and conservatively reported ambiguity, so no second payment was
+attempted. This proves live client-1 authorization and the protected response marker, but not the
+actual debit source, final seller fee, tax treatment, or item eligibility.
 
 ## Exact-recipient acceptance at the exhaustive bound
 

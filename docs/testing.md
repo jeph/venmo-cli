@@ -159,8 +159,9 @@ and recipient-proceeds estimates.
 
 Protected-payment tests must pin the exact source-bound form request with no `action`, strict
 selection of exactly one valid buyer-protection product fee, complete singleton fee serialization,
-protected transaction type, quasi-cash metadata, fee-above-amount rejection before write, and
-response `type` proof. The OTP test must prove that protected fields and the same UUID survive while
+request `transaction_type: goods_services_protected`, quasi-cash metadata, fee-above-amount
+rejection before write, and exact response `type: payment_protected` proof. The OTP test must prove
+that protected fields and the same UUID survive while
 verification fields are merged. Fee and eligibility tokens remain redacted from every transcript
 and `Debug` value. These tests are service-free; no protected live mutation is a routine test.
 

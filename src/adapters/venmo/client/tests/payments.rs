@@ -302,7 +302,13 @@ async fn protected_payment_creation_sends_exact_fee_and_preserves_it_through_otp
 
 #[tokio::test(flavor = "current_thread")]
 async fn protected_payment_success_requires_server_proof_of_the_transaction_type() -> TestResult {
-    for payment_type in [None, Some("ordinary"), Some("goods_services")] {
+    for payment_type in [
+        None,
+        Some("ordinary"),
+        Some("goods_services"),
+        Some("refund_support"),
+        Some("goods_services_protected"),
+    ] {
         let mut body = created_payment_body("payment-1", "pay", "settled", "123", "456");
         if let Some(payment_type) = payment_type {
             body["data"]["payment"]["type"] = Value::String(payment_type.to_owned());
@@ -328,22 +334,31 @@ async fn protected_payment_success_requires_server_proof_of_the_transaction_type
 
 #[tokio::test(flavor = "current_thread")]
 async fn ordinary_payment_rejects_an_unexpected_protected_transaction_type() -> TestResult {
-    let response = scripted_json_response(200, protected_created_payment_body())?;
-    let (client, _transport) = scripted_client([Ok(response)])?;
-    let (token, device_id) = test_session()?;
-    let result = client
-        .create_payment(
-            &token,
-            &device_id,
-            &pay_plan()?,
-            PaymentVerification::Unverified,
-        )
-        .await;
+    for payment_type in [
+        "payment_protected",
+        "goods_services_protected",
+        "goods_services",
+        "refund_support",
+    ] {
+        let mut body = created_payment_body("payment-1", "pay", "settled", "123", "456");
+        body["data"]["payment"]["type"] = Value::String(payment_type.to_owned());
+        let response = scripted_json_response(200, body)?;
+        let (client, _transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let result = client
+            .create_payment(
+                &token,
+                &device_id,
+                &pay_plan()?,
+                PaymentVerification::Unverified,
+            )
+            .await;
 
-    assert!(matches!(
-        result,
-        Err(VenmoApiError::FinancialOutcomeUnknown { .. })
-    ));
+        assert!(matches!(
+            result,
+            Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+        ));
+    }
     Ok(())
 }
 

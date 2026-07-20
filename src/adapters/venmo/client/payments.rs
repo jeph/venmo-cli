@@ -41,7 +41,8 @@ const PAYMENT_OTP_FLOW_TYPE: &str = "P2P";
 const SMS_OTP_METHOD: &str = "sms_otp";
 const SMS_OTP_METHODS: &[&str] = &[SMS_OTP_METHOD];
 const SMS_OTP_VERIFIED_STATUS: &str = "sms_otp_verified";
-const GOODS_SERVICES_PROTECTED: &str = "goods_services_protected";
+const GOODS_SERVICES_PROTECTED_TRANSACTION_TYPE: &str = "goods_services_protected";
+const PROTECTED_PAYMENT_RESPONSE_TYPE: &str = "payment_protected";
 const BUYER_PROTECTION_PRODUCT_PREFIX: &str = "venmo:product:buyer_protection:";
 const MAX_PROTECTED_PAYMENT_FEES: usize = 16;
 const MAX_PROTECTED_PAYMENT_FEE_FIELD_BYTES: usize = 4096;
@@ -306,7 +307,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             note: plan.note().as_str(),
             eligibility_token: plan.eligibility_token().expose(),
             funding_source_id: plan.funding_source().method().id().as_str(),
-            transaction_type: protected.then_some(GOODS_SERVICES_PROTECTED),
+            transaction_type: protected.then_some(GOODS_SERVICES_PROTECTED_TRANSACTION_TYPE),
             fees: wire_fees.as_deref(),
             metadata,
         })
@@ -674,7 +675,7 @@ fn validate_created_contract(
         );
     }
     if expected_purchase_protected
-        && record.payment_type.as_deref() != Some(GOODS_SERVICES_PROTECTED)
+        && record.payment_type.as_deref() != Some(PROTECTED_PAYMENT_RESPONSE_TYPE)
     {
         return financial_contract_unknown(
             operation,
@@ -682,7 +683,15 @@ fn validate_created_contract(
         );
     }
     if !expected_purchase_protected
-        && record.payment_type.as_deref() == Some(GOODS_SERVICES_PROTECTED)
+        && matches!(
+            record.payment_type.as_deref(),
+            Some(
+                PROTECTED_PAYMENT_RESPONSE_TYPE
+                    | GOODS_SERVICES_PROTECTED_TRANSACTION_TYPE
+                    | "goods_services"
+                    | "refund_support"
+            )
+        )
     {
         return financial_contract_unknown(
             operation,
