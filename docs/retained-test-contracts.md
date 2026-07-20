@@ -67,6 +67,10 @@ The one-snapshot requirement still applies to `ScriptedTransport` tests: their o
 the projected result, ordered typed request transcript, remaining scripted responses, and the
 unexpected-request flag. Neither style may contact the production service.
 
+Protected-payment loopback tests retain the exact source-bound form eligibility and protected JSON
+creation contracts, including the singleton fee and merged OTP metadata. They are synthetic
+serialization/validation tests only and do not authorize a protected live payment.
+
 ## Historical live read-contract probes
 
 The ignored probes under `src/adapters/venmo/client/tests/live.rs` preserve the bounded,

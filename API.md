@@ -95,7 +95,7 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 1 | `auth login` | Password: **A1 → A5**. OTP: **A1 → A2 → A3 → A5**, verified local save, then **A4** (maximum 5). | Remote auth plus hidden identifier/password/fresh-device prompts and optional hidden OTP. |
 | 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
-| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2**; exact step-up only: **F2O → F2V → F2** (maximum 13). | Financial; one initial **F2**, or one initial rejected **F2** plus one challenge-verified **F2** with the same UUID. No automatic retry. |
+| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--protect] [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1**, then ordinary **F1** or protected **F1P**, then **F2**; exact step-up only: **F2O → F2V → F2** (maximum 13). | Financial; protection is explicit and never falls back to ordinary payment. One initial **F2**, or one initial rejected **F2** plus one challenge-verified **F2** with the same UUID. No automatic retry. |
 | 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3** after default-No confirmation. |
 | 6 | `requests accept <REQUEST_ID> [--source SOURCE_ID] [--protect] [--yes]` | Common **A5 → R2 → P2 → W2**; default unprotected covered balance then **F4** (5 total), otherwise **F4N → W1 → F4E → F4S** (8 total). | Financial; exactly one **F4** or **F4S** after default-No confirmation. Any explicit source or `--protect` selects the modern branch even with balance coverage. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
@@ -443,6 +443,26 @@ whitespace/controls; every fee must have unsigned
 nonfinancial preflight intentionally uses a blank source: its fee proves neither the
 selected W1 method's fee nor the final payment fee. The CLI therefore does not present
 that amount as a payer fee or add it to the displayed payment total.
+#### F1P — source-bound protected-payment eligibility
+```http
+POST /v1/protection/eligibility
+Content-Type: application/x-www-form-urlencoded
+```
+
+Used only for explicit `pay user --protect`, after W1/W2 source selection. Exact fields, in order:
+
+```text
+target_type=user_id&target_id=<RECIPIENT_USER_ID>&country_code=1&amount=<INTEGER_CENTS>&note=<FORM_ENCODED_NOTE>&funding_source_id=<SELECTED_PEER_SOURCE_ID>
+```
+
+There is no `action` field. The response must prove `eligible: true`, provide a valid bounded
+eligibility token, and contain at most 16 complete fee objects. Every object has bounded valid
+`product_uri`, `applied_to`, and `fee_token`; optional unsigned `base_fee_amount`; optional
+nonnegative JSON-number `fee_percentage`; and unsigned `calculated_fee_amount_in_cents`. Exactly
+one object must have a `product_uri` beginning with
+`venmo:product:buyer_protection:`. Missing or duplicate matching fees, unknown fields, malformed
+values, denial, or a selected fee above the payment amount fails before confirmation. Nonmatching
+valid fee objects are ignored; response order never selects between matching objects.
 #### F2 — create peer payment
 ```http
 POST /v1/payments
@@ -459,6 +479,21 @@ POST /v1/payments
   "funding_source_id": "<SELECTED_PEER_SOURCE_ID>"
 }
 ```
+
+Protected F2 adds the following exact fields while retaining the same base request:
+
+```json
+{
+  "transaction_type": "goods_services_protected",
+  "fees": [{"product_uri":"<F1P_VALUE>","applied_to":"<F1P_VALUE>","fee_token":"<F1P_VALUE>","base_fee_amount":<OPTIONAL_U64>,"fee_percentage":<OPTIONAL_NONNEGATIVE_JSON_NUMBER>,"calculated_fee_amount_in_cents":<U64>}],
+  "metadata": {"quasi_cash_disclaimer_viewed": false}
+}
+```
+
+The fee array is exactly the one F1P buyer-protection fee; optional fee fields are omitted only when
+F1P omitted them. Protected success additionally requires response `type` exactly
+`goods_services_protected`. Missing or different type after a 2xx write makes the outcome unknown.
+This proves only that Venmo tagged the transaction, not that an item qualifies for reimbursement.
 
 One UUID is generated before the initial attempt; it is not a retry license. A 2xx
 response must use exactly `{"data":{"payment":<RECORD>}}`, with valid creation
@@ -479,7 +514,10 @@ same plan and UUID plus this additional field:
 
 That second F2 is an explicit challenge continuation, not an automatic retry. It occurs
 at most once; a repeated challenge stops. `--yes` cannot bypass the hidden OTP prompt.
-The code is never accepted through an argument, printed, logged, or stored.
+The code is never accepted through an argument, printed, logged, or stored. For protected payment,
+the verified metadata merges these two verification fields with
+`quasi_cash_disclaimer_viewed:false`; the transaction type, exact F1P fee, source, token, plan, and
+UUID are otherwise unchanged.
 
 #### F2O — issue payment SMS OTP
 ```http
@@ -647,14 +685,16 @@ equivalence.
 **Pay:** A5 validates self; recipient search/detail proves a nonself personal/payable
 user; W2 captures balance; strict W1 supplies peer-eligible balance and external sources; the
 shared policy selects sufficient balance, the requested exact source, or the unique default/sole
-external source; F1 either
+external source. Ordinary payment uses F1. Explicit `--protect` instead uses source-bound F1P,
+requires one exact buyer-protection fee, and never falls back to ordinary payment. Either branch
 confirms eligibility or denies it without F2. The CLI generates a UUID, renders and
 flushes validated payment details, then requires default-No confirmation unless `--yes`
 (noninteractive always needs `--yes`). It installs interruption protection before
 the initial F2. Only an exact prewrite code-1396 challenge can continue through one
 interactive F2O/F2V sequence and one same-UUID verified F2; this is not an automatic
-retry. The selected source ID is submitted exactly, but neither W1, F1, nor the
-creation response proves the final debit source or fee.
+retry. Protected OTP continuation preserves F1P fields and merges verification metadata. The
+selected source ID is submitted exactly, but neither W1, F1/F1P, nor the creation response proves
+the final debit source, final seller fee, or item coverage.
 
 **Request:** A5 and recipient resolution build an immutable F3 plan. There is no W1, W2, F1,
 funding field, or balance gate. The CLI renders and flushes the account, recipient, amount, note,
@@ -777,6 +817,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-11 | Pagination | Direct observation / controlled live plus residual gap | First→second pages for four families; friends exhaustion. Natural user-search/activity/request exhaustion remains unobserved. |
 | 2026-07-12 | F2 and private F3 | Direct observation / controlled and reconciled live validation | Separately approved minimal-value operations matched synthetic contracts. |
 | 2026-07-20 | F2 headers, SMS step-up, and rejections | Signer-verified Android 26.13.0 + maintained current mobile client + owner-approved reconciled live operations + exact synthetic | The current `/v1/payments` body remains compatible. The current profile reached HTTP 403/root code `1396`, issued and verified SMS OTP through F2O/F2V, then completed one same-UUID verified F2 for an explicit-bank-source `$1.00` payment; an independent activity read found exactly one matching settled outgoing payment. Android establishes `validated: true` precedence. A same-recipient/amount/note repeat received HTTP 403/root `1360`; current APK names it same-info denial and historical documentation specifies a 10-minute window. A note-varied rapid repeat received HTTP 403/root `10100`; public-current corroboration and repeated reconciliation establish that Venmo's server-side checks blocked the payment, but do not identify the specific check or its duration. Neither rejected attempt created activity. Old headers also produced `10100`, so that code is not treated as a header fingerprint. Actual debit source/final fee remain unproven. |
+| 2026-07-20 | F1P/protected F2 | Signer-verified Android 26.13.0 + current official Purchase Protection guidance + existing web G&S evidence + exact synthetic | Native source-bound form eligibility, exact buyer-protection product namespace, complete singleton fee forwarding, `goods_services_protected` transaction type, quasi-cash metadata, protected response-type proof, and same-UUID OTP field preservation are implemented. No live protected payment has run; final seller fee, tax treatment, item eligibility, and actual debit source remain unproven. |
 | 2026-07-14 | Visibility | Direct observation / reconciled live; owner-approved decision | Friends/public pay and more-private response behavior reconciled; non-private F3 accepted without another mutation. |
 | 2026-07-14 | F4 | Direct observation / reconciled live validation plus historical lead / representative synthetic coverage | Live responses used the charge-oriented representation while activity exposed the resulting outgoing `pay`; the pay-oriented response representation remains historical/synthetic. Source and fee remain unproved. |
 | 2026-07-20 | F4N/F4E/F4S external approval | Signer-verified Android 10.31.1 and 26.13.0 + separately approved bounded client-1 notification probes + owner-run reconciled unprotected approvals + current official Purchase Protection/Buying and Selling guidance + exact synthetic | Native code submits a request notification's own `id` to `PUT /v1/requests/{id}` with source/token/fee options. Current production can wrap that request notification at `additional_properties.request`: the nested request has its own action ID and nested `payment.id`, while the outer notification has a third ID. A bounded read retained only paths/types and proved this exact shape. Using the outer wrapper ID returned HTTP 404 and reconciliation proved no mutation; using `additional_properties.request.id` returned 200, removed the pending request, and produced exactly one matching settled $20 activity. The CLI supports this current shape and the older direct `id`/`payment.id` shape, matching the R2 ID only to the payment ID and routing with the associated action ID. Native code submits fee records only when protection is selected; official guidance identifies them as seller deductions. Actual debit source/final fee, protected approval, and webview/SMS-step-up continuations remain unproven. |
@@ -1191,6 +1232,7 @@ of §13 rather than duplicated here.
 | Token lifecycle | Explicit issuance, local storage, and local-only logout. | Refresh/lifetime or remote revocation by this CLI. |
 | Mobile compatibility headers | Current-version iOS-compatible literal, JSON Accept, language, decimal session ID; Android/current-client corroboration and live old-versus-current payment differential. | Which individual header is required or how long this profile remains accepted. |
 | F2 SMS step-up | Android 26.13.0 exact F2O/F2V requests, reason mapping, same-UUID verified metadata; exact synthetic orchestration; one reconciled live OTP payment with an explicitly submitted bank source. | Universal challenge frequency, actual debit source, or final fee. |
+| F1P/protected F2 | Android 26.13.0 source-bound eligibility, buyer-protection fee selection, protected transaction fields, response type, and OTP preservation; official seller-fee/coverage guidance; exact synthetic tests. | Live authorization/success, actual debit source, final seller fee, tax treatment, item eligibility, or a guarantee of Purchase Protection coverage. |
 | Natural pagination endings | First→second; friends exhaustion. | Natural search/activity/request ending. |
 | F4 balance response ID | Valid returned payment ID is enforced. | That response ID is necessarily distinct from request ID. F4S does not require an ID. |
 | F4/F4S funding | W2 branch selection; F4 action-only default unprotected balance plan; signer-verified F4N/F4E/F4S notification ID, selected peer source, and token; exact automatic/explicit balance/bank/card selection tests; client-1 structure-only F4N read; one owner-run corrected unprotected F4S success; fee records omitted by default and normalized only for explicit `--protect`; exact synthetic protected/unprotected source bodies. | Actual debited source or final fee beyond the eligibility-reported amount; live validation of explicit source selection or protected F4S; webview/SMS-step-up continuation. |

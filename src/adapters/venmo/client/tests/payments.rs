@@ -64,6 +64,286 @@ async fn ineligible_payment_is_a_confirmed_prewrite_rejection() -> TestResult {
         result.as_ref().err().map(ApiFailure::kind),
         Some(ApiFailureKind::Rejected)
     );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn protected_payment_eligibility_uses_exact_source_bound_form_and_selects_one_fee()
+-> TestResult {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/protection/eligibility"))
+        .and(header("authorization", "Bearer synthetic-token"))
+        .and(header("device-id", "synthetic-device"))
+        .and(header("content-type", "application/x-www-form-urlencoded"))
+        .and(body_string(concat!(
+            "target_type=user_id&target_id=456&country_code=1&amount=100&",
+            "note=Synthetic+note&funding_source_id=bank-1"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": {
+                "eligible": true,
+                "eligibility_token": "synthetic-eligibility-token",
+                "fees": [
+                    {
+                        "product_uri": "venmo:product:other:ignored",
+                        "applied_to": "receiver",
+                        "fee_token": "synthetic-other-token",
+                        "calculated_fee_amount_in_cents": 1
+                    },
+                    {
+                        "product_uri": "venmo:product:buyer_protection:standard",
+                        "applied_to": "receiver",
+                        "fee_token": "synthetic-fee-token",
+                        "base_fee_amount": 0,
+                        "fee_percentage": 0.0299,
+                        "calculated_fee_amount_in_cents": 25
+                    }
+                ],
+                "fee_disclaimer": "Synthetic seller fee",
+                "ineligible_reason": null
+            }
+        })))
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let (token, device_id) = test_session()?;
+    let eligibility = client
+        .protected_payment_eligibility(
+            &token,
+            &device_id,
+            &financial_user("456", "bob")?,
+            Money::from_cents(100)?,
+            &Note::from_str("Synthetic note")?,
+            protected_pay_plan()?.funding_source(),
+        )
+        .await?;
+    let (eligibility_token, fee) = eligibility.into_parts();
+
+    assert_eq!(eligibility_token.expose(), "synthetic-eligibility-token");
+    assert_eq!(fee.product_uri(), "venmo:product:buyer_protection:standard");
+    assert_eq!(fee.applied_to(), "receiver");
+    assert_eq!(fee.base_fee_amount(), Some(0));
+    assert_eq!(fee.fee_percentage(), Some("0.0299"));
+    assert_eq!(fee.calculated_fee_amount_in_cents(), 25);
+    let rendered = format!("{eligibility_token:?} {fee:?}");
+    assert!(!rendered.contains("synthetic-eligibility-token"));
+    assert!(!rendered.contains("synthetic-fee-token"));
+    assert_request_count(&server, 1).await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn protected_payment_eligibility_fails_closed_without_exactly_one_matching_fee() -> TestResult
+{
+    let (token, device_id) = test_session()?;
+    for fees in [
+        serde_json::json!([]),
+        serde_json::json!([{
+            "product_uri": "venmo:product:buyer_protection:one",
+            "applied_to": "receiver",
+            "fee_token": "fee-one",
+            "calculated_fee_amount_in_cents": 1
+        }, {
+            "product_uri": "venmo:product:buyer_protection:two",
+            "applied_to": "receiver",
+            "fee_token": "fee-two",
+            "calculated_fee_amount_in_cents": 1
+        }]),
+    ] {
+        let response = scripted_json_response(
+            200,
+            serde_json::json!({
+                "data": {
+                    "eligible": true,
+                    "eligibility_token": "synthetic-eligibility-token",
+                    "fees": fees
+                }
+            }),
+        )?;
+        let (client, _transport) = scripted_client([Ok(response)])?;
+        let result = client
+            .protected_payment_eligibility(
+                &token,
+                &device_id,
+                &financial_user("456", "bob")?,
+                Money::from_cents(100)?,
+                &Note::from_str("Synthetic note")?,
+                protected_pay_plan()?.funding_source(),
+            )
+            .await;
+        assert!(matches!(result, Err(VenmoApiError::Contract { .. })));
+    }
+
+    let response = scripted_json_response(
+        200,
+        serde_json::json!({"data": {"eligible": false, "ineligible_reason": "105"}}),
+    )?;
+    let (client, _transport) = scripted_client([Ok(response)])?;
+    let result = client
+        .protected_payment_eligibility(
+            &token,
+            &device_id,
+            &financial_user("456", "bob")?,
+            Money::from_cents(100)?,
+            &Note::from_str("Synthetic note")?,
+            protected_pay_plan()?.funding_source(),
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(VenmoApiError::ProtectedPaymentEligibilityDenied)
+    ));
+    assert_eq!(
+        result.as_ref().err().map(ApiFailure::kind),
+        Some(ApiFailureKind::Rejected)
+    );
+
+    let too_many_fees = (0..17)
+        .map(|index| {
+            serde_json::json!({
+                "product_uri": format!("venmo:product:other:{index}"),
+                "applied_to": "receiver",
+                "fee_token": format!("fee-{index}"),
+                "calculated_fee_amount_in_cents": 0
+            })
+        })
+        .collect::<Vec<_>>();
+    for data in [
+        serde_json::json!({
+            "eligible": true,
+            "fees": [{
+                "product_uri": "venmo:product:buyer_protection:standard",
+                "applied_to": "receiver",
+                "fee_token": "fee-one",
+                "calculated_fee_amount_in_cents": 1
+            }]
+        }),
+        serde_json::json!({
+            "eligible": true,
+            "eligibility_token": "invalid token",
+            "fees": [{
+                "product_uri": "venmo:product:buyer_protection:standard",
+                "applied_to": "receiver",
+                "fee_token": "fee-one",
+                "calculated_fee_amount_in_cents": 1
+            }]
+        }),
+        serde_json::json!({
+            "eligible": true,
+            "eligibility_token": "synthetic-eligibility-token",
+            "fees": [{
+                "product_uri": "venmo:product:buyer_protection:standard",
+                "applied_to": "receiver",
+                "fee_token": "fee-one",
+                "calculated_fee_amount_in_cents": 1,
+                "unexpected": true
+            }]
+        }),
+        serde_json::json!({
+            "eligible": true,
+            "eligibility_token": "synthetic-eligibility-token",
+            "fees": too_many_fees
+        }),
+    ] {
+        let response = scripted_json_response(200, serde_json::json!({"data": data}))?;
+        let (client, _transport) = scripted_client([Ok(response)])?;
+        let result = client
+            .protected_payment_eligibility(
+                &token,
+                &device_id,
+                &financial_user("456", "bob")?,
+                Money::from_cents(100)?,
+                &Note::from_str("Synthetic note")?,
+                protected_pay_plan()?.funding_source(),
+            )
+            .await;
+        assert!(matches!(result, Err(VenmoApiError::Contract { .. })));
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn protected_payment_creation_sends_exact_fee_and_preserves_it_through_otp() -> TestResult {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/payments"))
+        .and(body_string(PROTECTED_PAYMENT_CREATION_REQUEST_BODY))
+        .respond_with(ResponseTemplate::new(200).set_body_json(protected_created_payment_body()))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/payments"))
+        .and(body_string(
+            PROTECTED_PAYMENT_CREATION_VERIFIED_REQUEST_BODY,
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(protected_created_payment_body()))
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let (token, device_id) = test_session()?;
+
+    for verification in [
+        PaymentVerification::Unverified,
+        PaymentVerification::SmsOtpVerified,
+    ] {
+        let outcome = client
+            .create_payment(&token, &device_id, &protected_pay_plan()?, verification)
+            .await?;
+        let PaymentCreationOutcome::Created(created) = outcome else {
+            return Err(io::Error::other("protected payment unexpectedly required OTP").into());
+        };
+        assert!(created.is_purchase_protected());
+    }
+    assert_request_count(&server, 2).await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn protected_payment_success_requires_server_proof_of_the_transaction_type() -> TestResult {
+    for payment_type in [None, Some("ordinary"), Some("goods_services")] {
+        let mut body = created_payment_body("payment-1", "pay", "settled", "123", "456");
+        if let Some(payment_type) = payment_type {
+            body["data"]["payment"]["type"] = Value::String(payment_type.to_owned());
+        }
+        let response = scripted_json_response(200, body)?;
+        let (client, _transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let result = client
+            .create_payment(
+                &token,
+                &device_id,
+                &protected_pay_plan()?,
+                PaymentVerification::Unverified,
+            )
+            .await;
+        assert!(matches!(
+            result,
+            Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn ordinary_payment_rejects_an_unexpected_protected_transaction_type() -> TestResult {
+    let response = scripted_json_response(200, protected_created_payment_body())?;
+    let (client, _transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let result = client
+        .create_payment(
+            &token,
+            &device_id,
+            &pay_plan()?,
+            PaymentVerification::Unverified,
+        )
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(VenmoApiError::FinancialOutcomeUnknown { .. })
+    ));
     Ok(())
 }
 

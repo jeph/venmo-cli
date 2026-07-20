@@ -68,6 +68,7 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
                     funding_source_selection: PeerFundingSourceSelection::Automatic,
                     eligibility_fee_cents: 0,
                     eligibility_token: RedactedSecret::Redacted,
+                    purchase_protected: false,
                     visibility: Visibility::Public,
                 }),
                 verification: PaymentVerification::Unverified,
@@ -115,7 +116,7 @@ async fn explicit_external_source_overrides_covered_balance_without_substitution
         &recipient,
         amount,
         note.clone(),
-        PayOptions::new(Some(&requested_source), Visibility::Private),
+        PayOptions::new(Some(&requested_source), Visibility::Private, false),
     )
     .await?;
 
@@ -148,6 +149,64 @@ async fn explicit_external_source_overrides_covered_balance_without_substitution
             },
         ]
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn protected_payment_uses_source_bound_eligibility_and_preserves_the_exact_fee() -> TestResult
+{
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let script = PayScript::successful()?
+        .with_protected_eligibility(Ok(protected_eligibility(25)?))
+        .with_creation(Ok(protected_created_payment()?));
+    let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(script, Rc::clone(&transcript));
+    let generator = FixedGenerator::new(Rc::clone(&transcript));
+    let prompt = FakePrompt::new(
+        false,
+        ConfirmationScript::Answer(false),
+        Rc::clone(&transcript),
+    );
+    let amount = Money::from_cents(100)?;
+    let note = Note::from_str("Synthetic protected payment")?;
+    let recipient = RecipientInput::from_str("bob")?;
+
+    let prepared = prepare(
+        &reader,
+        &api,
+        &generator,
+        &recipient,
+        amount,
+        note.clone(),
+        PayOptions::new(None, Visibility::Private, true),
+    )
+    .await?;
+    assert!(prepared.plan().is_purchase_protected());
+    assert_eq!(prepared.plan().purchase_protection_fee_cents(), Some(25));
+    assert_eq!(prepared.plan().recipient_proceeds_cents(), Some(75));
+    let authorized = authorize(&prompt, prepared, true)?;
+    let result = execute(&api, &prompt, authorized).await?;
+
+    assert!(result.created().is_purchase_protected());
+    assert!(transcript.borrow().iter().any(|call| matches!(
+        call,
+        Call::ProtectedEligibility {
+            amount: observed_amount,
+            note: observed_note,
+            funding_source,
+            ..
+        } if *observed_amount == amount
+            && observed_note == &note
+            && funding_source.method().id().as_str() == "balance-1"
+    )));
+    assert!(
+        !transcript
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, Call::Eligibility { .. }))
+    );
+    let rendered = format!("{:?} {:?}", result.plan(), transcript.borrow());
+    assert!(!rendered.contains(FEE_TOKEN));
     Ok(())
 }
 

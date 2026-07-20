@@ -89,6 +89,13 @@ pub(super) fn created_payment() -> TestResult<CreatedPayment> {
     ))
 }
 
+pub(super) fn protected_created_payment() -> TestResult<CreatedPayment> {
+    Ok(CreatedPayment::purchase_protected(
+        PaymentId::from_str("payment-1")?,
+        FinancialStatus::Settled,
+    ))
+}
+
 pub(super) const PAY_DETAILS: &str = concat!(
     "Payment details:\n",
     "  From account: @owner (ID 123)\n",
@@ -96,6 +103,7 @@ pub(super) const PAY_DETAILS: &str = concat!(
     "  Amount: $0.01\n",
     "  Note: Synthetic payment\n",
     "  Requested audience: private\n",
+    "  Purchase protection: not requested\n",
     "  Available Venmo balance: $3.00\n",
     "  Funding source: Venmo balance (balance, ID balance-1)\n",
 );
@@ -106,5 +114,30 @@ pub(super) const PAY_RESULT: &str = concat!(
     "Recipient: @bob (Synthetic recipient)\n",
     "Amount: $0.01\n",
     "Requested audience: private\n",
+    "Purchase protection: not requested\n",
+    "Submitted funding source ID: balance-1\n",
+);
+
+pub(super) const PROTECTED_PAY_DETAILS: &str = concat!(
+    "Payment details:\n",
+    "  From account: @owner (ID 123)\n",
+    "  Recipient: @bob (Synthetic recipient) (ID 456)\n",
+    "  Amount: $0.01\n",
+    "  Note: Synthetic payment\n",
+    "  Requested audience: private\n",
+    "  Purchase protection: requested\n",
+    "  Available Venmo balance: $3.00\n",
+    "  Funding source: Venmo balance (balance, ID balance-1)\n",
+    "  Estimated purchase-protection seller fee: $0.00\n",
+    "  Estimated recipient proceeds: $0.01\n",
+);
+
+pub(super) const PROTECTED_PAY_RESULT: &str = concat!(
+    "Payment ID: payment-1\n",
+    "Status: settled\n",
+    "Recipient: @bob (Synthetic recipient)\n",
+    "Amount: $0.01\n",
+    "Requested audience: private\n",
+    "Purchase protection: tagged by Venmo\n",
     "Submitted funding source ID: balance-1\n",
 );

@@ -13,10 +13,11 @@ pub(super) use activity::{
 };
 pub(super) use auth::{AccountEnvelope, PasswordLoginRequest, SmsOtpRequest};
 pub(super) use payments::{
-    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentMetadata,
-    CreatePaymentRequest, CreatedPaymentEnvelope, IssuePaymentOtpAction, IssuePaymentOtpEnvelope,
-    PaymentEnvelope, PaymentOtpGraphQlRequest, PaymentOtpGraphQlVariables, PaymentOtpInput,
-    PaymentRecordDto, PaymentsEnvelope, VerifyPaymentOtpAction, VerifyPaymentOtpEnvelope,
+    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentFee,
+    CreatePaymentMetadata, CreatePaymentRequest, CreatedPaymentEnvelope, IssuePaymentOtpAction,
+    IssuePaymentOtpEnvelope, PaymentEnvelope, PaymentOtpGraphQlRequest, PaymentOtpGraphQlVariables,
+    PaymentOtpInput, PaymentRecordDto, PaymentsEnvelope, ProtectedPaymentEligibilityEnvelope,
+    ProtectedPaymentFeeDto, VerifyPaymentOtpAction, VerifyPaymentOtpEnvelope,
 };
 pub(super) use people::{
     FriendMutationEnvelope, FriendsEnvelope, UserDto, UserEnvelope, UsersEnvelope,

@@ -5,7 +5,7 @@ use crate::features::auth::CurrentAccountApi;
 use crate::features::payments::pay;
 use crate::features::payments::{
     BlankSourceEligibilityApi, DefaultNoConfirmation, PaymentCreationApi, PaymentStepUpApi,
-    PaymentStepUpInput, PeerFundingApi,
+    PaymentStepUpInput, PeerFundingApi, ProtectedPaymentEligibilityApi,
 };
 use crate::features::people::friendship::{self, FriendshipIntent};
 use crate::features::people::{FriendshipMutationApi, UserLookupApi, UserSearchApi};
@@ -45,6 +45,7 @@ where
         + BalanceApi
         + PeerFundingApi
         + BlankSourceEligibilityApi
+        + ProtectedPaymentEligibilityApi
         + PaymentCreationApi
         + PaymentStepUpApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
@@ -55,7 +56,7 @@ where
     M: FnOnce() -> Result<S, AppError>,
     S: Future<Output = Result<(), AppError>>,
 {
-    let options = pay::PayOptions::new(args.source.as_ref(), args.visibility.into());
+    let options = pay::PayOptions::new(args.source.as_ref(), args.visibility.into(), args.protect);
     let prepared = pay::prepare(
         store,
         api,

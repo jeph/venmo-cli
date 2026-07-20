@@ -39,7 +39,7 @@ pub enum PayOperation {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "Without `--source`, payment uses a peer-eligible Venmo balance source when the available balance covers the amount; otherwise it selects the unique default or sole eligible external peer method. `--source` submits that exact peer-eligible balance, bank, or card ID and never silently substitutes another source. Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app."
+    after_long_help = "Without `--source`, payment uses a peer-eligible Venmo balance source when the available balance covers the amount; otherwise it selects the unique default or sole eligible external peer method. `--source` submits that exact peer-eligible balance, bank, or card ID and never silently substitutes another source. `--protect` explicitly tags an eligible personal-profile payment as a purchase; Venmo may deduct a seller fee, the tag generally cannot be removed, and tagging does not guarantee item coverage. Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app."
 )]
 pub struct PayUserArgs {
     /// Exact username with an optional leading @.
@@ -57,6 +57,10 @@ pub struct PayUserArgs {
     /// Peer-eligible source ID from `venmo pay options`.
     #[arg(long, value_name = "SOURCE_ID")]
     pub source: Option<PaymentMethodId>,
+
+    /// Request Venmo Purchase Protection for an eligible purchase.
+    #[arg(long)]
+    pub protect: bool,
 
     /// Visibility of the created payment.
     #[arg(long, value_enum, default_value_t = VisibilityArg::Private)]

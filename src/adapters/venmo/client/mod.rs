@@ -45,6 +45,8 @@ pub(super) const PAYMENT_CREATION_OPERATION: &str = "payment creation";
 pub(super) const PAYMENT_OTP_ISSUE_OPERATION: &str = "payment OTP issuance";
 pub(super) const PAYMENT_OTP_VERIFICATION_OPERATION: &str = "payment OTP verification";
 pub(super) const BLANK_SOURCE_ELIGIBILITY_OPERATION: &str = "payment eligibility";
+pub(super) const PROTECTED_PAYMENT_ELIGIBILITY_OPERATION: &str =
+    "purchase-protected payment eligibility";
 pub(super) const PAYMENT_METHODS_OPERATION: &str = "payment-method listing";
 pub(super) const PEER_FUNDING_OPERATION: &str = "peer funding-method listing";
 pub(super) const REQUEST_CREATION_OPERATION: &str = "request creation";

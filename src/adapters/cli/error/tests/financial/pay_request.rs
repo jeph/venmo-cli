@@ -72,6 +72,10 @@ fn pay_and_request_creation_variants_have_deliberate_categories() {
             ErrorCategory::ApiContract,
         ),
         (
+            AppError::from(PayError::ProtectionFeeExceedsAmount),
+            ErrorCategory::ApiContract,
+        ),
+        (
             AppError::from(PayError::ConfirmationRequired),
             ErrorCategory::Usage,
         ),

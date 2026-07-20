@@ -8,19 +8,21 @@ use crate::features::auth::OtpCode;
 use crate::features::payments::{
     BlankSourceEligibility, BlankSourceEligibilityApi, CreatedPayment, EligibilityToken,
     FinancialStatus, PayPlan, PaymentCreationApi, PaymentCreationOutcome, PaymentId,
-    PaymentOtpVerification, PaymentStepUpApi, PaymentVerification,
+    PaymentOtpVerification, PaymentStepUpApi, PaymentVerification, ProtectedPaymentEligibility,
+    ProtectedPaymentEligibilityApi, PurchaseProtectionFee,
 };
 use crate::features::people::User;
 use crate::features::requests::{CreatedRequest, RequestId, RequestStatus};
 use crate::shared::{AccessToken, Account, DeviceId, Money, Note, Visibility};
 
 use super::super::dto::{
-    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentMetadata,
-    CreatePaymentRequest, CreatedPaymentEnvelope, IssuePaymentOtpAction, IssuePaymentOtpEnvelope,
-    PaymentOtpGraphQlRequest, PaymentOtpGraphQlVariables, PaymentOtpInput, PaymentRecordDto,
+    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentFee,
+    CreatePaymentMetadata, CreatePaymentRequest, CreatedPaymentEnvelope, IssuePaymentOtpAction,
+    IssuePaymentOtpEnvelope, PaymentOtpGraphQlRequest, PaymentOtpGraphQlVariables, PaymentOtpInput,
+    PaymentRecordDto, ProtectedPaymentEligibilityEnvelope, ProtectedPaymentFeeDto,
     VerifyPaymentOtpAction, VerifyPaymentOtpEnvelope,
 };
-use super::super::transport::{ApiSession, ApiTransport, HttpRequest, JsonBody};
+use super::super::transport::{ApiSession, ApiTransport, FormBody, HttpRequest, JsonBody};
 use super::error::{ApiCodeSuffix, VenmoApiError};
 use super::response::{
     decode_success, is_payment_otp_step_up_required, require_financial_success_json,
@@ -28,7 +30,8 @@ use super::response::{
 use super::support::parse_timestamp_value;
 use super::{
     BLANK_SOURCE_ELIGIBILITY_OPERATION, PAYMENT_CREATION_OPERATION, PAYMENT_OTP_ISSUE_OPERATION,
-    PAYMENT_OTP_VERIFICATION_OPERATION, REQUEST_CREATION_OPERATION, VenmoApiClient,
+    PAYMENT_OTP_VERIFICATION_OPERATION, PROTECTED_PAYMENT_ELIGIBILITY_OPERATION,
+    REQUEST_CREATION_OPERATION, VenmoApiClient,
 };
 
 const ISSUE_PAYMENT_OTP_QUERY: &str =
@@ -36,7 +39,72 @@ const ISSUE_PAYMENT_OTP_QUERY: &str =
 const VERIFY_PAYMENT_OTP_QUERY: &str = "mutation validateOtp($input: ValidateOtpRequest!) { validateOtp(input: $input) { validated reasonCode } }";
 const PAYMENT_OTP_FLOW_TYPE: &str = "P2P";
 const SMS_OTP_METHOD: &str = "sms_otp";
+const SMS_OTP_METHODS: &[&str] = &[SMS_OTP_METHOD];
 const SMS_OTP_VERIFIED_STATUS: &str = "sms_otp_verified";
+const GOODS_SERVICES_PROTECTED: &str = "goods_services_protected";
+const BUYER_PROTECTION_PRODUCT_PREFIX: &str = "venmo:product:buyer_protection:";
+const MAX_PROTECTED_PAYMENT_FEES: usize = 16;
+const MAX_PROTECTED_PAYMENT_FEE_FIELD_BYTES: usize = 4096;
+
+fn map_protected_payment_fee(
+    fees: Option<Vec<ProtectedPaymentFeeDto>>,
+) -> Result<PurchaseProtectionFee, VenmoApiError> {
+    let fees = fees.unwrap_or_default();
+    if fees.len() > MAX_PROTECTED_PAYMENT_FEES {
+        return protected_payment_fee_contract_error();
+    }
+    let mut selected = None;
+    for fee in fees {
+        let product_uri = validate_protected_payment_fee_field(fee.product_uri, false)?;
+        let applied_to = validate_protected_payment_fee_field(fee.applied_to, true)?;
+        let fee_token = validate_protected_payment_fee_field(fee.fee_token, false)?;
+        let fee_percentage = fee.fee_percentage.map(|value| value.to_string());
+        if fee_percentage
+            .as_deref()
+            .is_some_and(|value| value.starts_with('-'))
+        {
+            return protected_payment_fee_contract_error();
+        }
+        if product_uri.starts_with(BUYER_PROTECTION_PRODUCT_PREFIX) {
+            if selected.is_some() {
+                return protected_payment_fee_contract_error();
+            }
+            selected = Some(PurchaseProtectionFee::new(
+                product_uri,
+                applied_to,
+                fee_token,
+                fee.base_fee_amount,
+                fee_percentage,
+                fee.calculated_fee_amount_in_cents,
+            ));
+        }
+    }
+    selected.ok_or(VenmoApiError::Contract {
+        operation: PROTECTED_PAYMENT_ELIGIBILITY_OPERATION,
+        problem: "the eligibility response did not contain exactly one buyer-protection fee",
+    })
+}
+
+fn validate_protected_payment_fee_field(
+    value: String,
+    allow_whitespace: bool,
+) -> Result<String, VenmoApiError> {
+    if value.is_empty()
+        || value.len() > MAX_PROTECTED_PAYMENT_FEE_FIELD_BYTES
+        || value.chars().any(char::is_control)
+        || (!allow_whitespace && value.chars().any(char::is_whitespace))
+    {
+        return protected_payment_fee_contract_error();
+    }
+    Ok(value)
+}
+
+fn protected_payment_fee_contract_error<T>() -> Result<T, VenmoApiError> {
+    Err(VenmoApiError::Contract {
+        operation: PROTECTED_PAYMENT_ELIGIBILITY_OPERATION,
+        problem: "the eligibility response contained invalid buyer-protection fee details",
+    })
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PeerCreation {
@@ -200,6 +268,36 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         let request_id = plan.request_id().to_string();
         let creation = PeerCreation::Payment;
         let amount = money_json_number(plan.amount(), creation)?;
+        let wire_fees = if let Some(fee) = plan.purchase_protection_fee() {
+            let fee_percentage = fee
+                .fee_percentage()
+                .map(serde_json::Number::from_str)
+                .transpose()
+                .map_err(|_| VenmoApiError::RequestEncoding {
+                    operation: PAYMENT_CREATION_OPERATION,
+                })?;
+            Some(vec![CreatePaymentFee {
+                product_uri: fee.product_uri(),
+                applied_to: fee.applied_to(),
+                fee_token: fee.fee_token(),
+                base_fee_amount: fee.base_fee_amount(),
+                fee_percentage,
+                calculated_fee_amount_in_cents: fee.calculated_fee_amount_in_cents(),
+            }])
+        } else {
+            None
+        };
+        let verified = matches!(verification, PaymentVerification::SmsOtpVerified);
+        let protected = plan.is_purchase_protected();
+        let metadata = if protected || verified {
+            Some(CreatePaymentMetadata {
+                quasi_cash_disclaimer_viewed: protected.then_some(false),
+                verification_method: verified.then_some(SMS_OTP_METHODS),
+                verification_status: verified.then_some(SMS_OTP_VERIFIED_STATUS),
+            })
+        } else {
+            None
+        };
         let body = JsonBody::encode(&CreatePaymentRequest {
             uuid: &request_id,
             user_id: plan.recipient().user_id().as_str(),
@@ -208,13 +306,9 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             note: plan.note().as_str(),
             eligibility_token: plan.eligibility_token().expose(),
             funding_source_id: plan.funding_source().method().id().as_str(),
-            metadata: match verification {
-                PaymentVerification::Unverified => None,
-                PaymentVerification::SmsOtpVerified => Some(CreatePaymentMetadata {
-                    verification_method: &[SMS_OTP_METHOD],
-                    verification_status: SMS_OTP_VERIFIED_STATUS,
-                }),
-            },
+            transaction_type: protected.then_some(GOODS_SERVICES_PROTECTED),
+            fees: wire_fees.as_deref(),
+            metadata,
         })
         .map_err(|_| VenmoApiError::RequestEncoding {
             operation: PAYMENT_CREATION_OPERATION,
@@ -238,8 +332,66 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             plan.amount(),
             plan.note(),
             plan.visibility(),
+            protected,
         )
         .map(PaymentCreationOutcome::Created)
+    }
+
+    async fn fetch_protected_payment_eligibility(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        recipient: &User,
+        amount: Money,
+        note: &Note,
+        funding_source: &crate::features::payments::PeerFundingSource,
+    ) -> Result<ProtectedPaymentEligibility, VenmoApiError> {
+        let amount = amount.cents().to_string();
+        let body = FormBody::pairs(&[
+            ("target_type", "user_id"),
+            ("target_id", recipient.user_id().as_str()),
+            ("country_code", "1"),
+            ("amount", amount.as_str()),
+            ("note", note.as_str()),
+            ("funding_source_id", funding_source.method().id().as_str()),
+        ])
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: PROTECTED_PAYMENT_ELIGIBILITY_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::non_financial_form_post(
+                    "/protection/eligibility",
+                    &["protection", "eligibility"],
+                    &[],
+                    body,
+                ),
+            )
+            .await?;
+        let envelope: ProtectedPaymentEligibilityEnvelope = decode_success(
+            PROTECTED_PAYMENT_ELIGIBILITY_OPERATION,
+            response,
+            "the protected-payment eligibility response did not match the supported envelope",
+        )?;
+        let eligibility = envelope.data;
+        let _ = (&eligibility.fee_disclaimer, &eligibility.ineligible_reason);
+        if !eligibility.eligible {
+            return Err(VenmoApiError::ProtectedPaymentEligibilityDenied);
+        }
+        let fee = map_protected_payment_fee(eligibility.fees)?;
+        let token = eligibility
+            .eligibility_token
+            .ok_or(VenmoApiError::Contract {
+                operation: PROTECTED_PAYMENT_ELIGIBILITY_OPERATION,
+                problem: "the protected-payment eligibility response omitted its token",
+            })?;
+        let token = EligibilityToken::parse_owned(token).map_err(|_| VenmoApiError::Contract {
+            operation: PROTECTED_PAYMENT_ELIGIBILITY_OPERATION,
+            problem: "the protected-payment eligibility response contained an invalid token",
+        })?;
+        Ok(ProtectedPaymentEligibility::new(token, fee))
     }
 
     async fn send_payment_otp(
@@ -369,6 +521,29 @@ impl<T: ApiTransport> BlankSourceEligibilityApi for VenmoApiClient<T> {
     }
 }
 
+impl<T: ApiTransport> ProtectedPaymentEligibilityApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn protected_payment_eligibility<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        recipient: &'a User,
+        amount: Money,
+        note: &'a Note,
+        funding_source: &'a crate::features::payments::PeerFundingSource,
+    ) -> impl Future<Output = Result<ProtectedPaymentEligibility, Self::Error>> + Send + 'a {
+        self.fetch_protected_payment_eligibility(
+            access_token,
+            device_id,
+            recipient,
+            amount,
+            note,
+            funding_source,
+        )
+    }
+}
+
 impl<T: ApiTransport> PaymentCreationApi for VenmoApiClient<T> {
     type Error = VenmoApiError;
     fn create_payment<'a>(
@@ -461,6 +636,7 @@ fn validate_created_contract(
     expected_amount: Money,
     expected_note: &Note,
     expected_visibility: Visibility,
+    expected_purchase_protected: bool,
 ) -> Result<(String, PeerCreationStatus), VenmoApiError> {
     let operation = creation.operation();
     let record = payment.payment();
@@ -497,6 +673,22 @@ fn validate_created_contract(
             "the response did not provide a supported audience no more public than requested",
         );
     }
+    if expected_purchase_protected
+        && record.payment_type.as_deref() != Some(GOODS_SERVICES_PROTECTED)
+    {
+        return financial_contract_unknown(
+            operation,
+            "the response did not prove the payment was tagged for Purchase Protection",
+        );
+    }
+    if !expected_purchase_protected
+        && record.payment_type.as_deref() == Some(GOODS_SERVICES_PROTECTED)
+    {
+        return financial_contract_unknown(
+            operation,
+            "the response unexpectedly reported Purchase Protection for an ordinary payment",
+        );
+    }
     Ok((
         record.id.as_str().into_owned(),
         creation.validate_status(&record.status)?,
@@ -511,6 +703,7 @@ pub(super) fn validate_created_payment(
     expected_amount: Money,
     expected_note: &Note,
     expected_visibility: Visibility,
+    expected_purchase_protected: bool,
 ) -> Result<CreatedPayment, VenmoApiError> {
     let creation = PeerCreation::Payment;
     let operation = creation.operation();
@@ -522,6 +715,7 @@ pub(super) fn validate_created_payment(
         expected_amount,
         expected_note,
         expected_visibility,
+        expected_purchase_protected,
     )?;
     let status = match status {
         PeerCreationStatus::Payment(status) => status,
@@ -536,7 +730,11 @@ pub(super) fn validate_created_payment(
         operation,
         problem: "the response contained an invalid payment ID",
     })?;
-    Ok(CreatedPayment::new(id, status))
+    if expected_purchase_protected {
+        Ok(CreatedPayment::purchase_protected(id, status))
+    } else {
+        Ok(CreatedPayment::new(id, status))
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -558,6 +756,7 @@ pub(super) fn validate_created_request(
         expected_amount,
         expected_note,
         expected_visibility,
+        false,
     )?;
     let status = match status {
         PeerCreationStatus::Request(status) => status,

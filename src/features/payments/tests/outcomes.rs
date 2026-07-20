@@ -66,6 +66,7 @@ pub(super) enum PayFailure {
     FundingMethods(ApiFailureKind),
     FundingSelection(FundingFailure),
     Eligibility(ApiFailureKind),
+    ProtectionFeeExceedsAmount,
     ConfirmationRequired,
     ConfirmationDeclined,
     Confirmation(PromptFailure),
@@ -102,6 +103,7 @@ pub(super) fn pay_outcome(result: Result<PayResult, PayError>) -> PayOutcome {
                 PayFailure::FundingSelection(FundingFailure::from(&source))
             }
             PayError::Eligibility { source } => PayFailure::Eligibility(source.kind()),
+            PayError::ProtectionFeeExceedsAmount => PayFailure::ProtectionFeeExceedsAmount,
             PayError::ConfirmationRequired => PayFailure::ConfirmationRequired,
             PayError::ConfirmationDeclined => PayFailure::ConfirmationDeclined,
             PayError::Confirmation { source } => {

@@ -84,9 +84,11 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 
 ### Payments
 
-- `PaymentId`, `CreatedPayment`, `FinancialStatus`.
+- `PaymentId`, `CreatedPayment`, `FinancialStatus`. `CreatedPayment::is_purchase_protected()` is
+  response-backed confirmation that Venmo tagged the created transaction, not a coverage guarantee.
 - `PeerFundingMethod`, `PeerFundingRole`, `PeerFundingFee`.
-- `PayPlan`, `PayResult`.
+- `PayPlan`, `PayResult`. `PayPlan` exposes requested protection plus the checked seller-fee and
+  recipient-proceeds estimates, but not eligibility or fee tokens.
 
 ### Requests
 
@@ -164,6 +166,10 @@ preserves automatic balance/default-or-sole-external selection; `Some` requests 
 peer-eligible balance, bank, or card source. `PayOperation::Options` is the read-only payment-option
 leaf that supplies copyable candidate IDs. The former `PayOperation::Methods` variant and
 `venmo pay methods` spelling are intentionally not retained as aliases.
+
+Both argument structs also expose an independent public `protect: bool` field. `false` preserves
+ordinary unprotected behavior. `true` opts into the operation-specific Purchase Protection flow;
+callers constructing either struct directly must choose explicitly.
 
 ## Initial 0.0.1 surface
 

@@ -6,7 +6,7 @@ use super::preflight::{self, PeerPreflightError};
 use super::{
     BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation, PayPlan, PaymentCreationApi,
     PaymentCreationOutcome, PaymentOtpVerification, PaymentStepUpApi, PaymentStepUpInput,
-    PaymentVerification, PeerFundingApi,
+    PaymentVerification, PeerFundingApi, ProtectedPaymentEligibilityApi,
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
 use crate::features::people::{RecipientInput, UserLookupApi, UserSearchApi};
@@ -78,6 +78,8 @@ pub enum PayError {
         #[source]
         source: ApiOperationFailure,
     },
+    #[error("the purchase-protection seller fee exceeded the payment amount")]
+    ProtectionFeeExceedsAmount,
     #[error(
         "payment confirmation requires both stdin and stderr to be terminals; pass `--yes` to authorize non-interactively"
     )]
@@ -137,6 +139,7 @@ impl PayError {
             | Self::StepUpIssue { source }
             | Self::StepUpVerify { source } => ApplicationFailureKind::Api(source.kind()),
             Self::FundingSelection(source) => source.failure_kind(),
+            Self::ProtectionFeeExceedsAmount => ApplicationFailureKind::ApiContract,
             Self::ConfirmationRequired | Self::StepUpPromptRequired => {
                 ApplicationFailureKind::Usage
             }
@@ -162,6 +165,7 @@ pub(crate) struct AuthorizedPay(PreparedPay);
 pub(crate) struct PayOptions<'a> {
     requested_source: Option<&'a PaymentMethodId>,
     visibility: Visibility,
+    protect: bool,
 }
 
 impl<'a> PayOptions<'a> {
@@ -169,10 +173,12 @@ impl<'a> PayOptions<'a> {
     pub(crate) const fn new(
         requested_source: Option<&'a PaymentMethodId>,
         visibility: Visibility,
+        protect: bool,
     ) -> Self {
         Self {
             requested_source,
             visibility,
+            protect,
         }
     }
 }
@@ -193,7 +199,8 @@ where
         + UserSearchApi
         + BalanceApi
         + PeerFundingApi
-        + BlankSourceEligibilityApi,
+        + BlankSourceEligibilityApi
+        + ProtectedPaymentEligibilityApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
     G: ClientRequestIdGenerator,
 {
@@ -214,32 +221,65 @@ where
         })?;
     let (funding_source, funding_source_selection) =
         funding::select_source(&sources, &balance, amount, options.requested_source)?.into_parts();
-    let eligibility = api
-        .blank_source_eligibility(
-            credential.access_token(),
-            credential.device_id(),
-            &recipient,
+    let plan = if options.protect {
+        let eligibility = api
+            .protected_payment_eligibility(
+                credential.access_token(),
+                credential.device_id(),
+                &recipient,
+                amount,
+                &note,
+                &funding_source,
+            )
+            .await
+            .map_err(|source| PayError::Eligibility {
+                source: ApiOperationFailure::new(source),
+            })?;
+        let (eligibility_token, fee) = eligibility.into_parts();
+        if fee.calculated_fee_amount_in_cents() > amount.cents() {
+            return Err(PayError::ProtectionFeeExceedsAmount);
+        }
+        PayPlan::new_purchase_protected(
+            generator.generate(),
+            account,
+            recipient,
             amount,
-            &note,
+            note,
+            balance,
+            funding_source,
+            funding_source_selection,
+            eligibility_token,
+            fee,
+            options.visibility,
         )
-        .await
-        .map_err(|source| PayError::Eligibility {
-            source: ApiOperationFailure::new(source),
-        })?;
-    let eligibility_fee_cents = eligibility.overall_fee_cents();
-    let plan = PayPlan::new(
-        generator.generate(),
-        account,
-        recipient,
-        amount,
-        note,
-        balance,
-        funding_source,
-        funding_source_selection,
-        eligibility_fee_cents,
-        eligibility.into_token(),
-        options.visibility,
-    );
+    } else {
+        let eligibility = api
+            .blank_source_eligibility(
+                credential.access_token(),
+                credential.device_id(),
+                &recipient,
+                amount,
+                &note,
+            )
+            .await
+            .map_err(|source| PayError::Eligibility {
+                source: ApiOperationFailure::new(source),
+            })?;
+        let eligibility_fee_cents = eligibility.overall_fee_cents();
+        PayPlan::new(
+            generator.generate(),
+            account,
+            recipient,
+            amount,
+            note,
+            balance,
+            funding_source,
+            funding_source_selection,
+            eligibility_fee_cents,
+            eligibility.into_token(),
+            options.visibility,
+        )
+    };
     Ok(PreparedPay::new(credential, plan))
 }
 

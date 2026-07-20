@@ -32,7 +32,8 @@ use crate::features::payments::{
     BlankSourceEligibilityApi, EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi,
     PaymentCreationOutcome, PaymentId, PaymentOtpVerification, PaymentStepUpApi,
     PaymentVerification, PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
-    PeerFundingSource, PeerFundingSourceSelection,
+    PeerFundingSource, PeerFundingSourceSelection, ProtectedPaymentEligibilityApi,
+    PurchaseProtectionFee,
 };
 use crate::features::people::{
     FriendsApi, FriendsPageRequest, FriendshipMutationApi, FriendshipStatus, User, UserLookupApi,
@@ -89,6 +90,25 @@ const PAYMENT_CREATION_VERIFIED_REQUEST_BODY: &str = concat!(
     r#""audience":"private","amount":0.01,"note":"Synthetic note","#,
     r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1","#,
     r#""metadata":{"verification_method":["sms_otp"],"verification_status":"sms_otp_verified"}}"#,
+);
+const PROTECTED_PAYMENT_CREATION_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"private","amount":1.00,"note":"Synthetic note","#,
+    r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1","#,
+    r#""transaction_type":"goods_services_protected","fees":[{"product_uri":"venmo:product:buyer_protection:standard","#,
+    r#""applied_to":"receiver","fee_token":"synthetic-fee-token","base_fee_amount":0,"#,
+    r#""fee_percentage":0.0299,"calculated_fee_amount_in_cents":25}],"#,
+    r#""metadata":{"quasi_cash_disclaimer_viewed":false}}"#,
+);
+const PROTECTED_PAYMENT_CREATION_VERIFIED_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"private","amount":1.00,"note":"Synthetic note","#,
+    r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1","#,
+    r#""transaction_type":"goods_services_protected","fees":[{"product_uri":"venmo:product:buyer_protection:standard","#,
+    r#""applied_to":"receiver","fee_token":"synthetic-fee-token","base_fee_amount":0,"#,
+    r#""fee_percentage":0.0299,"calculated_fee_amount_in_cents":25}],"#,
+    r#""metadata":{"quasi_cash_disclaimer_viewed":false,"verification_method":["sms_otp"],"#,
+    r#""verification_status":"sms_otp_verified"}}"#,
 );
 const ISSUE_PAYMENT_OTP_REQUEST_BODY: &str = concat!(
     r#"{"query":"mutation SendOtp($input: SendOtpRequest!) { sendOtp(input: $input) { success } }","#,
@@ -190,6 +210,7 @@ enum ApiErrorDetail {
         rendered: String,
     },
     EligibilityDenied,
+    ProtectedPaymentEligibilityDenied,
     RequestApprovalEligibilityDenied,
     DuplicatePaymentRejected {
         rendered: String,
@@ -243,6 +264,9 @@ impl ApiErrorSnapshot {
                 rendered,
             },
             VenmoApiError::EligibilityDenied => ApiErrorDetail::EligibilityDenied,
+            VenmoApiError::ProtectedPaymentEligibilityDenied => {
+                ApiErrorDetail::ProtectedPaymentEligibilityDenied
+            }
             VenmoApiError::RequestApprovalEligibilityDenied => {
                 ApiErrorDetail::RequestApprovalEligibilityDenied
             }
@@ -658,6 +682,13 @@ fn created_payment_body_with_visibility(
     })
 }
 
+fn protected_created_payment_body() -> Value {
+    let mut body = created_payment_body("payment-1", "pay", "settled", "123", "456");
+    body["data"]["payment"]["amount"] = Value::String("1.00".to_owned());
+    body["data"]["payment"]["type"] = Value::String("goods_services_protected".to_owned());
+    body
+}
+
 fn financial_user(id: &str, username: &str) -> Result<User, Box<dyn Error>> {
     Ok(User::new(
         UserId::from_str(id)?,
@@ -710,6 +741,32 @@ fn pay_plan_with_visibility(visibility: Visibility) -> Result<PayPlan, Box<dyn E
         0,
         EligibilityToken::parse_owned("synthetic-eligibility-token".to_owned())?,
         visibility,
+    ))
+}
+
+fn protected_pay_plan() -> Result<PayPlan, Box<dyn Error>> {
+    Ok(PayPlan::new_purchase_protected(
+        crate::shared::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
+        test_account()?,
+        financial_user("456", "bob")?,
+        Money::from_cents(100)?,
+        Note::from_str("Synthetic note")?,
+        Balance::new(
+            SignedUsdAmount::from_cents(0),
+            SignedUsdAmount::from_cents(0),
+        ),
+        PeerFundingSource::external(zero_fee_peer_method()?),
+        PeerFundingSourceSelection::Automatic,
+        EligibilityToken::parse_owned("synthetic-eligibility-token".to_owned())?,
+        PurchaseProtectionFee::new(
+            "venmo:product:buyer_protection:standard".to_owned(),
+            "receiver".to_owned(),
+            "synthetic-fee-token".to_owned(),
+            Some(0),
+            Some("0.0299".to_owned()),
+            25,
+        ),
+        Visibility::Private,
     ))
 }
 

@@ -1,11 +1,11 @@
 ---
 source: src/adapters/cli/output/tests/writes.rs
-expression: pay_output
+expression: "String::from_utf8(protected_output)?"
 ---
-Payment ID: payment-1
+Payment ID: payment-2
 Status: settled
 Recipient: @bob (Synthetic\nrecipient)
-Amount: $0.01
+Amount: $1.00
 Requested audience: private
-Purchase protection: not requested
+Purchase protection: tagged by Venmo
 Submitted funding source ID: bank-1

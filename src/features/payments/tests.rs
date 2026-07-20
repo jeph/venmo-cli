@@ -13,7 +13,8 @@ use crate::features::auth::{PromptAvailability, PromptError};
 use crate::features::payments::{
     BlankSourceEligibility, EligibilityToken, FinancialStatus, FinancialValidationError, PaymentId,
     PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSource,
-    PeerFundingSourceSelection, PeerFundingSources,
+    PeerFundingSourceSelection, PeerFundingSources, ProtectedPaymentEligibility,
+    PurchaseProtectionFee,
 };
 use crate::features::people::recipients::RecipientResolutionFailureKind;
 use crate::features::people::{

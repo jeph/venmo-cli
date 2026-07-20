@@ -1,6 +1,9 @@
 use std::future::Future;
 
-use super::{CreatedPayment, EligibilityToken, PayPlan, PeerFundingSources};
+use super::{
+    CreatedPayment, EligibilityToken, PayPlan, PeerFundingSource, PeerFundingSources,
+    PurchaseProtectionFee,
+};
 use crate::features::auth::{OtpCode, PromptAvailability, PromptError};
 use crate::features::people::User;
 use crate::shared::{AccessToken, ApiFailure, ClientRequestId, DeviceId, Money, Note};
@@ -87,6 +90,39 @@ pub(crate) trait BlankSourceEligibilityApi {
         amount: Money,
         note: &'a Note,
     ) -> impl Future<Output = Result<BlankSourceEligibility, Self::Error>> + Send + 'a;
+}
+
+#[derive(Debug)]
+pub(crate) struct ProtectedPaymentEligibility {
+    token: EligibilityToken,
+    fee: PurchaseProtectionFee,
+}
+
+impl ProtectedPaymentEligibility {
+    #[must_use]
+    pub const fn new(token: EligibilityToken, fee: PurchaseProtectionFee) -> Self {
+        Self { token, fee }
+    }
+
+    #[must_use]
+    pub fn into_parts(self) -> (EligibilityToken, PurchaseProtectionFee) {
+        (self.token, self.fee)
+    }
+}
+
+pub(crate) trait ProtectedPaymentEligibilityApi {
+    type Error: ApiFailure;
+
+    #[allow(clippy::too_many_arguments)]
+    fn protected_payment_eligibility<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        recipient: &'a User,
+        amount: Money,
+        note: &'a Note,
+        funding_source: &'a PeerFundingSource,
+    ) -> impl Future<Output = Result<ProtectedPaymentEligibility, Self::Error>> + Send + 'a;
 }
 
 pub(crate) trait PaymentCreationApi {

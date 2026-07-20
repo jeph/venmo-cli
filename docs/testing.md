@@ -157,6 +157,13 @@ continues to identify only the funding-source ID submitted in the request. Reque
 snapshots apply the same prewrite source labels while retaining the separate protected seller-fee
 and recipient-proceeds estimates.
 
+Protected-payment tests must pin the exact source-bound form request with no `action`, strict
+selection of exactly one valid buyer-protection product fee, complete singleton fee serialization,
+protected transaction type, quasi-cash metadata, fee-above-amount rejection before write, and
+response `type` proof. The OTP test must prove that protected fields and the same UUID survive while
+verification fields are merged. Fee and eligibility tokens remain redacted from every transcript
+and `Debug` value. These tests are service-free; no protected live mutation is a routine test.
+
 Payment step-up coverage is entirely service-free. Exact transcripts prove an initial creation
 challenge, terminal-capability check, one SMS issue, one hidden six-digit prompt, one verification,
 and at most one verified creation using the same immutable plan and UUID. Wire tests pin `/graphql`,
@@ -174,8 +181,9 @@ outcome-unknown rather than inheriting those messages.
 
 ## Secret and error snapshots
 
-Never place raw access tokens, device IDs, passwords, OTPs, OTP secrets, eligibility tokens, or
-real account data in a transcript, `Debug` value, snapshot file, panic message, or expected error.
+Never place raw access tokens, device IDs, passwords, OTPs, OTP secrets, eligibility tokens, fee
+tokens, or real account data in a transcript, `Debug` value, snapshot file, panic message, or
+expected error.
 Project secret-bearing values before comparison, for example to `Redacted`, `Stored`, `Imported`,
 `Issued`, or `Other`. The projection may prove which synthetic value flowed through a boundary,
 but its comparable/debug representation must not contain the value.

@@ -51,6 +51,19 @@ total because its application is not proven. Binding the eligibility proof to a 
 controlled capture showing the request field, token, response, and resulting payment all refer to
 that exact method.
 
+## Protected peer-payment validation
+
+Signer-verified Venmo Android 26.13.0 establishes the implemented source-bound form eligibility
+request, exact buyer-protection product-URI prefix, complete singleton fee forwarding,
+`goods_services_protected` transaction type, quasi-cash metadata, protected response type, and
+preservation through the same-UUID SMS continuation. Current official guidance establishes that
+the seller fee is deducted from proceeds and that tagging does not guarantee item coverage. Exact
+service-free tests pin those boundaries. No live protected payment has been attempted: a future
+validation requires a separately authorized legitimate purchase, not a fake penny transfer,
+because the tag generally cannot be removed and may have seller fee/tax effects. Until reconciled,
+do not claim live client-1 authorization, actual debit source, final seller fee, tax treatment, or
+item eligibility.
+
 ## Exact-recipient acceptance at the exhaustive bound
 
 Exact-recipient resolution keeps the existing four-page/200-record exhaustive safety bound. At

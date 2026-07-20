@@ -199,6 +199,34 @@ async fn nonzero_transaction_fee_is_retained_and_payment_proceeds() -> TestResul
     Ok(())
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn protected_fee_above_the_payment_amount_fails_before_request_id_or_write() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let script =
+        PayScript::successful()?.with_protected_eligibility(Ok(protected_eligibility(101)?));
+    let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(script, Rc::clone(&transcript));
+    let generator = FixedGenerator::new(Rc::clone(&transcript));
+    let recipient = RecipientInput::from_str("bob")?;
+    let result = prepare(
+        &reader,
+        &api,
+        &generator,
+        &recipient,
+        Money::from_cents(100)?,
+        Note::from_str("Synthetic protected payment")?,
+        PayOptions::new(None, Visibility::Private, true),
+    )
+    .await;
+
+    assert!(matches!(result, Err(PayError::ProtectionFeeExceedsAmount)));
+    assert!(!transcript.borrow().iter().any(|call| matches!(
+        call,
+        Call::GenerateClientRequestId { .. } | Call::CreatePayment { .. }
+    )));
+    Ok(())
+}
+
 fn failure_case(
     stage: FailureStage,
 ) -> Result<(ReaderScript, PayScript, PayFailure, usize), Box<dyn Error>> {

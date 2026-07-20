@@ -6,6 +6,7 @@ pub(super) type Transcript = Rc<RefCell<Vec<Call>>>;
 pub(super) const ACCESS_TOKEN: &str = "synthetic-secret-access-token";
 pub(super) const DEVICE_ID: &str = "synthetic-secret-device-id";
 pub(super) const ELIGIBILITY_TOKEN: &str = "synthetic-secret-eligibility-token";
+pub(super) const FEE_TOKEN: &str = "synthetic-secret-fee-token";
 pub(super) const REQUEST_UUID: &str = "123e4567-e89b-12d3-a456-426614174000";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -25,6 +26,7 @@ pub(super) struct PayPlanCall {
     pub(super) funding_source_selection: PeerFundingSourceSelection,
     pub(super) eligibility_fee_cents: u64,
     pub(super) eligibility_token: RedactedSecret,
+    pub(super) purchase_protected: bool,
     pub(super) visibility: Visibility,
 }
 
@@ -41,6 +43,7 @@ impl From<&PayPlan> for PayPlanCall {
             funding_source_selection: plan.funding_source_selection(),
             eligibility_fee_cents: plan.eligibility_fee_cents(),
             eligibility_token: RedactedSecret::Redacted,
+            purchase_protected: plan.is_purchase_protected(),
             visibility: plan.visibility(),
         }
     }
@@ -72,6 +75,13 @@ pub(super) enum Call {
         recipient: User,
         amount: Money,
         note: Note,
+    },
+    ProtectedEligibility {
+        session: RedactedSecret,
+        recipient: User,
+        amount: Money,
+        note: Note,
+        funding_source: PeerFundingSource,
     },
     GenerateClientRequestId {
         request_id: ClientRequestId,
@@ -174,6 +184,7 @@ pub(super) struct PayScript {
     balance: Result<Balance, FakeApiError>,
     sources: Result<PeerFundingSources, FakeApiError>,
     eligibility: Result<BlankSourceEligibility, FakeApiError>,
+    protected_eligibility: Result<ProtectedPaymentEligibility, FakeApiError>,
     creations: Vec<Result<PaymentCreationOutcome, FakeApiError>>,
     otp_issue: Result<(), FakeApiError>,
     otp_verification: Result<PaymentOtpVerification, FakeApiError>,
@@ -196,6 +207,7 @@ impl PayScript {
                 )?],
             )),
             eligibility: Ok(blank_eligibility(0)?),
+            protected_eligibility: Ok(protected_eligibility(25)?),
             creations: vec![Ok(PaymentCreationOutcome::Created(created_payment()?))],
             otp_issue: Ok(()),
             otp_verification: Ok(PaymentOtpVerification::Verified),
@@ -224,6 +236,16 @@ impl PayScript {
     ) -> Self {
         Self {
             eligibility,
+            ..self
+        }
+    }
+
+    pub(super) fn with_protected_eligibility(
+        self,
+        protected_eligibility: Result<ProtectedPaymentEligibility, FakeApiError>,
+    ) -> Self {
+        Self {
+            protected_eligibility,
             ..self
         }
     }
@@ -264,6 +286,7 @@ pub(super) struct FakeApi {
     balance: Result<Balance, FakeApiError>,
     sources: Result<PeerFundingSources, FakeApiError>,
     eligibility: RefCell<Option<Result<BlankSourceEligibility, FakeApiError>>>,
+    protected_eligibility: RefCell<Option<Result<ProtectedPaymentEligibility, FakeApiError>>>,
     creations: RefCell<VecDeque<Result<PaymentCreationOutcome, FakeApiError>>>,
     otp_issue: Result<(), FakeApiError>,
     otp_verification: Result<PaymentOtpVerification, FakeApiError>,
@@ -279,6 +302,7 @@ impl FakeApi {
             balance: script.balance,
             sources: script.sources,
             eligibility: RefCell::new(Some(script.eligibility)),
+            protected_eligibility: RefCell::new(Some(script.protected_eligibility)),
             creations: RefCell::new(script.creations.into()),
             otp_issue: script.otp_issue,
             otp_verification: script.otp_verification,
@@ -389,6 +413,35 @@ impl BlankSourceEligibilityApi for FakeApi {
             note: note.clone(),
         });
         let result = match self.eligibility.borrow_mut().take() {
+            Some(result) => result,
+            None => Err(FakeApiError(ApiFailureKind::Internal)),
+        };
+        ready(result)
+    }
+}
+
+impl ProtectedPaymentEligibilityApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn protected_payment_eligibility<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        recipient: &'a User,
+        amount: Money,
+        note: &'a Note,
+        funding_source: &'a PeerFundingSource,
+    ) -> impl Future<Output = Result<ProtectedPaymentEligibility, Self::Error>> + Send + 'a {
+        self.transcript
+            .borrow_mut()
+            .push(Call::ProtectedEligibility {
+                session: RedactedSecret::Redacted,
+                recipient: recipient.clone(),
+                amount,
+                note: note.clone(),
+                funding_source: funding_source.clone(),
+            });
+        let result = match self.protected_eligibility.borrow_mut().take() {
             Some(result) => result,
             None => Err(FakeApiError(ApiFailureKind::Internal)),
         };
@@ -581,7 +634,7 @@ pub(super) async fn run_pay_with_visibility(
         &recipient,
         amount,
         note,
-        PayOptions::new(None, visibility),
+        PayOptions::new(None, visibility, false),
     )
     .await?;
     let authorized = authorize(prompt, prepared, assume_yes)?;
@@ -630,6 +683,7 @@ pub(super) fn successful_calls_with_fee(
                 funding_source_selection: PeerFundingSourceSelection::Automatic,
                 eligibility_fee_cents,
                 eligibility_token: RedactedSecret::Redacted,
+                purchase_protected: false,
                 visibility: Visibility::Private,
             }),
             verification: PaymentVerification::Unverified,
@@ -757,6 +811,22 @@ pub(super) fn blank_eligibility(fee_cents: u64) -> Result<BlankSourceEligibility
     ))
 }
 
+pub(super) fn protected_eligibility(
+    fee_cents: u64,
+) -> Result<ProtectedPaymentEligibility, Box<dyn Error>> {
+    Ok(ProtectedPaymentEligibility::new(
+        EligibilityToken::parse_owned(ELIGIBILITY_TOKEN.to_owned())?,
+        PurchaseProtectionFee::new(
+            "venmo:product:buyer_protection:standard".to_owned(),
+            "receiver".to_owned(),
+            FEE_TOKEN.to_owned(),
+            Some(0),
+            Some("0.0299".to_owned()),
+            fee_cents,
+        ),
+    ))
+}
+
 pub(super) fn pay_plan(
     account: Account,
     recipient: User,
@@ -842,6 +912,13 @@ pub(super) fn pay_plan_with_fee_and_visibility(
 
 pub(super) fn created_payment() -> Result<CreatedPayment, Box<dyn Error>> {
     Ok(CreatedPayment::new(
+        PaymentId::from_str("payment-1")?,
+        FinancialStatus::Settled,
+    ))
+}
+
+pub(super) fn protected_created_payment() -> Result<CreatedPayment, Box<dyn Error>> {
+    Ok(CreatedPayment::purchase_protected(
         PaymentId::from_str("payment-1")?,
         FinancialStatus::Settled,
     ))

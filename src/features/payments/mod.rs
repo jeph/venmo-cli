@@ -9,11 +9,12 @@ mod validation;
 pub(crate) use model::{
     CreatedPayment, EligibilityToken, FinancialStatus, PayPlan, PaymentId, PeerFundingFee,
     PeerFundingMethod, PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection,
-    PeerFundingSources,
+    PeerFundingSources, PurchaseProtectionFee,
 };
 pub(crate) use ports::{
     BlankSourceEligibility, BlankSourceEligibilityApi, PaymentCreationApi, PaymentCreationOutcome,
     PaymentOtpVerification, PaymentStepUpApi, PaymentVerification, PeerFundingApi,
+    ProtectedPaymentEligibility, ProtectedPaymentEligibilityApi,
 };
 pub(crate) use ports::{DefaultNoConfirmation, PaymentStepUpInput};
 pub(crate) use preflight::{PeerPreflightError, prepare as prepare_peer_preflight};

@@ -1003,6 +1003,7 @@ fn map_request_record(
         note,
         audience,
         date_created,
+        payment_type: _,
     } = payment;
     let mapped_action = match action.as_str() {
         "charge" => RequestAction::Charge,

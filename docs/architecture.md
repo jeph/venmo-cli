@@ -183,6 +183,12 @@ validation as request acceptance and decline; only the Venmo adapter owns its fo
 both financial and externally visible relationship mutations. Do not conceal it behind
 abstractions that weaken bounds or make side-effect order harder to review.
 
+Protected peer payment remains a feature-level branch after deterministic source selection: the
+feature chooses ordinary versus protected eligibility and owns the immutable fee-bearing plan,
+while the Venmo adapter alone owns form encoding, fee DTO validation/serialization, protected
+transaction metadata, and response-type proof. OTP continuation consumes the same plan rather than
+reconstructing or weakening protected fields.
+
 ## Related documentation
 
 - [Testing strategy](testing.md)

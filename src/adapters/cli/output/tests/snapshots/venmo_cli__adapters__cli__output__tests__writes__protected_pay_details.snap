@@ -1,14 +1,16 @@
 ---
 source: src/adapters/cli/output/tests/writes.rs
-expression: details
+expression: "String::from_utf8(protected_details)?"
 ---
 Payment details:
   From account: @owner (ID 123)
   Recipient: @bob (Synthetic\nrecipient) (ID 456)
-  Amount: $0.01
+  Amount: $1.00
   Note: Synthetic\nnote
   Requested audience: private
-  Purchase protection: not requested
+  Purchase protection: requested
   Available Venmo balance: $0.00
   Funding source: Synthetic bank (bank ending 1234, ID bank-1)
   Funding-source fee: unknown
+  Estimated purchase-protection seller fee: $0.25
+  Estimated recipient proceeds: $0.75

@@ -37,12 +37,36 @@ pub(crate) fn write_pay_details<W: Write>(
     writeln!(writer, "  Requested audience: {}", plan.visibility())?;
     writeln!(
         writer,
+        "  Purchase protection: {}",
+        if plan.is_purchase_protected() {
+            "requested"
+        } else {
+            "not requested"
+        }
+    )?;
+    writeln!(
+        writer,
         "  Available Venmo balance: {}",
         plan.balance().available()
     )?;
     write_funding_source(writer, plan.funding_source())?;
     if let Some(method) = plan.funding_source().external_method() {
         write_method_fee(writer, method.fee())?;
+    }
+    if let (Some(fee_cents), Some(proceeds_cents)) = (
+        plan.purchase_protection_fee_cents(),
+        plan.recipient_proceeds_cents(),
+    ) {
+        writeln!(
+            writer,
+            "  Estimated purchase-protection seller fee: ${}",
+            format_usd_cents(u128::from(fee_cents))
+        )?;
+        writeln!(
+            writer,
+            "  Estimated recipient proceeds: ${}",
+            format_usd_cents(u128::from(proceeds_cents))
+        )?;
     }
     Ok(())
 }
@@ -65,6 +89,15 @@ pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> 
     )?;
     writeln!(writer, "Amount: ${}", result.plan().amount())?;
     writeln!(writer, "Requested audience: {}", result.plan().visibility())?;
+    writeln!(
+        writer,
+        "Purchase protection: {}",
+        if result.created().is_purchase_protected() {
+            "tagged by Venmo"
+        } else {
+            "not requested"
+        }
+    )?;
     writeln!(
         writer,
         "Submitted funding source ID: {}",

@@ -55,6 +55,8 @@ pub(crate) struct PaymentRecordDto {
     pub audience: Option<String>,
     #[serde(default)]
     pub date_created: Option<String>,
+    #[serde(default, rename = "type")]
+    pub payment_type: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +90,37 @@ pub(crate) struct BlankSourceEligibilityDto {
     pub ineligible_reason: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct ProtectedPaymentEligibilityEnvelope {
+    pub data: ProtectedPaymentEligibilityDto,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ProtectedPaymentEligibilityDto {
+    pub eligible: bool,
+    #[serde(default)]
+    pub eligibility_token: Option<String>,
+    #[serde(default)]
+    pub fees: Option<Vec<ProtectedPaymentFeeDto>>,
+    #[serde(default)]
+    pub fee_disclaimer: Option<String>,
+    #[serde(default)]
+    pub ineligible_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProtectedPaymentFeeDto {
+    pub product_uri: String,
+    pub applied_to: String,
+    pub fee_token: String,
+    #[serde(default)]
+    pub base_fee_amount: Option<u64>,
+    #[serde(default)]
+    pub fee_percentage: Option<serde_json::Number>,
+    pub calculated_fee_amount_in_cents: u64,
+}
+
 #[derive(Serialize)]
 pub(crate) struct CreatePaymentRequest<'a> {
     pub uuid: &'a str,
@@ -98,13 +131,33 @@ pub(crate) struct CreatePaymentRequest<'a> {
     pub eligibility_token: &'a str,
     pub funding_source_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub transaction_type: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fees: Option<&'a [CreatePaymentFee<'a>]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<CreatePaymentMetadata<'a>>,
 }
 
 #[derive(Serialize)]
+pub(crate) struct CreatePaymentFee<'a> {
+    pub product_uri: &'a str,
+    pub applied_to: &'a str,
+    pub fee_token: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_fee_amount: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_percentage: Option<serde_json::Number>,
+    pub calculated_fee_amount_in_cents: u64,
+}
+
+#[derive(Serialize)]
 pub(crate) struct CreatePaymentMetadata<'a> {
-    pub verification_method: &'a [&'a str],
-    pub verification_status: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quasi_cash_disclaimer_viewed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_method: Option<&'a [&'a str]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_status: Option<&'a str>,
 }
 
 #[derive(Serialize)]

@@ -18,8 +18,9 @@ use crate::features::payments::{
     BlankSourceEligibility, BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation,
     EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi, PaymentCreationOutcome,
     PaymentId, PaymentOtpVerification, PaymentStepUpApi, PaymentStepUpInput, PaymentVerification,
-    PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSourceSelection,
-    PeerFundingSources,
+    PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSource,
+    PeerFundingSourceSelection, PeerFundingSources, ProtectedPaymentEligibility,
+    ProtectedPaymentEligibilityApi, PurchaseProtectionFee,
 };
 use crate::features::people::{
     User, UserLookupApi, UserProfileKind, UserSearchApi, UserSearchPage, UserSearchPageRequest,
@@ -68,6 +69,7 @@ struct PayPlanCall {
     funding_source_id: String,
     funding_source_selection: PeerFundingSourceSelection,
     eligibility_fee_cents: u64,
+    purchase_protected: bool,
     visibility: Visibility,
 }
 
@@ -82,6 +84,7 @@ impl From<&PayPlan> for PayPlanCall {
             funding_source_id: plan.funding_source().method().id().to_string(),
             funding_source_selection: plan.funding_source_selection(),
             eligibility_fee_cents: plan.eligibility_fee_cents(),
+            purchase_protected: plan.is_purchase_protected(),
             visibility: plan.visibility(),
         }
     }
@@ -101,6 +104,12 @@ enum PayCall {
         recipient_user_id: String,
         amount_cents: u64,
         note: String,
+    },
+    ProtectedEligibility {
+        recipient_user_id: String,
+        amount_cents: u64,
+        note: String,
+        funding_source_id: String,
     },
     GenerateClientRequestId,
     StderrWrite,
@@ -438,6 +447,47 @@ impl BlankSourceEligibilityApi for FakePayApi {
     }
 }
 
+impl ProtectedPaymentEligibilityApi for FakePayApi {
+    type Error = FakeApiError;
+
+    fn protected_payment_eligibility<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        recipient: &'a User,
+        amount: Money,
+        note: &'a Note,
+        funding_source: &'a PeerFundingSource,
+    ) -> impl Future<Output = Result<ProtectedPaymentEligibility, Self::Error>> + Send + 'a {
+        self.transcript
+            .borrow_mut()
+            .push(PayCall::ProtectedEligibility {
+                recipient_user_id: recipient.user_id().to_string(),
+                amount_cents: amount.cents(),
+                note: note.as_str().to_owned(),
+                funding_source_id: funding_source.method().id().to_string(),
+            });
+        ready(match next_api_step(&self.script.eligibility) {
+            ApiStep::Success => EligibilityToken::parse_owned("synthetic-eligibility".to_owned())
+                .map(|token| {
+                    ProtectedPaymentEligibility::new(
+                        token,
+                        PurchaseProtectionFee::new(
+                            "venmo:product:buyer_protection:standard".to_owned(),
+                            "receiver".to_owned(),
+                            "synthetic-fee-token".to_owned(),
+                            None,
+                            Some("0.0299".to_owned()),
+                            0,
+                        ),
+                    )
+                })
+                .map_err(|_| FakeApiError),
+            ApiStep::Failure => Err(FakeApiError),
+        })
+    }
+}
+
 impl PaymentCreationApi for FakePayApi {
     type Error = FakeApiError;
 
@@ -451,13 +501,14 @@ impl PaymentCreationApi for FakePayApi {
         self.transcript.borrow_mut().push(PayCall::CreatePayment {
             plan: PayPlanCall::from(plan),
         });
+        let purchase_protected = plan.is_purchase_protected();
         let step = self
             .script
             .creations
             .borrow_mut()
             .pop_front()
             .unwrap_or(CreationStep::Failure);
-        CreationFuture::new(step)
+        CreationFuture::new(step, purchase_protected)
     }
 }
 
@@ -467,11 +518,15 @@ fn next_api_step(steps: &RefCell<VecDeque<ApiStep>>) -> ApiStep {
 
 struct CreationFuture {
     step: CreationStep,
+    purchase_protected: bool,
 }
 
 impl CreationFuture {
-    const fn new(step: CreationStep) -> Self {
-        Self { step }
+    const fn new(step: CreationStep, purchase_protected: bool) -> Self {
+        Self {
+            step,
+            purchase_protected,
+        }
     }
 }
 
@@ -481,9 +536,13 @@ impl Future for CreationFuture {
     fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
         match self.step {
             CreationStep::Success => Poll::Ready(
-                created_payment()
-                    .map(PaymentCreationOutcome::Created)
-                    .map_err(|_| FakeApiError),
+                if self.purchase_protected {
+                    protected_created_payment()
+                } else {
+                    created_payment()
+                }
+                .map(PaymentCreationOutcome::Created)
+                .map_err(|_| FakeApiError),
             ),
             CreationStep::Pending => Poll::Pending,
             CreationStep::Failure => Poll::Ready(Err(FakeApiError)),

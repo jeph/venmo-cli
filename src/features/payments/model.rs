@@ -229,12 +229,26 @@ pub enum FinancialStatus {
 pub struct CreatedPayment {
     id: PaymentId,
     status: FinancialStatus,
+    purchase_protected: bool,
 }
 
 impl CreatedPayment {
     #[must_use]
     pub(crate) const fn new(id: PaymentId, status: FinancialStatus) -> Self {
-        Self { id, status }
+        Self {
+            id,
+            status,
+            purchase_protected: false,
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn purchase_protected(id: PaymentId, status: FinancialStatus) -> Self {
+        Self {
+            id,
+            status,
+            purchase_protected: true,
+        }
     }
 
     #[must_use]
@@ -246,6 +260,11 @@ impl CreatedPayment {
     pub const fn status(&self) -> FinancialStatus {
         self.status
     }
+
+    #[must_use]
+    pub const fn is_purchase_protected(&self) -> bool {
+        self.purchase_protected
+    }
 }
 
 impl fmt::Debug for CreatedPayment {
@@ -254,7 +273,76 @@ impl fmt::Debug for CreatedPayment {
             .debug_struct("CreatedPayment")
             .field("id", &REDACTED)
             .field("status", &self.status)
+            .field("purchase_protected", &self.purchase_protected)
             .finish()
+    }
+}
+
+#[derive(Eq, PartialEq)]
+pub(crate) struct PurchaseProtectionFee {
+    product_uri: String,
+    applied_to: String,
+    fee_token: Zeroizing<String>,
+    base_fee_amount: Option<u64>,
+    fee_percentage: Option<String>,
+    calculated_fee_amount_in_cents: u64,
+}
+
+impl PurchaseProtectionFee {
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub(crate) fn new(
+        product_uri: String,
+        applied_to: String,
+        fee_token: String,
+        base_fee_amount: Option<u64>,
+        fee_percentage: Option<String>,
+        calculated_fee_amount_in_cents: u64,
+    ) -> Self {
+        Self {
+            product_uri,
+            applied_to,
+            fee_token: Zeroizing::new(fee_token),
+            base_fee_amount,
+            fee_percentage,
+            calculated_fee_amount_in_cents,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn product_uri(&self) -> &str {
+        &self.product_uri
+    }
+
+    #[must_use]
+    pub(crate) fn applied_to(&self) -> &str {
+        &self.applied_to
+    }
+
+    #[must_use]
+    pub(crate) fn fee_token(&self) -> &str {
+        self.fee_token.as_str()
+    }
+
+    #[must_use]
+    pub(crate) const fn base_fee_amount(&self) -> Option<u64> {
+        self.base_fee_amount
+    }
+
+    #[must_use]
+    pub(crate) fn fee_percentage(&self) -> Option<&str> {
+        self.fee_percentage.as_deref()
+    }
+
+    #[must_use]
+    pub(crate) const fn calculated_fee_amount_in_cents(&self) -> u64 {
+        self.calculated_fee_amount_in_cents
+    }
+}
+
+impl fmt::Debug for PurchaseProtectionFee {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PurchaseProtectionFee([REDACTED])")
     }
 }
 
@@ -270,6 +358,7 @@ pub struct PayPlan {
     funding_source_selection: PeerFundingSourceSelection,
     eligibility_fee_cents: u64,
     eligibility_token: EligibilityToken,
+    purchase_protection_fee: Option<PurchaseProtectionFee>,
     visibility: Visibility,
 }
 
@@ -300,6 +389,39 @@ impl PayPlan {
             funding_source_selection,
             eligibility_fee_cents,
             eligibility_token,
+            purchase_protection_fee: None,
+            visibility,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub(crate) fn new_purchase_protected(
+        request_id: ClientRequestId,
+        account: Account,
+        recipient: User,
+        amount: Money,
+        note: Note,
+        balance: Balance,
+        funding_source: PeerFundingSource,
+        funding_source_selection: PeerFundingSourceSelection,
+        eligibility_token: EligibilityToken,
+        purchase_protection_fee: PurchaseProtectionFee,
+        visibility: Visibility,
+    ) -> Self {
+        let eligibility_fee_cents = purchase_protection_fee.calculated_fee_amount_in_cents();
+        Self {
+            request_id,
+            account,
+            recipient,
+            amount,
+            note,
+            balance,
+            funding_source,
+            funding_source_selection,
+            eligibility_fee_cents,
+            eligibility_token,
+            purchase_protection_fee: Some(purchase_protection_fee),
             visibility,
         }
     }
@@ -352,6 +474,30 @@ impl PayPlan {
     #[must_use]
     pub(crate) const fn eligibility_token(&self) -> &EligibilityToken {
         &self.eligibility_token
+    }
+
+    #[must_use]
+    pub const fn is_purchase_protected(&self) -> bool {
+        self.purchase_protection_fee.is_some()
+    }
+
+    #[must_use]
+    pub const fn purchase_protection_fee_cents(&self) -> Option<u64> {
+        match &self.purchase_protection_fee {
+            Some(fee) => Some(fee.calculated_fee_amount_in_cents()),
+            None => None,
+        }
+    }
+
+    #[must_use]
+    pub fn recipient_proceeds_cents(&self) -> Option<u64> {
+        self.purchase_protection_fee_cents()
+            .and_then(|fee| self.amount.cents().checked_sub(fee))
+    }
+
+    #[must_use]
+    pub(crate) const fn purchase_protection_fee(&self) -> Option<&PurchaseProtectionFee> {
+        self.purchase_protection_fee.as_ref()
     }
 
     #[must_use]

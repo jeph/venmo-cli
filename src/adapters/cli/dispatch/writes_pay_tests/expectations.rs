@@ -46,6 +46,23 @@ pub(super) fn successful_calls() -> Vec<PayCall> {
     successful_calls_with_visibility(Visibility::Private)
 }
 
+pub(super) fn protected_successful_calls() -> Vec<PayCall> {
+    let mut calls = successful_calls();
+    calls[6] = PayCall::ProtectedEligibility {
+        recipient_user_id: "456".to_owned(),
+        amount_cents: 1,
+        note: "Synthetic payment".to_owned(),
+        funding_source_id: "balance-1".to_owned(),
+    };
+    if let Some(PayCall::CreatePayment { plan }) = calls
+        .iter_mut()
+        .find(|call| matches!(call, PayCall::CreatePayment { .. }))
+    {
+        plan.purchase_protected = true;
+    }
+    calls
+}
+
 pub(super) fn successful_calls_with_visibility(visibility: Visibility) -> Vec<PayCall> {
     let mut calls = successful_calls_without_stdout_flush();
     if let Some(PayCall::CreatePayment { plan }) = calls
@@ -69,6 +86,7 @@ pub(super) fn create_payment_call() -> PayCall {
             funding_source_id: "balance-1".to_owned(),
             funding_source_selection: PeerFundingSourceSelection::Automatic,
             eligibility_fee_cents: 0,
+            purchase_protected: false,
             visibility: Visibility::Private,
         },
     }

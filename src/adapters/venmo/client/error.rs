@@ -32,6 +32,9 @@ pub(crate) enum VenmoApiError {
     #[error("Venmo reported that this personal payment is not eligible")]
     EligibilityDenied,
 
+    #[error("Venmo reported that this payment is not eligible for Purchase Protection")]
+    ProtectedPaymentEligibilityDenied,
+
     #[error(
         "Venmo reported that this request approval is not eligible for the selected funding method"
     )]
@@ -131,6 +134,7 @@ impl ApiFailure for VenmoApiError {
             | Self::AuthenticatedHttp { .. }
             | Self::ApiFailure { .. }
             | Self::EligibilityDenied
+            | Self::ProtectedPaymentEligibilityDenied
             | Self::RequestApprovalEligibilityDenied
             | Self::DuplicatePaymentRejected
             | Self::TemporaryPaymentRejected => ApiFailureKind::Rejected,

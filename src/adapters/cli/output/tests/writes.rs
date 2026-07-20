@@ -10,6 +10,7 @@ use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{
     CreatedPayment, EligibilityToken, FinancialStatus, PayPlan, PaymentId, PeerFundingFee,
     PeerFundingMethod, PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection,
+    PurchaseProtectionFee,
 };
 use crate::features::people::{User, UserProfileKind};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
@@ -71,6 +72,26 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
     assert!(!pay_output.contains("Actual funding"));
     assert!(!pay_output.contains("does not prove"));
     assert!(!pay_output.contains("Eligibility-reported"));
+
+    let protected_prepared =
+        PreparedPay::new(synthetic_credential()?, synthetic_protected_pay_plan()?);
+    let mut protected_details = Vec::new();
+    write_pay_details(&mut protected_details, &protected_prepared)?;
+    insta::assert_snapshot!(
+        "protected_pay_details",
+        String::from_utf8(protected_details)?
+    );
+
+    let protected_pay = PayResult::new(
+        synthetic_protected_pay_plan()?,
+        CreatedPayment::purchase_protected(
+            PaymentId::from_str("payment-2")?,
+            FinancialStatus::Settled,
+        ),
+    );
+    let mut protected_output = Vec::new();
+    write_pay_result(&mut protected_output, &protected_pay)?;
+    insta::assert_snapshot!("protected_pay_result", String::from_utf8(protected_output)?);
 
     let request = RequestCreateResult::new(
         synthetic_request_plan()?,
@@ -259,6 +280,50 @@ fn synthetic_pay_plan_with_visibility(visibility: Visibility) -> Result<PayPlan,
         3,
         EligibilityToken::parse_owned("synthetic-eligibility".to_owned())?,
         visibility,
+    ))
+}
+
+fn synthetic_protected_pay_plan() -> Result<PayPlan, Box<dyn Error>> {
+    Ok(PayPlan::new_purchase_protected(
+        ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?,
+        Account::new(
+            UserId::from_str("123")?,
+            Username::from_bare("owner")?,
+            Some("Synthetic owner".to_owned()),
+        ),
+        User::new(
+            UserId::from_str("456")?,
+            Some(Username::from_bare("bob")?),
+            Some("Synthetic\nrecipient".to_owned()),
+        ),
+        Money::from_cents(100)?,
+        Note::from_str("Synthetic\nnote")?,
+        Balance::new(
+            SignedUsdAmount::from_cents(0),
+            SignedUsdAmount::from_cents(0),
+        ),
+        PeerFundingSource::external(PeerFundingMethod::new(
+            PaymentMethod::new(
+                PaymentMethodId::from_str("bank-1")?,
+                Some("Synthetic bank".to_owned()),
+                Some("bank".to_owned()),
+                Some("1234".to_owned()),
+                true,
+            ),
+            PeerFundingRole::Default,
+            PeerFundingFee::Unknown,
+        )),
+        PeerFundingSourceSelection::Explicit,
+        EligibilityToken::parse_owned("synthetic-eligibility".to_owned())?,
+        PurchaseProtectionFee::new(
+            "venmo:product:buyer_protection:standard".to_owned(),
+            "receiver".to_owned(),
+            "synthetic-fee-token".to_owned(),
+            Some(0),
+            Some("0.0299".to_owned()),
+            25,
+        ),
+        Visibility::Private,
     ))
 }
 

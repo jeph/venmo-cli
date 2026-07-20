@@ -262,7 +262,16 @@ fn pay_options_and_user_have_exact_grouped_grammar() {
     )));
 
     let user = Cli::try_parse_from([
-        "venmo", "pay", "user", "@alice", "12.34", "Dinner", "--source", "bank-1", "--yes",
+        "venmo",
+        "pay",
+        "user",
+        "@alice",
+        "12.34",
+        "Dinner",
+        "--source",
+        "bank-1",
+        "--protect",
+        "--yes",
     ]);
     assert!(user.is_ok_and(|cli| matches!(
         cli.command,
@@ -273,8 +282,16 @@ fn pay_options_and_user_have_exact_grouped_grammar() {
                     if user.amount.cents() == 1_234
                         && user.note.as_str() == "Dinner"
                         && user.source.as_ref().is_some_and(|id| id.as_str() == "bank-1")
+                        && user.protect
                         && user.yes
             )
+    )));
+
+    let ordinary = Cli::try_parse_from(["venmo", "pay", "user", "alice", "1.00", "Dinner"]);
+    assert!(ordinary.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Pay(args)
+            if matches!(&args.operation, PayOperation::User(user) if !user.protect)
     )));
 
     for arguments in [
