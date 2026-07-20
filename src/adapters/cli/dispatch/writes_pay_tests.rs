@@ -16,8 +16,9 @@ use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::{
     BlankSourceEligibility, BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation,
-    EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi, PaymentId, PeerFundingApi,
-    PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSourceSelection,
+    EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi, PaymentCreationOutcome,
+    PaymentId, PaymentOtpVerification, PaymentStepUpApi, PaymentStepUpInput, PaymentVerification,
+    PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSourceSelection,
     PeerFundingSources,
 };
 use crate::features::people::{
@@ -445,7 +446,8 @@ impl PaymentCreationApi for FakePayApi {
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
         plan: &'a PayPlan,
-    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a {
+        _verification: PaymentVerification,
+    ) -> impl Future<Output = Result<PaymentCreationOutcome, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(PayCall::CreatePayment {
             plan: PayPlanCall::from(plan),
         });
@@ -474,14 +476,41 @@ impl CreationFuture {
 }
 
 impl Future for CreationFuture {
-    type Output = Result<CreatedPayment, FakeApiError>;
+    type Output = Result<PaymentCreationOutcome, FakeApiError>;
 
     fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
         match self.step {
-            CreationStep::Success => Poll::Ready(created_payment().map_err(|_| FakeApiError)),
+            CreationStep::Success => Poll::Ready(
+                created_payment()
+                    .map(PaymentCreationOutcome::Created)
+                    .map_err(|_| FakeApiError),
+            ),
             CreationStep::Pending => Poll::Pending,
             CreationStep::Failure => Poll::Ready(Err(FakeApiError)),
         }
+    }
+}
+
+impl PaymentStepUpApi for FakePayApi {
+    type Error = FakeApiError;
+
+    fn issue_payment_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _request_id: &'a ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError))
+    }
+
+    fn verify_payment_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        _request_id: &'a ClientRequestId,
+        _otp: &'a crate::features::auth::OtpCode,
+    ) -> impl Future<Output = Result<PaymentOtpVerification, Self::Error>> + Send + 'a {
+        ready(Err(FakeApiError))
     }
 }
 
@@ -533,6 +562,15 @@ impl DefaultNoConfirmation for FakePrompt {
                 source: io::Error::other("synthetic confirmation failure"),
             }),
         }
+    }
+}
+
+impl PaymentStepUpInput for FakePrompt {
+    fn read_payment_otp(
+        &self,
+        _prompt: &str,
+    ) -> Result<crate::features::auth::OtpCode, PromptError> {
+        Err(PromptError::Cancelled)
     }
 }
 

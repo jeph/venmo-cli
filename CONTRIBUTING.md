@@ -20,7 +20,7 @@ probe, use the production keychain entry, or invoke a real `pay user`, request-c
 Do not turn a product command into a test step. Separately authorized owner/release procedures are
 outside routine contribution and are not initiated by these docs.
 
-Changes must preserve the behavioral and safety contracts in [`PLAN.md`](PLAN.md), especially evidence requirements, one-write/no-retry behavior, bounded resource use, redaction, and ambiguous-outcome reporting.
+Changes must preserve the behavioral and safety contracts in [`PLAN.md`](PLAN.md), especially evidence requirements, explicitly bounded write counts, no automatic retry, bounded resource use, redaction, and ambiguous-outcome reporting.
 
 ## Required verification
 
@@ -56,7 +56,7 @@ Do not hide these cases behind functional abstractions that allocate more, weake
 Keep safety-sensitive imperative order visible where it is itself a contract: secret ownership and
 zeroization, bounded response accumulation, first-seen duplicate validation, credential
 persistence/read-back handling, and validated details -> authorization -> interrupt protection
--> one write -> authoritative verification -> result rendering. These are narrow exceptions, not
+-> explicitly bounded write/challenge sequence -> authoritative verification -> result rendering. These are narrow exceptions, not
 permission for unrelated mutable state.
 
 ## Test structure
@@ -72,7 +72,7 @@ Tests driven by a stateful script or fake should follow this order:
 4. Execute the behavior once.
 5. Compare the complete result, fake state, call transcript, and output with the expected outcome.
 
-Use typed calls rather than boolean argument-match flags. Exact one-write and no-retry behavior belongs in the transcript. Secret-bearing values and dynamic errors should be projected into redacted, stable snapshots before comparison. Pure value and property tests should compare whole values directly without artificial state objects.
+Use typed calls rather than boolean argument-match flags. Exact call counts and no-automatic-retry behavior belong in the transcript. Secret-bearing values and dynamic errors should be projected into redacted, stable snapshots before comparison. Pure value and property tests should compare whole values directly without artificial state objects.
 
 Representative loopback `wiremock`/`reqwest` integration tests retain exact matcher and
 captured-request assertions rather than artificial fake-state wrappers; see the documented

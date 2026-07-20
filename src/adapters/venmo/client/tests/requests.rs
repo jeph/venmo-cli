@@ -250,7 +250,7 @@ async fn request_acceptance_uses_exact_approve_update_and_validates_settlement()
         response["data"]["date_created"] = Value::String("2026-07-14T23:50:08Z".to_owned());
         Mock::given(method("PUT"))
             .and(path("/v1/payments/request-1"))
-            .and(header("accept", "application/json"))
+            .and(header("accept", "application/json; charset=utf-8"))
             .and(header("content-type", "application/json"))
             .and(header("authorization", "Bearer synthetic-token"))
             .and(header("device-id", "synthetic-device"))
@@ -605,7 +605,7 @@ async fn request_decline_uses_deny_not_cancel_and_requires_terminal_response() -
     let server = MockServer::start().await;
     Mock::given(method("PUT"))
         .and(path("/v1/payments/request-1"))
-        .and(header("accept", "application/json"))
+        .and(header("accept", "application/json; charset=utf-8"))
         .and(header("content-type", "application/json"))
         .and(header("authorization", "Bearer synthetic-token"))
         .and(header("device-id", "synthetic-device"))
@@ -661,10 +661,14 @@ async fn request_update_mismatches_and_unverified_errors_are_ambiguous() -> Test
         let result = client
             .accept_request(&token, &device_id, &accept_plan()?)
             .await;
-        assert!(matches!(
-            result,
-            Err(VenmoApiError::FinancialOutcomeUnknown { .. })
-        ));
+        assert!(if status >= 400 {
+            matches!(
+                result,
+                Err(VenmoApiError::FinancialHttpOutcomeUnknown { .. })
+            )
+        } else {
+            matches!(result, Err(VenmoApiError::FinancialOutcomeUnknown { .. }))
+        });
         assert_eq!(
             result.as_ref().err().map(ApiFailure::kind),
             Some(ApiFailureKind::AmbiguousWrite)
@@ -711,10 +715,14 @@ async fn decline_rejects_every_unproven_terminal_response_as_ambiguous() -> Test
         let result = client
             .decline_request(&token, &device_id, &decline_plan()?)
             .await;
-        assert!(matches!(
-            result,
-            Err(VenmoApiError::FinancialOutcomeUnknown { .. })
-        ));
+        assert!(if status >= 400 {
+            matches!(
+                result,
+                Err(VenmoApiError::FinancialHttpOutcomeUnknown { .. })
+            )
+        } else {
+            matches!(result, Err(VenmoApiError::FinancialOutcomeUnknown { .. }))
+        });
         assert_eq!(
             result.as_ref().err().map(ApiFailure::kind),
             Some(ApiFailureKind::AmbiguousWrite)

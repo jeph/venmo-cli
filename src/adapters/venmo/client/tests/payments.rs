@@ -95,11 +95,188 @@ async fn payment_creation_sends_exact_candidate_body_and_validates_success() -> 
         let client = test_client(&server)?;
         let (token, device_id) = test_session()?;
         let created = client
-            .create_payment(&token, &device_id, &pay_plan_with_visibility(visibility)?)
+            .create_payment(
+                &token,
+                &device_id,
+                &pay_plan_with_visibility(visibility)?,
+                PaymentVerification::Unverified,
+            )
             .await?;
+        let PaymentCreationOutcome::Created(created) = created else {
+            return Err(io::Error::other("payment unexpectedly required OTP").into());
+        };
         assert_eq!(created.id().as_str(), "payment-1");
         assert_eq!(created.status(), FinancialStatus::Settled);
         assert_request_count(&server, 1).await;
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn payment_creation_maps_current_otp_step_up_and_resubmits_verified_metadata() -> TestResult {
+    let (token, device_id) = test_session()?;
+    for status in [400, 403] {
+        let step_up_response = scripted_json_response(
+            status,
+            serde_json::json!({
+                "error": {
+                    "code": 1396,
+                    "title": "OTP_STEP_UP_REQUIRED"
+                }
+            }),
+        )?;
+        let (client, transport) = scripted_client([Ok(step_up_response)])?;
+
+        let result = client
+            .create_payment(
+                &token,
+                &device_id,
+                &pay_plan()?,
+                PaymentVerification::Unverified,
+            )
+            .await;
+
+        let expected = ScriptedObservation::expected(
+            Ok(()),
+            vec![payment_creation_request(PAYMENT_CREATION_REQUEST_BODY)],
+        );
+        let observed = ScriptedObservation::observed(
+            project_result(result, |outcome| {
+                assert_eq!(outcome, PaymentCreationOutcome::OtpStepUpRequired);
+            }),
+            &transport,
+        );
+        assert_eq!(observed, expected);
+    }
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/payments"))
+        .and(body_string(PAYMENT_CREATION_VERIFIED_REQUEST_BODY))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(created_payment_body(
+                "payment-1",
+                "pay",
+                "settled",
+                "123",
+                "456",
+            )),
+        )
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let outcome = client
+        .create_payment(
+            &token,
+            &device_id,
+            &pay_plan()?,
+            PaymentVerification::SmsOtpVerified,
+        )
+        .await?;
+    assert!(matches!(outcome, PaymentCreationOutcome::Created(_)));
+    assert_request_count(&server, 1).await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn payment_otp_graphql_calls_match_the_current_app_contract() -> TestResult {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .and(header("authorization", "Bearer synthetic-token"))
+        .and(header("device-id", "synthetic-device"))
+        .and(body_string(ISSUE_PAYMENT_OTP_REQUEST_BODY))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": {"sendOtp": {"success": true}}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .and(header("authorization", "Bearer synthetic-token"))
+        .and(header("device-id", "synthetic-device"))
+        .and(body_string(VERIFY_PAYMENT_OTP_REQUEST_BODY))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": {"validateOtp": {"validated": true, "reasonCode": null}}
+        })))
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let (token, device_id) = test_session()?;
+    let request_id =
+        crate::shared::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?;
+    let otp = OtpCode::parse_owned("123456".to_owned())?;
+
+    client
+        .issue_payment_otp(&token, &device_id, &request_id)
+        .await?;
+    let verification = client
+        .verify_payment_otp(&token, &device_id, &request_id, &otp)
+        .await?;
+
+    assert_eq!(verification, PaymentOtpVerification::Verified);
+    assert_request_count(&server, 2).await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn payment_otp_verification_preserves_known_rejection_reasons() -> TestResult {
+    for (reason, expected) in [
+        ("otpIncorrect", PaymentOtpVerification::Incorrect),
+        ("otpExpired", PaymentOtpVerification::Expired),
+        ("otpUnexpected", PaymentOtpVerification::Unexpected),
+        (
+            "tooManyIncorrectAttempts",
+            PaymentOtpVerification::TooManyIncorrectAttempts,
+        ),
+    ] {
+        let response = scripted_json_response(
+            200,
+            serde_json::json!({
+                "data": {"validateOtp": {"validated": false, "reasonCode": reason}}
+            }),
+        )?;
+        let (client, _transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let request_id =
+            crate::shared::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?;
+        let otp = OtpCode::parse_owned("123456".to_owned())?;
+
+        assert_eq!(
+            client
+                .verify_payment_otp(&token, &device_id, &request_id, &otp)
+                .await?,
+            expected
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn payment_otp_verification_prioritizes_validated_success_over_reason_code() -> TestResult {
+    for reason in [
+        serde_json::Value::Null,
+        serde_json::json!("otpIncorrect"),
+        serde_json::json!("unknownSuccessDetail"),
+    ] {
+        let response = scripted_json_response(
+            200,
+            serde_json::json!({
+                "data": {"validateOtp": {"validated": true, "reasonCode": reason}}
+            }),
+        )?;
+        let (client, _transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let request_id =
+            crate::shared::ClientRequestId::from_str("123e4567-e89b-12d3-a456-426614174000")?;
+        let otp = OtpCode::parse_owned("123456".to_owned())?;
+
+        assert_eq!(
+            client
+                .verify_payment_otp(&token, &device_id, &request_id, &otp)
+                .await?,
+            PaymentOtpVerification::Verified
+        );
     }
     Ok(())
 }
@@ -172,8 +349,12 @@ async fn creation_accepts_a_supported_response_audience_no_more_public_than_requ
             &token,
             &device_id,
             &pay_plan_with_visibility(Visibility::Public)?,
+            PaymentVerification::Unverified,
         )
         .await?;
+    let PaymentCreationOutcome::Created(payment) = payment else {
+        return Err(io::Error::other("payment unexpectedly required OTP").into());
+    };
 
     assert_eq!(payment.id().as_str(), "payment-1");
     assert_request_count(&payment_server, 1).await;
@@ -258,32 +439,44 @@ async fn malformed_mismatched_and_unverified_write_responses_are_ambiguous() -> 
     let mut unknown_audience = created_payment_body("payment-1", "pay", "settled", "123", "456");
     unknown_audience["data"]["payment"]["audience"] = Value::String("synthetic".to_owned());
     let bodies = [
-        (200_u16, "not-json".to_owned()),
-        (200, serde_json::json!({"data": direct_payment}).to_string()),
-        (200, missing_timestamp.to_string()),
-        (200, invalid_timestamp.to_string()),
-        (200, missing_audience.to_string()),
-        (200, mismatched_audience.to_string()),
-        (200, unknown_audience.to_string()),
+        (200_u16, "not-json".to_owned(), None),
+        (
+            200,
+            serde_json::json!({"data": direct_payment}).to_string(),
+            None,
+        ),
+        (200, missing_timestamp.to_string(), None),
+        (200, invalid_timestamp.to_string(), None),
+        (200, missing_audience.to_string(), None),
+        (200, mismatched_audience.to_string(), None),
+        (200, unknown_audience.to_string(), None),
         (
             200,
             created_payment_body("payment-1", "pay", "settled", "123", "999").to_string(),
+            None,
         ),
         (
             500,
             serde_json::json!({"error": {"code": "unknown"}}).to_string(),
+            Some("unknown"),
         ),
         (
             500,
             serde_json::json!({"error": {"code": "1396"}}).to_string(),
+            Some("1396"),
         ),
-        (400, serde_json::json!({"error_code": "1396"}).to_string()),
+        (
+            400,
+            serde_json::json!({"error_code": "1396"}).to_string(),
+            Some("1396"),
+        ),
         (
             200,
             serde_json::json!({"error": {"code": "1396"}}).to_string(),
+            Some("1396"),
         ),
     ];
-    for (status, body) in bodies {
+    for (status, body, code) in bodies {
         // Setup.
         let response = scripted_response(status, body.into_bytes())?;
         let (token, device_id) = test_session()?;
@@ -293,16 +486,24 @@ async fn malformed_mismatched_and_unverified_write_responses_are_ambiguous() -> 
         let (client, transport) = scripted_client(script)?;
 
         // Complete expected observation.
+        let expected_error = if status >= 400 {
+            ApiErrorSnapshot::financial_http_unknown(PAYMENT_CREATION_OPERATION, status, code)
+        } else {
+            ApiErrorSnapshot::financial_unknown(PAYMENT_CREATION_OPERATION)
+        };
         let expected = ScriptedObservation::expected(
-            Err(ApiErrorSnapshot::financial_unknown(
-                PAYMENT_CREATION_OPERATION,
-            )),
+            Err(expected_error),
             vec![payment_creation_request(PAYMENT_CREATION_REQUEST_BODY)],
         );
 
         // Execute once.
         let result = client
-            .create_payment(&token, &device_id, &pay_plan()?)
+            .create_payment(
+                &token,
+                &device_id,
+                &pay_plan()?,
+                PaymentVerification::Unverified,
+            )
             .await;
         let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
 
@@ -382,7 +583,12 @@ async fn scripted_financial_transport_error_preserves_ambiguous_write_semantics(
 
     // Execute once.
     let result = client
-        .create_payment(&token, &device_id, &pay_plan()?)
+        .create_payment(
+            &token,
+            &device_id,
+            &pay_plan()?,
+            PaymentVerification::Unverified,
+        )
         .await;
     let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
 
@@ -405,7 +611,7 @@ fn financial_json_numbers_preserve_every_cent_exactly() -> TestResult {
 
 #[tokio::test(flavor = "current_thread")]
 async fn only_dossier_known_payment_errors_are_confirmed_rejections() -> TestResult {
-    for code in ["1396", "13006"] {
+    for code in ["13006"] {
         // Setup.
         let response = scripted_json_response(400, serde_json::json!({"error": {"code": code}}))?;
         let (token, device_id) = test_session()?;
@@ -426,7 +632,12 @@ async fn only_dossier_known_payment_errors_are_confirmed_rejections() -> TestRes
 
         // Execute once.
         let result = client
-            .create_payment(&token, &device_id, &pay_plan()?)
+            .create_payment(
+                &token,
+                &device_id,
+                &pay_plan()?,
+                PaymentVerification::Unverified,
+            )
             .await;
         let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
 
@@ -443,8 +654,10 @@ async fn only_dossier_known_payment_errors_are_confirmed_rejections() -> TestRes
 
     // Complete expected observation.
     let expected = ScriptedObservation::expected(
-        Err(ApiErrorSnapshot::financial_unknown(
+        Err(ApiErrorSnapshot::financial_http_unknown(
             REQUEST_CREATION_OPERATION,
+            400,
+            Some("13006"),
         )),
         vec![payment_creation_request(REQUEST_CREATION_REQUEST_BODY)],
     );
@@ -457,5 +670,69 @@ async fn only_dossier_known_payment_errors_are_confirmed_rejections() -> TestRes
         ScriptedObservation::observed(project_result(request_result, |_| ()), &transport);
 
     assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn duplicate_and_temporary_payment_rejections_have_specific_safe_messages() -> TestResult {
+    for (code, expected_error) in [
+        ("1360", ApiErrorSnapshot::duplicate_payment_rejected()),
+        ("10100", ApiErrorSnapshot::temporary_payment_rejected()),
+    ] {
+        let response = scripted_json_response(403, serde_json::json!({"error": {"code": code}}))?;
+        let (token, device_id) = test_session()?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let expected = ScriptedObservation::expected(
+            Err(expected_error),
+            vec![payment_creation_request(PAYMENT_CREATION_REQUEST_BODY)],
+        );
+
+        let result = client
+            .create_payment(
+                &token,
+                &device_id,
+                &pay_plan()?,
+                PaymentVerification::Unverified,
+            )
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+
+        assert_eq!(observed, expected);
+    }
+
+    for (status, body, code) in [
+        (400, serde_json::json!({"error": {"code": "1360"}}), "1360"),
+        (
+            400,
+            serde_json::json!({"error": {"code": "10100"}}),
+            "10100",
+        ),
+        (403, serde_json::json!({"error_code": "1360"}), "1360"),
+        (403, serde_json::json!({"error_code": "10100"}), "10100"),
+    ] {
+        let response = scripted_json_response(status, body)?;
+        let (token, device_id) = test_session()?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::financial_http_unknown(
+                PAYMENT_CREATION_OPERATION,
+                status,
+                Some(code),
+            )),
+            vec![payment_creation_request(PAYMENT_CREATION_REQUEST_BODY)],
+        );
+
+        let result = client
+            .create_payment(
+                &token,
+                &device_id,
+                &pay_plan()?,
+                PaymentVerification::Unverified,
+            )
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+
+        assert_eq!(observed, expected);
+    }
     Ok(())
 }

@@ -83,6 +83,19 @@ pub(super) enum Call {
     CreatePayment {
         session: RedactedSecret,
         plan: Box<PayPlanCall>,
+        verification: PaymentVerification,
+    },
+    IssuePaymentOtp {
+        session: RedactedSecret,
+        request_id: ClientRequestId,
+    },
+    ReadPaymentOtp {
+        prompt: String,
+    },
+    VerifyPaymentOtp {
+        session: RedactedSecret,
+        request_id: ClientRequestId,
+        otp: RedactedSecret,
     },
 }
 
@@ -161,7 +174,9 @@ pub(super) struct PayScript {
     balance: Result<Balance, FakeApiError>,
     sources: Result<PeerFundingSources, FakeApiError>,
     eligibility: Result<BlankSourceEligibility, FakeApiError>,
-    creation: Result<CreatedPayment, FakeApiError>,
+    creations: Vec<Result<PaymentCreationOutcome, FakeApiError>>,
+    otp_issue: Result<(), FakeApiError>,
+    otp_verification: Result<PaymentOtpVerification, FakeApiError>,
 }
 
 impl PayScript {
@@ -181,7 +196,9 @@ impl PayScript {
                 )?],
             )),
             eligibility: Ok(blank_eligibility(0)?),
-            creation: Ok(created_payment()?),
+            creations: vec![Ok(PaymentCreationOutcome::Created(created_payment()?))],
+            otp_issue: Ok(()),
+            otp_verification: Ok(PaymentOtpVerification::Verified),
         })
     }
 
@@ -212,7 +229,31 @@ impl PayScript {
     }
 
     pub(super) fn with_creation(self, creation: Result<CreatedPayment, FakeApiError>) -> Self {
-        Self { creation, ..self }
+        Self {
+            creations: vec![creation.map(PaymentCreationOutcome::Created)],
+            ..self
+        }
+    }
+
+    pub(super) fn with_creation_sequence(
+        self,
+        creations: Vec<Result<PaymentCreationOutcome, FakeApiError>>,
+    ) -> Self {
+        Self { creations, ..self }
+    }
+
+    pub(super) fn with_otp_issue(self, otp_issue: Result<(), FakeApiError>) -> Self {
+        Self { otp_issue, ..self }
+    }
+
+    pub(super) fn with_otp_verification(
+        self,
+        otp_verification: Result<PaymentOtpVerification, FakeApiError>,
+    ) -> Self {
+        Self {
+            otp_verification,
+            ..self
+        }
     }
 }
 
@@ -223,7 +264,9 @@ pub(super) struct FakeApi {
     balance: Result<Balance, FakeApiError>,
     sources: Result<PeerFundingSources, FakeApiError>,
     eligibility: RefCell<Option<Result<BlankSourceEligibility, FakeApiError>>>,
-    creation: Result<CreatedPayment, FakeApiError>,
+    creations: RefCell<VecDeque<Result<PaymentCreationOutcome, FakeApiError>>>,
+    otp_issue: Result<(), FakeApiError>,
+    otp_verification: Result<PaymentOtpVerification, FakeApiError>,
     transcript: Transcript,
 }
 
@@ -236,7 +279,9 @@ impl FakeApi {
             balance: script.balance,
             sources: script.sources,
             eligibility: RefCell::new(Some(script.eligibility)),
-            creation: script.creation,
+            creations: RefCell::new(script.creations.into()),
+            otp_issue: script.otp_issue,
+            otp_verification: script.otp_verification,
             transcript,
         }
     }
@@ -359,12 +404,51 @@ impl PaymentCreationApi for FakeApi {
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
         plan: &'a PayPlan,
-    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a {
+        verification: PaymentVerification,
+    ) -> impl Future<Output = Result<PaymentCreationOutcome, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(Call::CreatePayment {
             session: RedactedSecret::Redacted,
             plan: Box::new(PayPlanCall::from(plan)),
+            verification,
         });
-        ready(self.creation.clone())
+        ready(
+            self.creations
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or(Err(FakeApiError(ApiFailureKind::Internal))),
+        )
+    }
+}
+
+impl PaymentStepUpApi for FakeApi {
+    type Error = FakeApiError;
+
+    fn issue_payment_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        request_id: &'a ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::IssuePaymentOtp {
+            session: RedactedSecret::Redacted,
+            request_id: *request_id,
+        });
+        ready(self.otp_issue)
+    }
+
+    fn verify_payment_otp<'a>(
+        &'a self,
+        _access_token: &'a AccessToken,
+        _device_id: &'a DeviceId,
+        request_id: &'a ClientRequestId,
+        _otp: &'a crate::features::auth::OtpCode,
+    ) -> impl Future<Output = Result<PaymentOtpVerification, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(Call::VerifyPaymentOtp {
+            session: RedactedSecret::Redacted,
+            request_id: *request_id,
+            otp: RedactedSecret::Redacted,
+        });
+        ready(self.otp_verification)
     }
 }
 
@@ -437,6 +521,19 @@ impl DefaultNoConfirmation for FakePrompt {
     }
 }
 
+impl PaymentStepUpInput for FakePrompt {
+    fn read_payment_otp(
+        &self,
+        prompt: &str,
+    ) -> Result<crate::features::auth::OtpCode, PromptError> {
+        self.transcript.borrow_mut().push(Call::ReadPaymentOtp {
+            prompt: prompt.to_owned(),
+        });
+        crate::features::auth::OtpCode::parse_owned("123456".to_owned())
+            .map_err(|source| PromptError::InvalidOtpCode { source })
+    }
+}
+
 pub(super) async fn run_pay(
     reader: &FakeReader,
     api: &FakeApi,
@@ -488,7 +585,7 @@ pub(super) async fn run_pay_with_visibility(
     )
     .await?;
     let authorized = authorize(prompt, prepared, assume_yes)?;
-    execute(api, authorized).await
+    execute(api, prompt, authorized).await
 }
 
 pub(super) fn successful_calls(amount: Money, note: Note) -> Result<Vec<Call>, Box<dyn Error>> {
@@ -535,6 +632,7 @@ pub(super) fn successful_calls_with_fee(
                 eligibility_token: RedactedSecret::Redacted,
                 visibility: Visibility::Private,
             }),
+            verification: PaymentVerification::Unverified,
         },
     ])
 }

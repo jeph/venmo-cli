@@ -31,12 +31,14 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_TIMEOUT: Duration = Duration::from_secs(15);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
-const COMPATIBILITY_USER_AGENT: &str = "Venmo/7.44.0 (iPhone; iOS 13.0; Scale/2.0)";
+const COMPATIBILITY_USER_AGENT: &str = "Venmo/26.13.0 (iPhone; iOS 18.6.2; Scale/3.0)";
 const DEVICE_ID_HEADER: HeaderName = HeaderName::from_static("device-id");
+const X_SESSION_ID_HEADER: HeaderName = HeaderName::from_static("x-session-id");
 const OTP_CODE_HEADER: HeaderName = HeaderName::from_static("venmo-otp");
 const OTP_SECRET_HEADER: HeaderName = HeaderName::from_static("venmo-otp-secret");
 const MAX_OTP_SECRET_HEADER_BYTES: usize = 4096;
-const JSON_ACCEPT: HeaderValue = HeaderValue::from_static("application/json");
+const JSON_ACCEPT: HeaderValue = HeaderValue::from_static("application/json; charset=utf-8");
+const ENGLISH_ACCEPT_LANGUAGE: HeaderValue = HeaderValue::from_static("en-US;q=1.0");
 const JSON_CONTENT_TYPE: HeaderValue = HeaderValue::from_static("application/json");
 const FORM_CONTENT_TYPE: HeaderValue =
     HeaderValue::from_static("application/x-www-form-urlencoded");

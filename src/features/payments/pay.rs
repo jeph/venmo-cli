@@ -5,7 +5,8 @@ use super::funding::{self, FundingSelectionError};
 use super::preflight::{self, PeerPreflightError};
 use super::{
     BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation, PayPlan, PaymentCreationApi,
-    PeerFundingApi,
+    PaymentCreationOutcome, PaymentOtpVerification, PaymentStepUpApi, PaymentStepUpInput,
+    PaymentVerification, PeerFundingApi,
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
 use crate::features::people::{RecipientInput, UserLookupApi, UserSearchApi};
@@ -93,6 +94,35 @@ pub enum PayError {
         #[source]
         source: ApiOperationFailure,
     },
+    #[error(
+        "Venmo requires SMS verification for this payment; rerun in a terminal that can prompt for the code"
+    )]
+    StepUpPromptRequired,
+    #[error("failed to send the Venmo payment-verification code: {source}")]
+    StepUpIssue {
+        #[source]
+        source: ApiOperationFailure,
+    },
+    #[error("payment-verification prompt failed: {source}")]
+    StepUpPrompt {
+        #[source]
+        source: PromptError,
+    },
+    #[error("failed to verify the Venmo payment code: {source}")]
+    StepUpVerify {
+        #[source]
+        source: ApiOperationFailure,
+    },
+    #[error("the Venmo payment-verification code was incorrect")]
+    StepUpOtpIncorrect,
+    #[error("the Venmo payment-verification code expired")]
+    StepUpOtpExpired,
+    #[error("Venmo did not expect a payment-verification code for this payment")]
+    StepUpOtpUnexpected,
+    #[error("Venmo rejected the payment verification after too many incorrect attempts")]
+    StepUpOtpTooManyAttempts,
+    #[error("Venmo still requires SMS verification after the code was verified")]
+    StepUpStillRequired,
 }
 
 impl PayError {
@@ -103,11 +133,24 @@ impl PayError {
             Self::Balance { source }
             | Self::FundingMethods { source }
             | Self::Eligibility { source }
-            | Self::Create { source } => ApplicationFailureKind::Api(source.kind()),
+            | Self::Create { source }
+            | Self::StepUpIssue { source }
+            | Self::StepUpVerify { source } => ApplicationFailureKind::Api(source.kind()),
             Self::FundingSelection(source) => source.failure_kind(),
-            Self::ConfirmationRequired => ApplicationFailureKind::Usage,
+            Self::ConfirmationRequired | Self::StepUpPromptRequired => {
+                ApplicationFailureKind::Usage
+            }
             Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
-            Self::Confirmation { source } => prompt_failure_kind(source),
+            Self::Confirmation { source } | Self::StepUpPrompt { source } => {
+                prompt_failure_kind(source)
+            }
+            Self::StepUpOtpIncorrect
+            | Self::StepUpOtpExpired
+            | Self::StepUpOtpUnexpected
+            | Self::StepUpOtpTooManyAttempts
+            | Self::StepUpStillRequired => {
+                ApplicationFailureKind::Api(crate::shared::ApiFailureKind::Rejected)
+            }
         }
     }
 }
@@ -218,21 +261,84 @@ where
     Ok(AuthorizedPay(prepared))
 }
 
-pub(crate) async fn execute<A>(api: &A, authorized: AuthorizedPay) -> Result<PayResult, PayError>
+pub(crate) async fn execute<A, P>(
+    api: &A,
+    prompt: &P,
+    authorized: AuthorizedPay,
+) -> Result<PayResult, PayError>
 where
-    A: PaymentCreationApi,
+    A: PaymentCreationApi + PaymentStepUpApi,
+    P: PaymentStepUpInput,
 {
     let AuthorizedPay(prepared) = authorized;
-    let created = api
+    let first_attempt = api
         .create_payment(
             prepared.credential.access_token(),
             prepared.credential.device_id(),
             &prepared.plan,
+            PaymentVerification::Unverified,
         )
         .await
         .map_err(|source| PayError::Create {
             source: ApiOperationFailure::new(source),
         })?;
+    let created = match first_attempt {
+        PaymentCreationOutcome::Created(created) => created,
+        PaymentCreationOutcome::OtpStepUpRequired => {
+            if !prompt.can_prompt() {
+                return Err(PayError::StepUpPromptRequired);
+            }
+            let request_id = prepared.plan.request_id();
+            api.issue_payment_otp(
+                prepared.credential.access_token(),
+                prepared.credential.device_id(),
+                &request_id,
+            )
+            .await
+            .map_err(|source| PayError::StepUpIssue {
+                source: ApiOperationFailure::new(source),
+            })?;
+            let otp = prompt
+                .read_payment_otp("Venmo SMS payment-verification code")
+                .map_err(|source| PayError::StepUpPrompt { source })?;
+            let verification = api
+                .verify_payment_otp(
+                    prepared.credential.access_token(),
+                    prepared.credential.device_id(),
+                    &request_id,
+                    &otp,
+                )
+                .await
+                .map_err(|source| PayError::StepUpVerify {
+                    source: ApiOperationFailure::new(source),
+                })?;
+            match verification {
+                PaymentOtpVerification::Verified => {}
+                PaymentOtpVerification::Incorrect => return Err(PayError::StepUpOtpIncorrect),
+                PaymentOtpVerification::Expired => return Err(PayError::StepUpOtpExpired),
+                PaymentOtpVerification::Unexpected => return Err(PayError::StepUpOtpUnexpected),
+                PaymentOtpVerification::TooManyIncorrectAttempts => {
+                    return Err(PayError::StepUpOtpTooManyAttempts);
+                }
+            }
+            match api
+                .create_payment(
+                    prepared.credential.access_token(),
+                    prepared.credential.device_id(),
+                    &prepared.plan,
+                    PaymentVerification::SmsOtpVerified,
+                )
+                .await
+                .map_err(|source| PayError::Create {
+                    source: ApiOperationFailure::new(source),
+                })? {
+                PaymentCreationOutcome::Created(created) => created,
+                PaymentCreationOutcome::OtpStepUpRequired => {
+                    return Err(PayError::StepUpStillRequired);
+                }
+            }
+        }
+    };
     Ok(PayResult::new(prepared.plan, created))
 }
 

@@ -95,7 +95,7 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 1 | `auth login` | Password: **A1 → A5**. OTP: **A1 → A2 → A3 → A5**, verified local save, then **A4** (maximum 5). | Remote auth plus hidden identifier/password/fresh-device prompts and optional hidden OTP. |
 | 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
-| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
+| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2**; exact step-up only: **F2O → F2V → F2** (maximum 13). | Financial; one initial **F2**, or one initial rejected **F2** plus one challenge-verified **F2** with the same UUID. No automatic retry. |
 | 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3** after default-No confirmation. |
 | 6 | `requests accept <REQUEST_ID> [--source SOURCE_ID] [--protect] [--yes]` | Common **A5 → R2 → P2 → W2**; default unprotected covered balance then **F4** (5 total), otherwise **F4N → W1 → F4E → F4S** (8 total). | Financial; exactly one **F4** or **F4S** after default-No confirmation. Any explicit source or `--protect` selects the modern branch even with balance coverage. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
@@ -128,19 +128,26 @@ transfer-destination selection.
 - Redirects, proxies, and automatic gzip/Brotli/Zstandard/deflate decoding are
   disabled. No `Referer` is sent.
 - There are **zero automatic retries**, including reads, login, and writes.
-- Every request sends:
+- Every request sends a transport-instance session ID plus:
 
   ```http
-  Accept: application/json
-  User-Agent: Venmo/7.44.0 (iPhone; iOS 13.0; Scale/2.0)
+  Accept: application/json; charset=utf-8
+  Accept-Language: en-US;q=1.0
+  User-Agent: Venmo/26.13.0 (iPhone; iOS 18.6.2; Scale/3.0)
+  X-Session-ID: <UUID_V4_AS_UNSIGNED_DECIMAL_U128>
   ```
 
 - A JSON body additionally sends `Content-Type: application/json`. P4 instead sends exact
   `application/x-www-form-urlencoded`; P5 sends no body.
 - Query values are URL-encoded. Dynamic path segments must be nonempty, not `.` or
   `..`, contain neither slash nor backslash, and contain no control character.
-- The compatibility User-Agent is code truth; its present server necessity remains
-  a residual evidence gap.
+- The iOS-compatible header profile is code truth. Venmo Android 26.13.0 and a maintained
+  current client independently establish the current-version/session-header pattern; controlled
+  live diagnostics under the old profile repeatedly produced generic code `10100`, while the
+  current profile reached the recognized prewrite OTP challenge `1396` and completed one verified
+  payment. Later rapid attempts also showed that `10100` means Venmo's server-side checks blocked
+  the payment and is not a header fingerprint. These observations do not identify the check that
+  fired or prove which individual header is necessary.
 
 | Header mode | Additional exact headers | Operations |
 |---|---|---|
@@ -442,12 +449,57 @@ POST /v1/payments
 }
 ```
 
-One UUID is generated before the single attempt; it is not a retry license. A 2xx
+One UUID is generated before the initial attempt; it is not a retry license. A 2xx
 response must use exactly `{"data":{"payment":<RECORD>}}`, with valid creation
 time, valid payment ID, `action: pay`, status `settled`, `pending`, or `held`, exact
 amount, self as actor, intended recipient as target, exact note, and a supported
 audience equal to or more restrictive than requested. Every post-send proof failure
 is outcome-unknown.
+
+An initial F2 HTTP 400 or 403 whose root `error.code` is exactly `1396` is the only
+supported payment step-up. It proves rejection before creation rather than an unknown
+write. The CLI requires an interactive terminal, sends F2O, reads one hidden six-digit
+OTP, sends F2V, and—only after exact verification success—sends F2 once more with the
+same plan and UUID plus this additional field:
+
+```json
+"metadata":{"verification_method":["sms_otp"],"verification_status":"sms_otp_verified"}
+```
+
+That second F2 is an explicit challenge continuation, not an automatic retry. It occurs
+at most once; a repeated challenge stops. `--yes` cannot bypass the hidden OTP prompt.
+The code is never accepted through an argument, printed, logged, or stored.
+
+#### F2O — issue payment SMS OTP
+```http
+POST /graphql
+```
+
+This orchestration endpoint is the sibling of `/v1`, on the same fixed
+`https://api.venmo.com` origin, and uses authenticated device/session headers. Exact JSON:
+
+```json
+{"query":"mutation SendOtp($input: SendOtpRequest!) { sendOtp(input: $input) { success } }","variables":{"input":{"flowType":"P2P","deliveryMethod":"sms","uuid":"<SAME_CLIENT_UUID_V4>"}}}
+```
+
+Only a 2xx GraphQL envelope with no `errors` and exact true
+`data.sendOtp.success` proves issuance.
+
+#### F2V — verify payment SMS OTP
+```http
+POST /graphql
+```
+
+```json
+{"query":"mutation validateOtp($input: ValidateOtpRequest!) { validateOtp(input: $input) { validated reasonCode } }","variables":{"input":{"flowType":"P2P","otp":"<SIX_DIGIT_OTP>","uuid":"<SAME_CLIENT_UUID_V4>"}}}
+```
+
+Exact `validated: true` succeeds; matching the official app, `reasonCode` is inspected
+only when `validated` is false. Exact false reasons `otpIncorrect`, `otpExpired`,
+`otpUnexpected`, and `tooManyIncorrectAttempts` are terminal confirmed failures.
+GraphQL errors, malformed envelopes, and unknown false-result combinations stop without
+the verified F2.
+
 #### F3 — create peer request
 ```http
 POST /v1/payments
@@ -571,8 +623,10 @@ external source; F1 either
 confirms eligibility or denies it without F2. The CLI generates a UUID, renders and
 flushes validated payment details, then requires default-No confirmation unless `--yes`
 (noninteractive always needs `--yes`). It installs interruption protection before
-exactly one F2. The selected source ID is submitted exactly, but neither W1, F1, nor
-the creation response proves the final debit source or fee.
+the initial F2. Only an exact prewrite code-1396 challenge can continue through one
+interactive F2O/F2V sequence and one same-UUID verified F2; this is not an automatic
+retry. The selected source ID is submitted exactly, but neither W1, F1, nor the
+creation response proves the final debit source or fee.
 
 **Request:** A5 and recipient resolution build an immutable F3 plan. There is no W1, W2, F1,
 funding field, or balance gate. The CLI renders and flushes the account, recipient, amount, note,
@@ -651,8 +705,13 @@ writes. A1/A3 use a parallel but distinct authentication issuance ambiguity.
 - A non-connect send timeout/disconnect is unknown.
 - Once a response begins, redirect rejection, read/capture failure, truncation, 2 MiB
   overflow, and resource exhaustion are unknown.
-- A complete non-2xx financial response is still unknown, except only F2 HTTP 400 with
-  root `error.code` exactly `1396` or `13006`, which is a confirmed rejection.
+- A complete non-2xx financial response is still unknown, except F2 HTTP 400/403 with
+  root `error.code` exactly `1396`, which is the confirmed prewrite OTP step-up; F2 HTTP
+  400/root `13006`, which is a confirmed rejection; F2 HTTP 403/root `1360`, which is the
+  same-recipient/amount/note duplicate rejection; and F2 HTTP 403/root `10100`, which is
+  a server-side-check block with try-later-or-use-the-official-app guidance. Other complete
+  non-2xx financial errors retain safe HTTP status and sanitized root-code suffix in the
+  outcome-unknown error.
 - Every non-2xx F3/F4/F4S/F5 or transfer response remains unknown, even if it resembles
   stale state or a challenge.
 - On 2xx, a controlling API code other than rendered exact `0`/`0.0`, empty/malformed
@@ -683,6 +742,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-11 | Reads/story classes | Direct observation / controlled live validation | A5, W1/W2, P1–P3, AC1/AC2, R1/R2, all activity classes, and read smoke. Settled payment-ID detail returned HTTP 500. |
 | 2026-07-11 | Pagination | Direct observation / controlled live plus residual gap | First→second pages for four families; friends exhaustion. Natural user-search/activity/request exhaustion remains unobserved. |
 | 2026-07-12 | F2 and private F3 | Direct observation / controlled and reconciled live validation | Separately approved minimal-value operations matched synthetic contracts. |
+| 2026-07-20 | F2 headers, SMS step-up, and rejections | Signer-verified Android 26.13.0 + maintained current mobile client + owner-approved reconciled live operations + exact synthetic | The current `/v1/payments` body remains compatible. The current profile reached HTTP 403/root code `1396`, issued and verified SMS OTP through F2O/F2V, then completed one same-UUID verified F2 for an explicit-bank-source `$1.00` payment; an independent activity read found exactly one matching settled outgoing payment. Android establishes `validated: true` precedence. A same-recipient/amount/note repeat received HTTP 403/root `1360`; current APK names it same-info denial and historical documentation specifies a 10-minute window. A note-varied rapid repeat received HTTP 403/root `10100`; public-current corroboration and repeated reconciliation establish that Venmo's server-side checks blocked the payment, but do not identify the specific check or its duration. Neither rejected attempt created activity. Old headers also produced `10100`, so that code is not treated as a header fingerprint. Actual debit source/final fee remain unproven. |
 | 2026-07-14 | Visibility | Direct observation / reconciled live; owner-approved decision | Friends/public pay and more-private response behavior reconciled; non-private F3 accepted without another mutation. |
 | 2026-07-14 | F4 | Direct observation / reconciled live validation plus historical lead / representative synthetic coverage | Live responses used the charge-oriented representation while activity exposed the resulting outgoing `pay`; the pay-oriented response representation remains historical/synthetic. Source and fee remain unproved. |
 | 2026-07-20 | F4N/F4E/F4S external approval | Signer-verified Android 10.31.1 and 26.13.0 + separately approved client-1 structure-only notification probe + owner-run corrected unprotected approval + current official Purchase Protection/Buying and Selling guidance + exact synthetic | Both native versions use the top-level request-notification ID with `PUT /v1/requests/{id}` and source/token/fee options, while the notification separately contains nested `payment.id`. A bounded client-1 read confirmed one current direct notification array with distinct paired IDs and retained no values. The CLI matches the R2 ID to exactly one nested payment ID before using the top-level ID. Native code submits fee records only when protection is selected; official guidance identifies them as seller deductions. An earlier payment-ID write returned non-success and reconciliation proved no mutation. A subsequent owner-run unprotected source-funded approval using the corrected top-level ID completed successfully, proving current client-1 authorization for that branch. Actual debit source/final fee, protected approval, and webview/SMS-step-up continuations remain unproven. |
@@ -692,7 +752,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-19 | P4/P5 friendship mutations | Direct observation of signer-verified Android 9.26.0, 10.31.1, and 26.13.0 + exact synthetic; residual auth gap | Current native route/body/state semantics are consistent across artifacts. No public mutation implementation was found. The CLI's client-1 session has not received a controlled live mutation validation; no canary has run. |
 | 2026-07-19 | AC1 other-user personal feed | Historical public client-1 documentation/wrapper + signer-verified Android 10.31.1 and 26.13.0 + exact synthetic | The single-user `target-or-actor` route is long-lived and current. Normal personal feeds use the unfiltered route; business/public-only feeds are a distinct branch and remain unsupported. |
 | 2026-07-19 | AC1 other-user response shape | Separately approved bounded structure-only probe using the active credential | Exact username resolution and one single-record personal-profile request returned the direct `data` story-array shape with a peer-payment record. Only paths and JSON types/nullness were emitted; no values, raw body, identifiers, names, note, amount, token, or continuation was retained. The probe made no mutation. |
-| Current gap | User-Agent | Existing behavior / residual gap | Literal is known; current necessity/currency is not. |
+| 2026-07-20 | Mobile compatibility headers | Android 26.13.0 + maintained current client + controlled live differential | Current version/session conventions are established and the profile reaches the recognized payment challenge; individual header necessity remains unknown. |
 
 ## 10. Transfers: enabled options and standard out
 ### 10.1 Current command state
@@ -1094,7 +1154,8 @@ of §13 rather than duplicated here.
 |---|---|---|
 | Mobile OTP/device trust | A1–A4 synthetic contract + historical lead. | Current OTP/A4 success or fresh-device bootstrap. |
 | Token lifecycle | Explicit issuance, local storage, and local-only logout. | Refresh/lifetime or remote revocation by this CLI. |
-| Compatibility User-Agent | Exact hard-coded value. | That server still requires it or that it is current. |
+| Mobile compatibility headers | Current-version iOS-compatible literal, JSON Accept, language, decimal session ID; Android/current-client corroboration and live old-versus-current payment differential. | Which individual header is required or how long this profile remains accepted. |
+| F2 SMS step-up | Android 26.13.0 exact F2O/F2V requests, reason mapping, same-UUID verified metadata; exact synthetic orchestration; one reconciled live OTP payment with an explicitly submitted bank source. | Universal challenge frequency, actual debit source, or final fee. |
 | Natural pagination endings | First→second; friends exhaustion. | Natural search/activity/request ending. |
 | F4 balance response ID | Valid returned payment ID is enforced. | That response ID is necessarily distinct from request ID. F4S does not require an ID. |
 | F4/F4S funding | W2 branch selection; F4 action-only default unprotected balance plan; signer-verified F4N/F4E/F4S notification ID, selected peer source, and token; exact automatic/explicit balance/bank/card selection tests; client-1 structure-only F4N read; one owner-run corrected unprotected F4S success; fee records omitted by default and normalized only for explicit `--protect`; exact synthetic protected/unprotected source bodies. | Actual debited source or final fee beyond the eligibility-reported amount; live validation of explicit source selection or protected F4S; webview/SMS-step-up continuation. |

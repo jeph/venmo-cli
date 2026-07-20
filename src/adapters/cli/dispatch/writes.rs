@@ -4,7 +4,8 @@ use std::io::Write;
 use crate::features::auth::CurrentAccountApi;
 use crate::features::payments::pay;
 use crate::features::payments::{
-    BlankSourceEligibilityApi, DefaultNoConfirmation, PaymentCreationApi, PeerFundingApi,
+    BlankSourceEligibilityApi, DefaultNoConfirmation, PaymentCreationApi, PaymentStepUpApi,
+    PaymentStepUpInput, PeerFundingApi,
 };
 use crate::features::people::friendship::{self, FriendshipIntent};
 use crate::features::people::{FriendshipMutationApi, UserLookupApi, UserSearchApi};
@@ -44,10 +45,11 @@ where
         + BalanceApi
         + PeerFundingApi
         + BlankSourceEligibilityApi
-        + PaymentCreationApi,
+        + PaymentCreationApi
+        + PaymentStepUpApi,
     <A as CurrentAccountApi>::Error: ApiFailure,
     G: ClientRequestIdGenerator,
-    P: DefaultNoConfirmation,
+    P: DefaultNoConfirmation + PaymentStepUpInput,
     W: Write,
     E: Write,
     M: FnOnce() -> Result<S, AppError>,
@@ -67,7 +69,8 @@ where
     write_and_flush(stderr, &prepared, output::write_pay_details)?;
     let authorized = pay::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
-    let result = protect_with_interruption(pay::execute(api, authorized), interruption).await??;
+    let result =
+        protect_with_interruption(pay::execute(api, prompt, authorized), interruption).await??;
     write_and_flush(stdout, &result, output::write_pay_result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
     Ok(())

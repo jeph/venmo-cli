@@ -37,35 +37,37 @@ pub(super) fn require_financial_success_json(
     })?;
     let error_code = extract_error_code(&value);
     let confirmed_error_code = extract_root_error_code(&value);
-    let confirmed_rejection = confirmed_error_code
-        .as_deref()
-        .is_some_and(|code| is_confirmed_financial_rejection(operation, status.as_u16(), code));
     if !status.is_success() {
-        if confirmed_rejection {
-            return Err(VenmoApiError::Http {
-                operation,
-                status: status.as_u16(),
-                code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
-            });
-        }
-        return Err(VenmoApiError::FinancialOutcomeUnknown {
+        if let Some(error) = confirmed_financial_rejection(
             operation,
-            problem: "the server response did not prove that no write occurred",
+            status.as_u16(),
+            confirmed_error_code.as_deref(),
+            error_code.as_deref(),
+        ) {
+            return Err(error);
+        }
+        return Err(VenmoApiError::FinancialHttpOutcomeUnknown {
+            operation,
+            status: status.as_u16(),
+            code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
         });
     }
     if error_code.as_deref().is_some_and(is_failure_error_code) {
-        if confirmed_rejection {
-            return Err(VenmoApiError::ApiFailure {
-                operation,
-                code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
-            });
-        }
         return Err(VenmoApiError::FinancialOutcomeUnknown {
             operation,
             problem: "the successful HTTP response contained an unverified API error",
         });
     }
     Ok(value)
+}
+
+pub(super) fn is_payment_otp_step_up_required(response: &HttpResponse) -> bool {
+    matches!(response.status().as_u16(), 400 | 403)
+        && serde_json::from_slice::<Value>(response.body())
+            .ok()
+            .and_then(|value| extract_root_error_code(&value))
+            .as_deref()
+            == Some("1396")
 }
 
 pub(super) fn require_state_write_success_json(
@@ -117,8 +119,25 @@ pub(super) fn require_state_write_success(
     require_success_parsed_with_authentication(operation, status, value, true).map(|_| ())
 }
 
-fn is_confirmed_financial_rejection(operation: &str, status: u16, code: &str) -> bool {
-    operation == PAYMENT_CREATION_OPERATION && status == 400 && matches!(code, "1396" | "13006")
+fn confirmed_financial_rejection(
+    operation: &'static str,
+    status: u16,
+    root_code: Option<&str>,
+    displayed_code: Option<&str>,
+) -> Option<VenmoApiError> {
+    if operation != PAYMENT_CREATION_OPERATION {
+        return None;
+    }
+    match (status, root_code) {
+        (403, Some("1360")) => Some(VenmoApiError::DuplicatePaymentRejected),
+        (403, Some("10100")) => Some(VenmoApiError::TemporaryPaymentRejected),
+        (400 | 403, Some("1396")) | (400, Some("13006")) => Some(VenmoApiError::Http {
+            operation,
+            status,
+            code_suffix: ApiCodeSuffix::from_remote(displayed_code),
+        }),
+        _ => None,
+    }
 }
 
 pub(super) fn require_success(

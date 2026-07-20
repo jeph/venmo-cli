@@ -1,5 +1,5 @@
 use reqwest::StatusCode;
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{header, header_exists, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
@@ -12,10 +12,12 @@ async fn sends_only_the_expected_authenticated_request() -> Result<(), Box<dyn s
     Mock::given(method("GET"))
         .and(path("/v1/users/123"))
         .and(query_param("limit", "10"))
-        .and(header("accept", "application/json"))
+        .and(header("accept", "application/json; charset=utf-8"))
+        .and(header("accept-language", "en-US;q=1.0"))
         .and(header("authorization", "Bearer secret-value"))
         .and(header("device-id", "device-value"))
         .and(header("user-agent", COMPATIBILITY_USER_AGENT))
+        .and(header_exists("x-session-id"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"{}"))
         .mount(&server)
         .await;

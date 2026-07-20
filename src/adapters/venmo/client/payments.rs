@@ -4,26 +4,39 @@ use std::str::FromStr;
 use serde_json::Value;
 use time::OffsetDateTime;
 
+use crate::features::auth::OtpCode;
 use crate::features::payments::{
     BlankSourceEligibility, BlankSourceEligibilityApi, CreatedPayment, EligibilityToken,
-    FinancialStatus, PayPlan, PaymentCreationApi, PaymentId,
+    FinancialStatus, PayPlan, PaymentCreationApi, PaymentCreationOutcome, PaymentId,
+    PaymentOtpVerification, PaymentStepUpApi, PaymentVerification,
 };
 use crate::features::people::User;
 use crate::features::requests::{CreatedRequest, RequestId, RequestStatus};
 use crate::shared::{AccessToken, Account, DeviceId, Money, Note, Visibility};
 
 use super::super::dto::{
-    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentRequest,
-    CreatedPaymentEnvelope, PaymentRecordDto,
+    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentMetadata,
+    CreatePaymentRequest, CreatedPaymentEnvelope, IssuePaymentOtpAction, IssuePaymentOtpEnvelope,
+    PaymentOtpGraphQlRequest, PaymentOtpGraphQlVariables, PaymentOtpInput, PaymentRecordDto,
+    VerifyPaymentOtpAction, VerifyPaymentOtpEnvelope,
 };
 use super::super::transport::{ApiSession, ApiTransport, HttpRequest, JsonBody};
-use super::error::VenmoApiError;
-use super::response::{decode_success, require_financial_success_json};
+use super::error::{ApiCodeSuffix, VenmoApiError};
+use super::response::{
+    decode_success, is_payment_otp_step_up_required, require_financial_success_json,
+};
 use super::support::parse_timestamp_value;
 use super::{
-    BLANK_SOURCE_ELIGIBILITY_OPERATION, PAYMENT_CREATION_OPERATION, REQUEST_CREATION_OPERATION,
-    VenmoApiClient,
+    BLANK_SOURCE_ELIGIBILITY_OPERATION, PAYMENT_CREATION_OPERATION, PAYMENT_OTP_ISSUE_OPERATION,
+    PAYMENT_OTP_VERIFICATION_OPERATION, REQUEST_CREATION_OPERATION, VenmoApiClient,
 };
+
+const ISSUE_PAYMENT_OTP_QUERY: &str =
+    "mutation SendOtp($input: SendOtpRequest!) { sendOtp(input: $input) { success } }";
+const VERIFY_PAYMENT_OTP_QUERY: &str = "mutation validateOtp($input: ValidateOtpRequest!) { validateOtp(input: $input) { validated reasonCode } }";
+const PAYMENT_OTP_FLOW_TYPE: &str = "P2P";
+const SMS_OTP_METHOD: &str = "sms_otp";
+const SMS_OTP_VERIFIED_STATUS: &str = "sms_otp_verified";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PeerCreation {
@@ -182,7 +195,8 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         access_token: &AccessToken,
         device_id: &DeviceId,
         plan: &PayPlan,
-    ) -> Result<CreatedPayment, VenmoApiError> {
+        verification: PaymentVerification,
+    ) -> Result<PaymentCreationOutcome, VenmoApiError> {
         let request_id = plan.request_id().to_string();
         let creation = PeerCreation::Payment;
         let amount = money_json_number(plan.amount(), creation)?;
@@ -194,6 +208,13 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             note: plan.note().as_str(),
             eligibility_token: plan.eligibility_token().expose(),
             funding_source_id: plan.funding_source().method().id().as_str(),
+            metadata: match verification {
+                PaymentVerification::Unverified => None,
+                PaymentVerification::SmsOtpVerified => Some(CreatePaymentMetadata {
+                    verification_method: &[SMS_OTP_METHOD],
+                    verification_status: SMS_OTP_VERIFIED_STATUS,
+                }),
+            },
         })
         .map_err(|_| VenmoApiError::RequestEncoding {
             operation: PAYMENT_CREATION_OPERATION,
@@ -205,6 +226,9 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 HttpRequest::financial_json_post("/payments", &["payments"], &[], body),
             )
             .await?;
+        if is_payment_otp_step_up_required(&response) {
+            return Ok(PaymentCreationOutcome::OtpStepUpRequired);
+        }
         let value = require_financial_success_json(creation.operation(), response)?;
         let payment = parse_created_record(creation, value)?;
         validate_created_payment(
@@ -215,6 +239,119 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             plan.note(),
             plan.visibility(),
         )
+        .map(PaymentCreationOutcome::Created)
+    }
+
+    async fn send_payment_otp(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        request_id: &crate::shared::ClientRequestId,
+    ) -> Result<(), VenmoApiError> {
+        let request_id = request_id.to_string();
+        let body = JsonBody::encode(&PaymentOtpGraphQlRequest {
+            query: ISSUE_PAYMENT_OTP_QUERY,
+            variables: PaymentOtpGraphQlVariables {
+                input: PaymentOtpInput {
+                    flow_type: PAYMENT_OTP_FLOW_TYPE,
+                    action: IssuePaymentOtpAction {
+                        delivery_method: "sms",
+                    },
+                    uuid: &request_id,
+                },
+            },
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: PAYMENT_OTP_ISSUE_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::orchestration_json_post("/graphql", body),
+            )
+            .await?;
+        let envelope: IssuePaymentOtpEnvelope = decode_success(
+            PAYMENT_OTP_ISSUE_OPERATION,
+            response,
+            "the payment OTP issuance response did not match the supported envelope",
+        )?;
+        if envelope.errors.is_some() {
+            return Err(VenmoApiError::ApiFailure {
+                operation: PAYMENT_OTP_ISSUE_OPERATION,
+                code_suffix: ApiCodeSuffix::default(),
+            });
+        }
+        if envelope.data.is_some_and(|data| data.send_otp.success) {
+            Ok(())
+        } else {
+            Err(VenmoApiError::Contract {
+                operation: PAYMENT_OTP_ISSUE_OPERATION,
+                problem: "the response did not prove that an SMS code was issued",
+            })
+        }
+    }
+
+    async fn validate_payment_otp(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        request_id: &crate::shared::ClientRequestId,
+        otp: &OtpCode,
+    ) -> Result<PaymentOtpVerification, VenmoApiError> {
+        let request_id = request_id.to_string();
+        let body = JsonBody::encode(&PaymentOtpGraphQlRequest {
+            query: VERIFY_PAYMENT_OTP_QUERY,
+            variables: PaymentOtpGraphQlVariables {
+                input: PaymentOtpInput {
+                    flow_type: PAYMENT_OTP_FLOW_TYPE,
+                    action: VerifyPaymentOtpAction { otp: otp.expose() },
+                    uuid: &request_id,
+                },
+            },
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: PAYMENT_OTP_VERIFICATION_OPERATION,
+        })?;
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::orchestration_json_post("/graphql", body),
+            )
+            .await?;
+        let envelope: VerifyPaymentOtpEnvelope = decode_success(
+            PAYMENT_OTP_VERIFICATION_OPERATION,
+            response,
+            "the payment OTP verification response did not match the supported envelope",
+        )?;
+        if envelope.errors.is_some() {
+            return Err(VenmoApiError::ApiFailure {
+                operation: PAYMENT_OTP_VERIFICATION_OPERATION,
+                code_suffix: ApiCodeSuffix::default(),
+            });
+        }
+        let result =
+            envelope
+                .data
+                .and_then(|data| data.validate_otp)
+                .ok_or(VenmoApiError::Contract {
+                    operation: PAYMENT_OTP_VERIFICATION_OPERATION,
+                    problem: "the response omitted the OTP validation result",
+                })?;
+        match (result.validated, result.reason_code.as_deref()) {
+            (true, _) => Ok(PaymentOtpVerification::Verified),
+            (false, Some("otpIncorrect")) => Ok(PaymentOtpVerification::Incorrect),
+            (false, Some("otpExpired")) => Ok(PaymentOtpVerification::Expired),
+            (false, Some("otpUnexpected")) => Ok(PaymentOtpVerification::Unexpected),
+            (false, Some("tooManyIncorrectAttempts")) => {
+                Ok(PaymentOtpVerification::TooManyIncorrectAttempts)
+            }
+            _ => Err(VenmoApiError::Contract {
+                operation: PAYMENT_OTP_VERIFICATION_OPERATION,
+                problem: "the response contained an unsupported OTP validation result",
+            }),
+        }
     }
 }
 
@@ -239,8 +376,32 @@ impl<T: ApiTransport> PaymentCreationApi for VenmoApiClient<T> {
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
         plan: &'a PayPlan,
-    ) -> impl Future<Output = Result<CreatedPayment, Self::Error>> + Send + 'a {
-        self.create_peer_payment(access_token, device_id, plan)
+        verification: PaymentVerification,
+    ) -> impl Future<Output = Result<PaymentCreationOutcome, Self::Error>> + Send + 'a {
+        self.create_peer_payment(access_token, device_id, plan, verification)
+    }
+}
+
+impl<T: ApiTransport> PaymentStepUpApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn issue_payment_otp<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        request_id: &'a crate::shared::ClientRequestId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        self.send_payment_otp(access_token, device_id, request_id)
+    }
+
+    fn verify_payment_otp<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        request_id: &'a crate::shared::ClientRequestId,
+        otp: &'a OtpCode,
+    ) -> impl Future<Output = Result<PaymentOtpVerification, Self::Error>> + Send + 'a {
+        self.validate_payment_otp(access_token, device_id, request_id, otp)
     }
 }
 

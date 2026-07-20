@@ -30,7 +30,8 @@ use crate::features::auth::{
 };
 use crate::features::payments::{
     BlankSourceEligibilityApi, EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi,
-    PaymentId, PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+    PaymentCreationOutcome, PaymentId, PaymentOtpVerification, PaymentStepUpApi,
+    PaymentVerification, PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
     PeerFundingSource, PeerFundingSourceSelection,
 };
 use crate::features::people::{
@@ -81,6 +82,22 @@ const PAYMENT_CREATION_PUBLIC_REQUEST_BODY: &str = concat!(
     r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
     r#""audience":"public","amount":0.01,"note":"Synthetic note","#,
     r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1"}"#,
+);
+const PAYMENT_CREATION_VERIFIED_REQUEST_BODY: &str = concat!(
+    r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
+    r#""audience":"private","amount":0.01,"note":"Synthetic note","#,
+    r#""eligibility_token":"synthetic-eligibility-token","funding_source_id":"bank-1","#,
+    r#""metadata":{"verification_method":["sms_otp"],"verification_status":"sms_otp_verified"}}"#,
+);
+const ISSUE_PAYMENT_OTP_REQUEST_BODY: &str = concat!(
+    r#"{"query":"mutation SendOtp($input: SendOtpRequest!) { sendOtp(input: $input) { success } }","#,
+    r#""variables":{"input":{"flowType":"P2P","deliveryMethod":"sms","#,
+    r#""uuid":"123e4567-e89b-12d3-a456-426614174000"}}}"#,
+);
+const VERIFY_PAYMENT_OTP_REQUEST_BODY: &str = concat!(
+    r#"{"query":"mutation validateOtp($input: ValidateOtpRequest!) { validateOtp(input: $input) { validated reasonCode } }","#,
+    r#""variables":{"input":{"flowType":"P2P","otp":"123456","#,
+    r#""uuid":"123e4567-e89b-12d3-a456-426614174000"}}}"#,
 );
 const REQUEST_CREATION_REQUEST_BODY: &str = concat!(
     r#"{"uuid":"123e4567-e89b-12d3-a456-426614174000","user_id":"456","#,
@@ -173,6 +190,12 @@ enum ApiErrorDetail {
     },
     EligibilityDenied,
     RequestApprovalEligibilityDenied,
+    DuplicatePaymentRejected {
+        rendered: String,
+    },
+    TemporaryPaymentRejected {
+        rendered: String,
+    },
     MalformedJson {
         operation: &'static str,
     },
@@ -184,6 +207,11 @@ enum ApiErrorDetail {
     },
     FinancialOutcomeUnknown {
         operation: &'static str,
+    },
+    FinancialHttpOutcomeUnknown {
+        operation: &'static str,
+        status: u16,
+        rendered: String,
     },
     StateMutationOutcomeUnknown {
         operation: &'static str,
@@ -217,6 +245,12 @@ impl ApiErrorSnapshot {
             VenmoApiError::RequestApprovalEligibilityDenied => {
                 ApiErrorDetail::RequestApprovalEligibilityDenied
             }
+            VenmoApiError::DuplicatePaymentRejected => {
+                ApiErrorDetail::DuplicatePaymentRejected { rendered }
+            }
+            VenmoApiError::TemporaryPaymentRejected => {
+                ApiErrorDetail::TemporaryPaymentRejected { rendered }
+            }
             VenmoApiError::MalformedJson { operation } => {
                 ApiErrorDetail::MalformedJson { operation }
             }
@@ -229,6 +263,13 @@ impl ApiErrorSnapshot {
             VenmoApiError::FinancialOutcomeUnknown { operation, .. } => {
                 ApiErrorDetail::FinancialOutcomeUnknown { operation }
             }
+            VenmoApiError::FinancialHttpOutcomeUnknown {
+                operation, status, ..
+            } => ApiErrorDetail::FinancialHttpOutcomeUnknown {
+                operation,
+                status,
+                rendered,
+            },
             VenmoApiError::StateMutationOutcomeUnknown { operation, .. } => {
                 ApiErrorDetail::StateMutationOutcomeUnknown { operation }
             }
@@ -262,6 +303,38 @@ impl ApiErrorSnapshot {
         Self {
             kind: ApiFailureKind::AmbiguousWrite,
             detail: ApiErrorDetail::FinancialOutcomeUnknown { operation },
+        }
+    }
+
+    fn financial_http_unknown(operation: &'static str, status: u16, code: Option<&str>) -> Self {
+        let code_suffix = code.map_or_else(String::new, |code| format!(" (error code {code})"));
+        Self {
+            kind: ApiFailureKind::AmbiguousWrite,
+            detail: ApiErrorDetail::FinancialHttpOutcomeUnknown {
+                operation,
+                status,
+                rendered: format!(
+                    "the {operation} outcome is unknown and must be reconciled before retrying because Venmo returned HTTP {status}{code_suffix} without proving that no write occurred"
+                ),
+            },
+        }
+    }
+
+    fn duplicate_payment_rejected() -> Self {
+        Self {
+            kind: ApiFailureKind::Rejected,
+            detail: ApiErrorDetail::DuplicatePaymentRejected {
+                rendered: "Venmo rejected this payment as a duplicate (error code 1360); the same recipient, amount, and note cannot be submitted again within Venmo's 10-minute duplicate window".to_owned(),
+            },
+        }
+    }
+
+    fn temporary_payment_rejected() -> Self {
+        Self {
+            kind: ApiFailureKind::Rejected,
+            detail: ApiErrorDetail::TemporaryPaymentRejected {
+                rendered: "Venmo's server-side checks blocked this payment (error code 10100); try again later or use the official Venmo app".to_owned(),
+            },
         }
     }
 

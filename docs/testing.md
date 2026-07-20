@@ -26,7 +26,7 @@ rejection of nonpayment records. Detail tests preserve absolute payment actor/ta
 | Layer | Primary contract |
 | --- | --- |
 | Shared and feature-model unit tests | Parsing, invariants, exact value behavior, redaction, and failure classification |
-| Feature tests | Orchestration, capability use, ordered calls, zero/one-write behavior, no retry, and complete outcomes |
+| Feature tests | Orchestration, capability use, ordered calls, zero/one-write behavior except the exact same-UUID payment step-up continuation, no automatic retry, and complete outcomes |
 | Venmo adapter tests | Exact request shape, credential mode, response mapping, bounds, fixed-origin continuation validation, and transport error classification |
 | Credential adapter tests | Exact codec compatibility and native-adapter behavior through a scripted backend |
 | CLI adapter tests | Argument grammar, dispatch, logging/precondition order, private terminal seams, prompts, interruption handling, deterministic time-zone conversion and UTC fallback, rendering, error categories, and output failures |
@@ -143,6 +143,21 @@ flushed before confirmation, default-No rejection and cancellation send zero wri
 requires `--yes`, and `--yes` skips only the prompt. Output failure before authorization prevents
 signal installation and the write; post-write output failure retains ambiguous-result semantics.
 
+Payment step-up coverage is entirely service-free. Exact transcripts prove an initial creation
+challenge, terminal-capability check, one SMS issue, one hidden six-digit prompt, one verification,
+and at most one verified creation using the same immutable plan and UUID. Wire tests pin `/graphql`,
+the P2P issue/validate documents and inputs, `validated: true` precedence over reason metadata,
+known false-result rejection reasons, and the exact verified-payment metadata. Tests must prove the
+OTP is redacted and that noninteractive use, issuance failure, prompt
+failure, incorrect/expired/unexpected OTP, excessive attempts, malformed responses, and a repeated
+challenge stop without another payment submission.
+
+Payment rejection tests map only exact HTTP/status/root-code dossiers. HTTP 403/root `1360` must
+render the 10-minute duplicate explanation, and HTTP 403/root `10100` must say that Venmo's
+server-side checks blocked the payment and that the operator should try again later or use the
+official app. Different statuses, nested/non-root locations, and unknown codes remain
+outcome-unknown rather than inheriting those messages.
+
 ## Secret and error snapshots
 
 Never place raw access tokens, device IDs, passwords, OTPs, OTP secrets, eligibility tokens, or
@@ -162,7 +177,8 @@ Use **exact assertions** for contracts where any changed byte, field, order, or 
 
 - command/help schemas, rendered tables, sanitized errors, exit codes, and stream
   placement;
-- the complete ordered feature transcript, including zero/one write and no retry;
+- the complete ordered feature transcript, including zero/one write or the exact payment step-up
+  continuation, and no automatic retry;
 - HTTP method, fixed origin, route, query, required headers, content type, body, credential mode,
   operation class, and response-capture mode;
 - response-envelope mapping, pagination continuation behavior, and bounded failure outcomes; and
@@ -171,8 +187,8 @@ Use **exact assertions** for contracts where any changed byte, field, order, or 
 Use **property assertions** for broad mathematical or parser invariants, such as exact-money
 display round trips, bounds, rejection classes, or sanitization over generated inputs. Properties
 supplement rather than replace named exact examples at safety boundaries. A generated test that
-proves “some valid request succeeds” cannot replace the exact financial wire contract or the
-one-write transcript.
+proves “some valid request succeeds” cannot replace the exact financial wire contract or its
+complete call-count transcript.
 
 Review every snapshot diff as code. Never accept snapshots automatically merely to make a test
 pass.

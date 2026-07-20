@@ -77,8 +77,11 @@ completed successfully, proving current client-1 authorization for that F4S bran
 remain: the successful object does not prove the actual debit source or final fee beyond the
 eligibility response; explicit source selection and protected approval have not received separate
 live validation; and
-current native webview/SMS-step-up continuations are unsupported. No output may claim an actual
-source or final fee, and no continuation may be retried.
+request-acceptance webview/SMS-step-up continuations are unsupported. Payment creation's separately
+evidenced P2P SMS continuation is implemented with the same UUID and one verified submission, and
+one explicit-bank-source live payment completed and reconciled through that flow. The response and
+activity do not prove the actual debit source or final fee. No output may claim either, and no
+request-acceptance continuation may be retried.
 
 ## Friendship mutation session authorization
 

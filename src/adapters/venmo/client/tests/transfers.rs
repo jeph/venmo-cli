@@ -350,6 +350,7 @@ async fn transfer_creation_treats_empty_or_non_success_responses_as_ambiguous() 
         )?,
     ] {
         // Setup.
+        let status = response.status().as_u16();
         let (token, device_id) = test_session()?;
         let plan = transfer_plan()?;
 
@@ -357,10 +358,17 @@ async fn transfer_creation_treats_empty_or_non_success_responses_as_ambiguous() 
         let (client, transport) = scripted_client([Ok(response)])?;
 
         // Complete expected observation.
-        let expected = ScriptedObservation::expected(
-            Err(ApiErrorSnapshot::financial_unknown(
+        let expected_error = if status >= 400 {
+            ApiErrorSnapshot::financial_http_unknown(
                 TRANSFER_OUT_CREATION_OPERATION,
-            )),
+                status,
+                Some("1396"),
+            )
+        } else {
+            ApiErrorSnapshot::financial_unknown(TRANSFER_OUT_CREATION_OPERATION)
+        };
+        let expected = ScriptedObservation::expected(
+            Err(expected_error),
             vec![authenticated_request(
                 Method::POST,
                 "/transfers",

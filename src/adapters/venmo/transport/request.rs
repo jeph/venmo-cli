@@ -66,6 +66,12 @@ pub(in crate::adapters::venmo) enum OperationClass {
     FinancialWrite,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::adapters::venmo) enum ApiEndpoint {
+    V1,
+    Orchestration,
+}
+
 pub(in crate::adapters::venmo) struct JsonBody {
     pub(super) bytes: Zeroizing<Vec<u8>>,
 }
@@ -188,6 +194,7 @@ pub(in crate::adapters::venmo) struct HttpRequest<'a> {
     pub(super) form_body: Option<FormBody>,
     pub(super) operation: OperationClass,
     pub(super) response_capture: ResponseCapture,
+    pub(super) endpoint: ApiEndpoint,
 }
 
 struct RequestBodies {
@@ -304,6 +311,16 @@ impl<'a> HttpRequest<'a> {
         )
     }
 
+    pub(in crate::adapters::venmo) fn orchestration_json_post(
+        route_template: &'static str,
+        json_body: JsonBody,
+    ) -> Self {
+        let mut request =
+            Self::non_financial_json_post(route_template, &["graphql"], &[], json_body);
+        request.endpoint = ApiEndpoint::Orchestration;
+        request
+    }
+
     pub(in crate::adapters::venmo) fn non_financial_form_post(
         route_template: &'static str,
         path_segments: &'a [&'a str],
@@ -406,6 +423,7 @@ impl<'a> HttpRequest<'a> {
             form_body: bodies.form,
             operation,
             response_capture,
+            endpoint: ApiEndpoint::V1,
         }
     }
 }

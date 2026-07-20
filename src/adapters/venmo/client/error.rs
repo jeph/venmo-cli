@@ -37,6 +37,16 @@ pub(crate) enum VenmoApiError {
     )]
     RequestApprovalEligibilityDenied,
 
+    #[error(
+        "Venmo rejected this payment as a duplicate (error code 1360); the same recipient, amount, and note cannot be submitted again within Venmo's 10-minute duplicate window"
+    )]
+    DuplicatePaymentRejected,
+
+    #[error(
+        "Venmo's server-side checks blocked this payment (error code 10100); try again later or use the official Venmo app"
+    )]
+    TemporaryPaymentRejected,
+
     #[error("the successful {operation} response was not valid JSON")]
     MalformedJson { operation: &'static str },
 
@@ -57,6 +67,15 @@ pub(crate) enum VenmoApiError {
     FinancialOutcomeUnknown {
         operation: &'static str,
         problem: &'static str,
+    },
+
+    #[error(
+        "the {operation} outcome is unknown and must be reconciled before retrying because Venmo returned HTTP {status}{code_suffix} without proving that no write occurred"
+    )]
+    FinancialHttpOutcomeUnknown {
+        operation: &'static str,
+        status: u16,
+        code_suffix: ApiCodeSuffix,
     },
 
     #[error(
@@ -84,7 +103,8 @@ impl ApiFailure for VenmoApiError {
                 | TransportError::ResponseRead,
             ) => ApiFailureKind::Network,
             Self::Transport(TransportError::FinancialWriteOutcomeUnknown { .. })
-            | Self::FinancialOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
+            | Self::FinancialOutcomeUnknown { .. }
+            | Self::FinancialHttpOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
             Self::Transport(TransportError::StateWriteOutcomeUnknown { .. })
             | Self::StateMutationOutcomeUnknown { .. } => ApiFailureKind::AmbiguousWrite,
             Self::Transport(TransportError::AuthenticationOutcomeUnknown { .. }) => {
@@ -111,7 +131,9 @@ impl ApiFailure for VenmoApiError {
             | Self::AuthenticatedHttp { .. }
             | Self::ApiFailure { .. }
             | Self::EligibilityDenied
-            | Self::RequestApprovalEligibilityDenied => ApiFailureKind::Rejected,
+            | Self::RequestApprovalEligibilityDenied
+            | Self::DuplicatePaymentRejected
+            | Self::TemporaryPaymentRejected => ApiFailureKind::Rejected,
         }
     }
 }

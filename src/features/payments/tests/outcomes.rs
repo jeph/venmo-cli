@@ -70,6 +70,11 @@ pub(super) enum PayFailure {
     ConfirmationDeclined,
     Confirmation(PromptFailure),
     Create(ApiFailureKind),
+    StepUpPromptRequired,
+    StepUpIssue(ApiFailureKind),
+    StepUpPrompt(PromptFailure),
+    StepUpVerify(ApiFailureKind),
+    StepUpRejected,
 }
 
 pub(super) fn pay_outcome(result: Result<PayResult, PayError>) -> PayOutcome {
@@ -103,6 +108,17 @@ pub(super) fn pay_outcome(result: Result<PayResult, PayError>) -> PayOutcome {
                 PayFailure::Confirmation(PromptFailure::from(&source))
             }
             PayError::Create { source } => PayFailure::Create(source.kind()),
+            PayError::StepUpPromptRequired => PayFailure::StepUpPromptRequired,
+            PayError::StepUpIssue { source } => PayFailure::StepUpIssue(source.kind()),
+            PayError::StepUpPrompt { source } => {
+                PayFailure::StepUpPrompt(PromptFailure::from(&source))
+            }
+            PayError::StepUpVerify { source } => PayFailure::StepUpVerify(source.kind()),
+            PayError::StepUpOtpIncorrect
+            | PayError::StepUpOtpExpired
+            | PayError::StepUpOtpUnexpected
+            | PayError::StepUpOtpTooManyAttempts
+            | PayError::StepUpStillRequired => PayFailure::StepUpRejected,
         }),
     }
 }

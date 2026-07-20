@@ -70,6 +70,7 @@ async fn complete_preflight_then_execute_has_one_ordered_write_with_complete_arg
                     eligibility_token: RedactedSecret::Redacted,
                     visibility: Visibility::Public,
                 }),
+                verification: PaymentVerification::Unverified,
             },
         ],
     );
@@ -147,5 +148,157 @@ async fn explicit_external_source_overrides_covered_balance_without_substitution
             },
         ]
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn otp_step_up_issues_prompts_verifies_and_continues_once_with_the_same_plan() -> TestResult {
+    let amount = Money::from_cents(1)?;
+    let note = Note::from_str("Synthetic payment note")?;
+    let created = created_payment()?;
+    let script = PayScript::successful()?.with_creation_sequence(vec![
+        Ok(PaymentCreationOutcome::OtpStepUpRequired),
+        Ok(PaymentCreationOutcome::Created(created.clone())),
+    ]);
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(script, Rc::clone(&transcript));
+    let generator = FixedGenerator::new(Rc::clone(&transcript));
+    let prompt = FakePrompt::new(
+        true,
+        ConfirmationScript::Answer(false),
+        Rc::clone(&transcript),
+    );
+
+    let result = run_pay(
+        &reader,
+        &api,
+        &generator,
+        &prompt,
+        amount,
+        note.clone(),
+        true,
+    )
+    .await?;
+
+    assert_eq!(result.created(), &created);
+    let mut expected = successful_calls(amount, note)?;
+    expected.extend([
+        Call::PromptAvailability,
+        Call::IssuePaymentOtp {
+            session: RedactedSecret::Redacted,
+            request_id: fixed_request_id(),
+        },
+        Call::ReadPaymentOtp {
+            prompt: "Venmo SMS payment-verification code".to_owned(),
+        },
+        Call::VerifyPaymentOtp {
+            session: RedactedSecret::Redacted,
+            request_id: fixed_request_id(),
+            otp: RedactedSecret::Redacted,
+        },
+    ]);
+    let first_creation = expected
+        .iter()
+        .find_map(|call| match call {
+            Call::CreatePayment { plan, .. } => Some((**plan).clone()),
+            _ => None,
+        })
+        .ok_or_else(|| io::Error::other("missing initial payment call"))?;
+    expected.push(Call::CreatePayment {
+        session: RedactedSecret::Redacted,
+        plan: Box::new(first_creation),
+        verification: PaymentVerification::SmsOtpVerified,
+    });
+    assert_eq!(*transcript.borrow(), expected);
+    assert!(!format!("{:?}", transcript.borrow()).contains("123456"));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn otp_step_up_without_a_terminal_is_a_confirmed_nonwrite_usage_failure() -> TestResult {
+    let amount = Money::from_cents(1)?;
+    let note = Note::from_str("Synthetic payment note")?;
+    let script = PayScript::successful()?
+        .with_creation_sequence(vec![Ok(PaymentCreationOutcome::OtpStepUpRequired)]);
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(script, Rc::clone(&transcript));
+    let generator = FixedGenerator::new(Rc::clone(&transcript));
+    let prompt = FakePrompt::new(
+        false,
+        ConfirmationScript::Answer(false),
+        Rc::clone(&transcript),
+    );
+
+    let result = run_pay(
+        &reader,
+        &api,
+        &generator,
+        &prompt,
+        amount,
+        note.clone(),
+        true,
+    )
+    .await;
+
+    assert_eq!(
+        pay_outcome(result),
+        PayOutcome::Failure(PayFailure::StepUpPromptRequired)
+    );
+    let mut expected = successful_calls(amount, note)?;
+    expected.push(Call::PromptAvailability);
+    assert_eq!(*transcript.borrow(), expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn otp_step_up_api_and_code_rejections_stop_before_the_verified_payment_attempt() -> TestResult
+{
+    for (script, expected_failure) in [
+        (
+            PayScript::successful()?
+                .with_creation_sequence(vec![Ok(PaymentCreationOutcome::OtpStepUpRequired)])
+                .with_otp_issue(Err(FakeApiError(ApiFailureKind::Network))),
+            PayFailure::StepUpIssue(ApiFailureKind::Network),
+        ),
+        (
+            PayScript::successful()?
+                .with_creation_sequence(vec![Ok(PaymentCreationOutcome::OtpStepUpRequired)])
+                .with_otp_verification(Ok(PaymentOtpVerification::Incorrect)),
+            PayFailure::StepUpRejected,
+        ),
+    ] {
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let reader = FakeReader::new(ReaderScript::Present, Rc::clone(&transcript));
+        let api = FakeApi::new(script, Rc::clone(&transcript));
+        let generator = FixedGenerator::new(Rc::clone(&transcript));
+        let prompt = FakePrompt::new(
+            true,
+            ConfirmationScript::Answer(false),
+            Rc::clone(&transcript),
+        );
+
+        let result = run_pay(
+            &reader,
+            &api,
+            &generator,
+            &prompt,
+            Money::from_cents(1)?,
+            Note::from_str("Synthetic payment note")?,
+            true,
+        )
+        .await;
+
+        assert_eq!(pay_outcome(result), PayOutcome::Failure(expected_failure));
+        assert_eq!(
+            transcript
+                .borrow()
+                .iter()
+                .filter(|call| matches!(call, Call::CreatePayment { .. }))
+                .count(),
+            1
+        );
+    }
     Ok(())
 }

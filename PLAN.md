@@ -1,7 +1,7 @@
 # venmo-cli Rust Product Plan
 
 **Status:** Active; root Rust-only repository cutover completed; local read-only MCP server planned
-**Last updated:** 2026-07-14
+**Last updated:** 2026-07-20
 **Package:** `venmo-cli`
 **Binaries:** `venmo`; planned `venmo-mcp`
 
@@ -56,7 +56,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Require default-No confirmation for `pay user`, `requests create`, `requests accept`, and the destructive request-state change performed by `requests decline`.
 - Expose `--yes` only on `pay user` and all three request mutation commands, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or the details display.
 - Do not expose any `--dry-run` flags.
-- Never automatically retry payment creation, request creation, request acceptance, or request decline.
+- Never automatically retry payment creation, request creation, request acceptance, or request decline. The exact payment code-1396 SMS challenge may make one verified continuation submission with the same immutable plan and UUID; this explicit challenge continuation is not an automatic retry.
 - Write no first-party `unsafe` Rust and prohibit it mechanically across every first-party target.
 - Use no `unwrap`, `unwrap_err`, `expect`, `expect_err`, or equivalent panic-based value extraction in first-party Rust, including tests and build tooling.
 - If the correct treatment of any failure is unclear, stop the affected implementation and ask the prompter/project owner rather than guessing, swallowing it, panicking, or choosing an arbitrary fallback.
@@ -229,6 +229,21 @@ Before confirmation, show:
 - Funding source selection (`automatic` or `explicit`) and the exact submitted balance, bank, or card source, including a safe label and ID.
 
 Confirmation defaults to **No**. Non-interactive execution without `--yes` is rejected.
+
+If the initial payment submission receives the exact HTTP 400/403 root code `1396`, treat it as
+Venmo's confirmed prewrite SMS challenge rather than an ambiguous write. Continue only on an
+interactive terminal: issue one P2P SMS tied to the payment UUID, read one hidden six-digit OTP,
+verify it, and submit the same immutable payment and UUID exactly once with
+`verification_method: ["sms_otp"]` and `verification_status: "sms_otp_verified"` metadata. Never
+loop, accept OTP through an argument, print/log/store the code, or alter the plan. `--yes` skips
+only payment confirmation and cannot bypass step-up. A repeated challenge or any failed/unknown OTP
+result stops without another payment submission. Full service-free contract coverage is required.
+One owner-run `$1.00` explicit-bank-source payment completed this exact flow and independently
+reconciled as exactly one settled outgoing activity; this proves the continuation, not the actual
+debit source or final fee. Exact HTTP 403/root code `1360` is a confirmed 10-minute same-info
+duplicate rejection, while exact HTTP 403/root code `10100` means Venmo's server-side checks
+blocked the payment. The message must tell the operator to try later or use the official app; it
+must not claim which internal check fired.
 
 ### 3.4 Creating, accepting, and declining requests
 
@@ -1178,7 +1193,7 @@ The implementation targets the [MCP specification dated 2025-11-25](https://mode
 - Bound every response body to 2 MiB while streaming it; reject an oversized declared or observed body before unbounded buffering.
 - Authenticate only endpoints that require it.
 - Send token and device ID only in the required headers.
-- The selected API family is the bearer-token/device-ID mobile private API, so do not send a browser User-Agent. Until Phase 0 captures or validates a current mobile request contract, preserve the former TypeScript client's historical compatibility headers: `Accept: application/json` and `Venmo/7.44.0 (iPhone; iOS 13.0; Scale/2.0)`. Treat that exact old mobile User-Agent as a dated hypothesis that must be revalidated or replaced before release, not as a permanent compatibility promise.
+- The selected API family is the bearer-token/device-ID mobile private API, so do not send a browser User-Agent. Send the current iOS-compatible profile pinned by current native/client evidence: `Accept: application/json; charset=utf-8`, `Accept-Language: en-US;q=1.0`, `Venmo/26.13.0 (iPhone; iOS 18.6.2; Scale/3.0)`, and one UUID-derived unsigned-decimal `X-Session-ID` per transport instance. Controlled live diagnostics proved this profile reaches and completes the recognized payment step-up where the old profile repeatedly produced code `10100`; later rapid current-profile attempts also produced `10100`, so treat it as a server-side-check block, not as a header fingerprint, and do not claim which check or individual header is responsible.
 - Build endpoint URLs from validated path segments and query pairs; never accept an arbitrary authenticated URL.
 - Disable redirects, automatic referer generation, system/environment proxies, and gzip/Brotli/Zstandard/deflate decompression in the first release. A future proxy feature requires an explicit product/security decision because it exposes authenticated traffic to the configured proxy.
 - Use rustls with reqwest's native platform verifier. Do not enable native-tls or OpenSSL.
@@ -1326,7 +1341,7 @@ Execution rules:
 - One invocation creates, accepts, or declines at most one operation.
 - For `pay user` and all three request mutations, prompt only when both stdin and stderr are terminals and default to No.
 - For `pay user` and all three request mutations, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation and never the details display.
-- Send exactly one verified mutation for payment creation, request creation, request acceptance, or request decline.
+- Send exactly one mutation for request creation, request acceptance, or request decline. Payment sends one initial mutation and only an exact confirmed-prewrite SMS challenge may add one same-UUID verified continuation.
 - Preserve the original API or transport cause on failure.
 - Never claim rollback or retry a write.
 - On ambiguous outcome, do not print a false failure or success.
@@ -1348,7 +1363,7 @@ Startup opt-in, standard annotations, a model statement, or a model-supplied fie
 
 For a prepare/execute design, the read-only prepare tool resolves and returns the complete immutable plan plus a random process-local opaque handle. The server retains a matching plan for at most five minutes. The execute input repeats every human-visible plan field plus that handle so the host can display the exact values; the server requires byte-for-byte/typed equality with its retained plan, the same authenticated account, unexpired single-use state, and a fresh authoritative preflight. Any changed recipient, amount, note, funding source, request status, or account invalidates the plan and requires a new preparation and approval. The handle is not authorization by itself, is never logged, and becomes invalid on use, timeout, cancellation before execution, or server restart. Do not silently refresh or rewrite a plan after the human approved it.
 
-Every future payment, request-creation, request-acceptance, and request-decline tool must be marked `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, and `openWorldHint=true`. These hints help trusted hosts display policy and warnings but do not replace capability restriction or approval. The tool executes at most one write and must not be retried by the server after timeout, cancellation, disconnect, protocol reconnect, or unknown outcome.
+Every future payment, request-creation, request-acceptance, and request-decline tool must be marked `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, and `openWorldHint=true`. These hints help trusted hosts display policy and warnings but do not replace capability restriction or approval. The tool executes at most one write except the exact payment SMS challenge's same-UUID verified continuation, and must not be retried by the server after timeout, cancellation, disconnect, protocol reconnect, or unknown outcome. Payment step-up remains unavailable to MCP until a trusted host can provide secret-safe human OTP input without exposing it to the model or protocol transcript.
 
 ## 12. Output, errors, and protocol/terminal safety
 
@@ -1450,6 +1465,7 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Funding is displayed in details before confirmation or `--yes` execution: `pay user` shows automatic/explicit selection and its exact submitted balance or external source; `accept` shows either the legacy available-balance plan or its modern submitted source, selection mode, and applicable external method-level fee evidence. Explicit `--protect` additionally shows the estimated seller deduction and recipient proceeds.
 - Cancelled `pay user`, request creation, acceptance, and decline prompts and all preflight failures send zero writes.
 - `pay user` and all three request mutations prompt default-No on a TTY and require `--yes` off a TTY.
+- An exact prewrite payment code-1396 challenge may issue and verify one hidden SMS OTP, then consume one challenge-verified payment response with the same plan and UUID; every other branch consumes no second payment response, and a repeated challenge stops.
 - The `dialoguer` adapter sends prompts to stderr, never echoes the bearer token, maps default Enter to No, and distinguishes cancellation from terminal failure.
 - First write failure preserves its source.
 - Ambiguous writes are never retried.
@@ -1933,7 +1949,7 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 4. GitHub-only initial distribution versus Homebrew and crates.io at launch.
 5. Whether JSON output for the terminal CLI belongs in the next release or a later milestone; MCP structured output does not resolve that separate decision.
 6. Whether controlled validation can establish protected external-funded acceptance, actual
-   source/fee evidence, and a supported webview/SMS-step-up continuation. Unprotected
+   source/fee evidence, and a supported request-acceptance webview/SMS-step-up continuation. Unprotected
    notification-ID acceptance is already owner-validated under client 1.
 7. Whether a legitimate current native-mobile onboarding contract or official device-authorization flow can eliminate manual trusted-device bootstrap without reproducing browser anti-bot controls. The observed web flow is explicitly not a production candidate.
 8. The exact published official `rmcp` release and minimal feature set that satisfy Rust 1.95, macOS/Linux, schema, license, advisory, and cargo-deny requirements.

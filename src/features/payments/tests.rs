@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::error::Error;
 use std::future::{Future, ready};
 use std::io;

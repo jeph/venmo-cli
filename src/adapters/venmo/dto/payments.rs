@@ -97,4 +97,81 @@ pub(crate) struct CreatePaymentRequest<'a> {
     pub note: &'a str,
     pub eligibility_token: &'a str,
     pub funding_source_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<CreatePaymentMetadata<'a>>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct CreatePaymentMetadata<'a> {
+    pub verification_method: &'a [&'a str],
+    pub verification_status: &'a str,
+}
+
+#[derive(Serialize)]
+pub(crate) struct PaymentOtpGraphQlRequest<'a, T> {
+    pub query: &'static str,
+    pub variables: PaymentOtpGraphQlVariables<'a, T>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct PaymentOtpGraphQlVariables<'a, T> {
+    pub input: PaymentOtpInput<'a, T>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PaymentOtpInput<'a, T> {
+    pub flow_type: &'static str,
+    #[serde(flatten)]
+    pub action: T,
+    pub uuid: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IssuePaymentOtpAction {
+    pub delivery_method: &'static str,
+}
+
+#[derive(Serialize)]
+pub(crate) struct VerifyPaymentOtpAction<'a> {
+    pub otp: &'a str,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct IssuePaymentOtpEnvelope {
+    pub data: Option<IssuePaymentOtpData>,
+    #[serde(default)]
+    pub errors: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IssuePaymentOtpData {
+    pub send_otp: IssuePaymentOtpResult,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct IssuePaymentOtpResult {
+    pub success: bool,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct VerifyPaymentOtpEnvelope {
+    pub data: Option<VerifyPaymentOtpData>,
+    #[serde(default)]
+    pub errors: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct VerifyPaymentOtpData {
+    pub validate_otp: Option<VerifyPaymentOtpResult>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct VerifyPaymentOtpResult {
+    pub validated: bool,
+    pub reason_code: Option<String>,
 }

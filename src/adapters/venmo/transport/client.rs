@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
+use reqwest::header::{
+    ACCEPT, ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue,
+};
 use reqwest::{Url, redirect};
 use zeroize::Zeroizing;
 
@@ -11,12 +13,13 @@ use super::error::{
     PostSendFailure, TransportBuildError, TransportError, classify_post_send_failure,
     classify_send_error,
 };
-use super::request::{HttpRequest, RequestCredentials, ResponseCapture};
+use super::request::{ApiEndpoint, HttpRequest, RequestCredentials, ResponseCapture};
 use super::response::{HttpResponse, read_bounded_body};
 use super::{
-    ApiTransport, CONNECT_TIMEOUT, DEVICE_ID_HEADER, FORM_CONTENT_TYPE, JSON_ACCEPT,
-    JSON_CONTENT_TYPE, MAX_OTP_SECRET_HEADER_BYTES, MAX_RESPONSE_BYTES, OTP_CODE_HEADER,
-    OTP_SECRET_HEADER, PRODUCTION_API_BASE, READ_TIMEOUT, REQUEST_TIMEOUT,
+    ApiTransport, CONNECT_TIMEOUT, DEVICE_ID_HEADER, ENGLISH_ACCEPT_LANGUAGE, FORM_CONTENT_TYPE,
+    JSON_ACCEPT, JSON_CONTENT_TYPE, MAX_OTP_SECRET_HEADER_BYTES, MAX_RESPONSE_BYTES,
+    OTP_CODE_HEADER, OTP_SECRET_HEADER, PRODUCTION_API_BASE, READ_TIMEOUT, REQUEST_TIMEOUT,
+    X_SESSION_ID_HEADER,
 };
 
 pub struct VenmoHttpTransport {
@@ -52,6 +55,13 @@ impl VenmoHttpTransport {
             return Err(TransportBuildError::InvalidResponseLimit);
         }
 
+        let session_id = uuid::Uuid::new_v4().as_u128().to_string();
+        let session_id = HeaderValue::from_str(&session_id)
+            .map_err(|_| TransportBuildError::ClientInitialization)?;
+        let mut default_headers = HeaderMap::new();
+        default_headers.insert(ACCEPT_LANGUAGE, ENGLISH_ACCEPT_LANGUAGE);
+        default_headers.insert(X_SESSION_ID_HEADER, session_id);
+
         let client = reqwest::Client::builder()
             .use_rustls_tls()
             .connect_timeout(connect_timeout)
@@ -66,6 +76,7 @@ impl VenmoHttpTransport {
             .no_deflate()
             .retry(reqwest::retry::never())
             .user_agent(super::COMPATIBILITY_USER_AGENT)
+            .default_headers(default_headers)
             .build()
             .map_err(|_| TransportBuildError::ClientInitialization)?;
 
@@ -90,7 +101,7 @@ impl VenmoHttpTransport {
         request: HttpRequest<'_>,
     ) -> Result<HttpResponse, TransportError> {
         let started_at = Instant::now();
-        let url = self.build_url(request.path_segments, request.query)?;
+        let url = self.build_url(request.endpoint, request.path_segments, request.query)?;
         let mut builder = self
             .client
             .request(request.method.clone(), url)
@@ -192,10 +203,11 @@ impl VenmoHttpTransport {
 
     fn build_url(
         &self,
+        endpoint: ApiEndpoint,
         path_segments: &[&str],
         query: &[(&str, &str)],
     ) -> Result<Url, TransportError> {
-        build_url_at_origin(&self.base_url, path_segments, query)
+        build_url_at_endpoint(&self.base_url, endpoint, path_segments, query)
     }
 
     #[cfg(test)]
@@ -213,6 +225,31 @@ impl VenmoHttpTransport {
             true,
         )
     }
+}
+
+fn build_url_at_endpoint(
+    base_url: &Url,
+    endpoint: ApiEndpoint,
+    path_segments: &[&str],
+    query: &[(&str, &str)],
+) -> Result<Url, TransportError> {
+    if endpoint == ApiEndpoint::V1 {
+        return build_url_at_origin(base_url, path_segments, query);
+    }
+
+    let mut root = base_url.clone();
+    let last_segment = root
+        .path_segments()
+        .ok_or(TransportError::InvalidRoute)?
+        .rfind(|segment| !segment.is_empty());
+    if last_segment != Some("v1") {
+        return Err(TransportError::InvalidRoute);
+    }
+    root.path_segments_mut()
+        .map_err(|()| TransportError::InvalidRoute)?
+        .pop_if_empty()
+        .pop();
+    build_url_at_origin(&root, path_segments, query)
 }
 
 impl ApiTransport for VenmoHttpTransport {

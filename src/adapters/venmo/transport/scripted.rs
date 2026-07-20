@@ -7,7 +7,9 @@ use zeroize::Zeroizing;
 
 use super::client::parse_trusted_next_link_at_origin;
 use super::error::{TransportBuildError, TransportError};
-use super::request::{HttpRequest, OperationClass, RequestCredentials, ResponseCapture};
+use super::request::{
+    ApiEndpoint, HttpRequest, OperationClass, RequestCredentials, ResponseCapture,
+};
 use super::response::HttpResponse;
 use super::{ApiTransport, PRODUCTION_API_BASE};
 
@@ -119,6 +121,7 @@ pub(in crate::adapters::venmo) struct ScriptedRequest {
     form_body: Option<ScriptedJsonBody>,
     operation: OperationClass,
     response_capture: ResponseCapture,
+    endpoint: ApiEndpoint,
 }
 
 impl ScriptedRequest {
@@ -145,6 +148,7 @@ impl ScriptedRequest {
                 .map(|body| ScriptedJsonBody { bytes: body.bytes }),
             operation: request.operation,
             response_capture: request.response_capture,
+            endpoint: request.endpoint,
         }
     }
 
@@ -178,6 +182,7 @@ impl ScriptedRequest {
             form_body: None,
             operation,
             response_capture,
+            endpoint: ApiEndpoint::V1,
         }
     }
 
@@ -209,6 +214,7 @@ impl ScriptedRequest {
             }),
             operation,
             response_capture: ResponseCapture::None,
+            endpoint: ApiEndpoint::V1,
         }
     }
 }
@@ -231,6 +237,7 @@ impl fmt::Debug for ScriptedRequest {
             .field("form_body", &self.form_body)
             .field("operation", &self.operation)
             .field("response_capture", &self.response_capture)
+            .field("endpoint", &self.endpoint)
             .finish()
     }
 }

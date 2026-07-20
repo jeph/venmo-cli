@@ -13,8 +13,10 @@ pub(super) use activity::{
 };
 pub(super) use auth::{AccountEnvelope, PasswordLoginRequest, SmsOtpRequest};
 pub(super) use payments::{
-    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentRequest,
-    CreatedPaymentEnvelope, PaymentEnvelope, PaymentRecordDto, PaymentsEnvelope,
+    BlankSourceEligibilityEnvelope, BlankSourceEligibilityRequest, CreatePaymentMetadata,
+    CreatePaymentRequest, CreatedPaymentEnvelope, IssuePaymentOtpAction, IssuePaymentOtpEnvelope,
+    PaymentEnvelope, PaymentOtpGraphQlRequest, PaymentOtpGraphQlVariables, PaymentOtpInput,
+    PaymentRecordDto, PaymentsEnvelope, VerifyPaymentOtpAction, VerifyPaymentOtpEnvelope,
 };
 pub(super) use people::{
     FriendMutationEnvelope, FriendsEnvelope, UserDto, UserEnvelope, UsersEnvelope,
