@@ -5,4 +5,4 @@ expression: "String::from_utf8(external_result)?"
 Accepted request ID: request-1
 Paid requester: @requester (Synthetic\nrequester)
 Amount: $1.00
-Submitted backup method ID: bank-1
+Submitted funding source ID: bank-1

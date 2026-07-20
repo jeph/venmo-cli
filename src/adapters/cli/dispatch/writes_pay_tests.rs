@@ -17,7 +17,8 @@ use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::{
     BlankSourceEligibility, BlankSourceEligibilityApi, CreatedPayment, DefaultNoConfirmation,
     EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi, PaymentId, PeerFundingApi,
-    PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+    PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSourceSelection,
+    PeerFundingSources,
 };
 use crate::features::people::{
     User, UserLookupApi, UserProfileKind, UserSearchApi, UserSearchPage, UserSearchPageRequest,
@@ -63,7 +64,8 @@ struct PayPlanCall {
     recipient_user_id: String,
     amount_cents: u64,
     note: String,
-    backup_method_id: String,
+    funding_source_id: String,
+    funding_source_selection: PeerFundingSourceSelection,
     eligibility_fee_cents: u64,
     visibility: Visibility,
 }
@@ -76,7 +78,8 @@ impl From<&PayPlan> for PayPlanCall {
             recipient_user_id: plan.recipient().user_id().to_string(),
             amount_cents: plan.amount().cents(),
             note: plan.note().as_str().to_owned(),
-            backup_method_id: plan.backup_method().method().id().to_string(),
+            funding_source_id: plan.funding_source().method().id().to_string(),
+            funding_source_selection: plan.funding_source_selection(),
             eligibility_fee_cents: plan.eligibility_fee_cents(),
             visibility: plan.visibility(),
         }
@@ -391,16 +394,19 @@ impl BalanceApi for FakePayApi {
 impl PeerFundingApi for FakePayApi {
     type Error = FakeApiError;
 
-    fn peer_funding_methods<'a>(
+    fn peer_funding_sources<'a>(
         &'a self,
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
+    ) -> impl Future<Output = Result<PeerFundingSources, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(PayCall::FundingMethods);
         ready(match next_api_step(&self.script.funding_methods) {
-            ApiStep::Success => funding_method()
-                .map(|method| vec![method])
-                .map_err(|_| FakeApiError),
+            ApiStep::Success => match (balance_funding_method(), funding_method()) {
+                (Ok(balance), Ok(external)) => {
+                    Ok(PeerFundingSources::new(Some(balance), vec![external]))
+                }
+                _ => Err(FakeApiError),
+            },
             ApiStep::Failure => Err(FakeApiError),
         })
     }

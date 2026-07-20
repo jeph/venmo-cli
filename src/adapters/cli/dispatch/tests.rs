@@ -318,7 +318,7 @@ async fn every_service_command_can_reach_the_typed_executor_without_production_s
             TerminalCapabilities::new(false, false),
         ),
         (
-            &["venmo", "pay", "methods"][..],
+            &["venmo", "pay", "options"][..],
             TerminalCapabilities::new(false, false),
         ),
         (

@@ -8,7 +8,8 @@ mod validation;
 
 pub(crate) use model::{
     CreatedPayment, EligibilityToken, FinancialStatus, PayPlan, PaymentId, PeerFundingFee,
-    PeerFundingMethod, PeerFundingRole,
+    PeerFundingMethod, PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection,
+    PeerFundingSources,
 };
 pub(crate) use ports::DefaultNoConfirmation;
 pub(crate) use ports::{

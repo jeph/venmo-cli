@@ -5,8 +5,8 @@ pub(super) fn pay_args() -> TestResult<PayUserArgs> {
     match cli.command {
         Command::Pay(args) => match args.operation {
             PayOperation::User(args) => Ok(args),
-            PayOperation::Methods => {
-                Err(io::Error::other("pay-user arguments parsed as pay methods").into())
+            PayOperation::Options => {
+                Err(io::Error::other("pay-user arguments parsed as pay options").into())
             }
         },
         _ => Err(io::Error::other("pay arguments parsed as another command").into()),
@@ -65,6 +65,16 @@ pub(super) fn funding_method() -> TestResult<PeerFundingMethod> {
     ))
 }
 
+pub(super) fn balance_funding_method() -> TestResult<PaymentMethod> {
+    Ok(PaymentMethod::new(
+        PaymentMethodId::from_str("balance-1")?,
+        Some("Venmo balance".to_owned()),
+        Some("balance".to_owned()),
+        None,
+        true,
+    ))
+}
+
 pub(super) fn fixed_request_id() -> ClientRequestId {
     match ClientRequestId::from_str(REQUEST_ID) {
         Ok(request_id) => request_id,
@@ -87,8 +97,8 @@ pub(super) const PAY_DETAILS: &str = concat!(
     "  Note: Synthetic payment\n",
     "  Requested audience: private\n",
     "  Available Venmo balance: $3.00\n",
-    "  Submitted backup method: Synthetic bank (bank ending 1234, ID bank-1)\n",
-    "  Submitted method fee: unknown\n",
+    "  Funding source selection: automatic\n",
+    "  Submitted funding source: Venmo balance (balance, ID balance-1)\n",
     "  Eligibility-reported fee: $0.00\n",
     "  Eligibility-reported total: $0.01\n",
 );
@@ -100,5 +110,5 @@ pub(super) const PAY_RESULT: &str = concat!(
     "Amount: $0.01\n",
     "Requested audience: private\n",
     "Eligibility-reported fee: $0.00\n",
-    "Submitted backup method ID: bank-1\n",
+    "Submitted funding source ID: balance-1\n",
 );

@@ -193,7 +193,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             amount: &amount,
             note: plan.note().as_str(),
             eligibility_token: plan.eligibility_token().expose(),
-            funding_source_id: plan.backup_method().method().id().as_str(),
+            funding_source_id: plan.funding_source().method().id().as_str(),
         })
         .map_err(|_| VenmoApiError::RequestEncoding {
             operation: PAYMENT_CREATION_OPERATION,

@@ -2,9 +2,9 @@
 source: tests/cli.rs
 expression: help
 ---
-List payment methods and copyable IDs
+List payment options and copyable source IDs
 
-Usage: methods
+Usage: options
 
 Options:
   -h, --help

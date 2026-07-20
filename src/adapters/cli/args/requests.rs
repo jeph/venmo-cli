@@ -2,6 +2,7 @@ use clap::{Args, Subcommand, ValueEnum};
 
 use crate::features::people::RecipientInput;
 use crate::features::requests::{RequestDirectionFilter, RequestId, RequestsBefore};
+use crate::features::wallet::PaymentMethodId;
 use crate::shared::{Limit, Money, Note};
 
 use super::parsers::{RedactedRequestIdParser, RedactedRequestsBeforeParser};
@@ -92,12 +93,16 @@ pub struct RequestArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "Acceptance is an unprotected personal payment by default. `--protect` explicitly turns on Venmo Purchase Protection; Venmo deducts its disclosed seller fee from the amount the recipient receives. Acceptance uses available Venmo balance when it covers an unprotected request. Otherwise it automatically selects the unique default or sole eligible external peer method. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
+    after_long_help = "Acceptance is an unprotected personal payment by default. Without `--source`, it uses a peer-eligible Venmo balance source when available balance covers the request; otherwise it selects the unique default or sole eligible external peer method. `--source` submits that exact peer-eligible balance, bank, or card ID and never silently substitutes another source. Any explicit source or `--protect` uses the modern approval route. `--protect` turns on Venmo Purchase Protection; Venmo deducts its disclosed seller fee from the amount the recipient receives. Confirmation defaults to No. Financial exit code 3 means the acceptance outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
 )]
 pub struct AcceptArgs {
     /// Canonical incoming request ID.
     #[arg(value_name = "REQUEST_ID", value_parser = RedactedRequestIdParser)]
     pub request_id: RequestId,
+
+    /// Peer-eligible source ID from `venmo pay options`.
+    #[arg(long, value_name = "SOURCE_ID")]
+    pub source: Option<PaymentMethodId>,
 
     /// Turn on Purchase Protection; its seller fee is deducted from recipient proceeds.
     #[arg(long)]

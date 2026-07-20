@@ -31,6 +31,7 @@ use crate::features::auth::{
 use crate::features::payments::{
     BlankSourceEligibilityApi, EligibilityToken, FinancialStatus, PayPlan, PaymentCreationApi,
     PaymentId, PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+    PeerFundingSource, PeerFundingSourceSelection,
 };
 use crate::features::people::{
     FriendsApi, FriendsPageRequest, FriendshipMutationApi, FriendshipStatus, User, UserLookupApi,
@@ -630,7 +631,8 @@ fn pay_plan_with_visibility(visibility: Visibility) -> Result<PayPlan, Box<dyn E
             SignedUsdAmount::from_cents(0),
             SignedUsdAmount::from_cents(0),
         ),
-        zero_fee_peer_method()?,
+        PeerFundingSource::external(zero_fee_peer_method()?),
+        PeerFundingSourceSelection::Automatic,
         0,
         EligibilityToken::parse_owned("synthetic-eligibility-token".to_owned())?,
         visibility,
@@ -690,9 +692,10 @@ fn source_funded_unprotected_accept_plan() -> Result<AcceptRequestPlan, Box<dyn 
             SignedUsdAmount::from_cents(0),
         ),
     )
-    .with_external_funding(
+    .with_modern_funding(
         RequestNotificationId::from_str("notification-1")?,
-        zero_fee_peer_method()?,
+        PeerFundingSource::external(zero_fee_peer_method()?),
+        PeerFundingSourceSelection::Automatic,
         EligibilityToken::parse_owned("synthetic-approval-token".to_owned())?,
         RequestApprovalFees::omitted(),
         false,
@@ -710,9 +713,10 @@ fn source_funded_accept_plan_with_fees(
             SignedUsdAmount::from_cents(0),
         ),
     )
-    .with_external_funding(
+    .with_modern_funding(
         RequestNotificationId::from_str("notification-1")?,
-        zero_fee_peer_method()?,
+        PeerFundingSource::external(zero_fee_peer_method()?),
+        PeerFundingSourceSelection::Automatic,
         EligibilityToken::parse_owned("synthetic-approval-token".to_owned())?,
         fees,
         true,

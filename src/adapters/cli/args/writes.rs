@@ -1,6 +1,7 @@
 use clap::{Args, Subcommand, ValueEnum};
 
 use crate::features::people::RecipientInput;
+use crate::features::wallet::PaymentMethodId;
 use crate::shared::{Money, Note, Visibility};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
@@ -29,8 +30,8 @@ pub struct PayArgs {
 
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum PayOperation {
-    /// List payment methods and copyable IDs.
-    Methods,
+    /// List payment options and copyable source IDs.
+    Options,
 
     /// Pay one person.
     User(PayUserArgs),
@@ -38,7 +39,7 @@ pub enum PayOperation {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app."
+    after_long_help = "Without `--source`, payment uses a peer-eligible Venmo balance source when the available balance covers the amount; otherwise it selects the unique default or sole eligible external peer method. `--source` submits that exact peer-eligible balance, bank, or card ID and never silently substitutes another source. Financial exit code 3 means the payment outcome must be verified independently. Do not retry; check `activity list` and the official Venmo app."
 )]
 pub struct PayUserArgs {
     /// Exact username with an optional leading @.
@@ -52,6 +53,10 @@ pub struct PayUserArgs {
     /// Non-empty payment note.
     #[arg(value_name = "NOTE")]
     pub note: Note,
+
+    /// Peer-eligible source ID from `venmo pay options`.
+    #[arg(long, value_name = "SOURCE_ID")]
+    pub source: Option<PaymentMethodId>,
 
     /// Visibility of the created payment.
     #[arg(long, value_enum, default_value_t = VisibilityArg::Private)]

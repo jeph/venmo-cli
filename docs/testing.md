@@ -122,15 +122,18 @@ relationship-state selection, default-No and `--yes`, interruption ties, post-tr
 ambiguity, and authoritative user-detail reconciliation. Tests must leave an unexpected second
 mutation response unconsumed to prove there is no retry.
 
-Request-acceptance coverage proves both funding branches and explicit protection. Sufficient balance
-must skip payment methods and approval eligibility before the legacy action-only write only for an
-unprotected acceptance. Every shortfall and every `--protect` plan must first resolve exactly one
+Request-acceptance coverage proves both funding branches, explicit source selection, and explicit
+protection. Sufficient balance must skip payment methods and approval eligibility before the legacy
+action-only write only for a default unprotected acceptance. Every shortfall, explicit `--source`,
+and `--protect` plan must first resolve exactly one
 unacknowledged notification by matching its nested payment ID to the canonical pending-request ID,
-retain the top-level notification ID, then select
-the exact unique default-or-sole external method, bind source eligibility to the authoritative
-requester/amount/note/method, reject denial/missing token/malformed or overflowing fee data before
-writing, and send one modern source-funded approval to that notification ID. Missing, duplicate,
-invalid, and oversized notification responses fail before funding selection. Unprotected plans must omit returned fees.
+retain the top-level notification ID, then select sufficient balance, the exact requested
+peer-eligible balance/bank/card source, or the unique default-or-sole external method. Tests bind
+source eligibility to the authoritative requester/amount/note/source, reject unavailable explicit
+sources and insufficient explicit balance, reject denial/missing token/malformed or overflowing fee
+data before writing, and send one modern source-funded approval to that notification ID. Missing,
+duplicate, invalid, and oversized notification responses fail before funding selection.
+Unprotected plans must omit returned fees.
 Protected plans must reject a fee above the request amount, submit normalized fee records, and show
 the estimated seller deduction plus recipient proceeds without increasing the payer amount. Webview
 or malformed success is ambiguous and never retried.

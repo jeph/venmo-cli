@@ -11,7 +11,8 @@ use super::*;
 use crate::features::auth::{PromptAvailability, PromptError};
 use crate::features::payments::{
     BlankSourceEligibility, EligibilityToken, FinancialStatus, FinancialValidationError, PaymentId,
-    PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+    PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSource,
+    PeerFundingSourceSelection, PeerFundingSources,
 };
 use crate::features::people::recipients::RecipientResolutionFailureKind;
 use crate::features::people::{

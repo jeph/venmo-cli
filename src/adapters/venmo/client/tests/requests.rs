@@ -359,7 +359,7 @@ async fn request_approval_eligibility_uses_source_bound_form_and_preserves_empty
     let (client, transport) = scripted_client([Ok(response)])?;
     let (token, device_id) = test_session()?;
     let requester = financial_user("456", "requester")?;
-    let funding = zero_fee_peer_method()?;
+    let funding = PeerFundingSource::external(zero_fee_peer_method()?);
 
     let result = client
         .request_approval_eligibility(
@@ -425,7 +425,7 @@ async fn request_approval_eligibility_accepts_and_totals_valid_fees() -> TestRes
     let (client, transport) = scripted_client([Ok(response)])?;
     let (token, device_id) = test_session()?;
     let requester = financial_user("456", "requester")?;
-    let funding = zero_fee_peer_method()?;
+    let funding = PeerFundingSource::external(zero_fee_peer_method()?);
 
     let result = client
         .request_approval_eligibility(&token, &device_id, &requester, 125, "Dinner", &funding)
@@ -494,7 +494,7 @@ async fn request_approval_eligibility_rejects_denial_missing_token_and_invalid_f
     ];
     let (token, device_id) = test_session()?;
     let requester = financial_user("456", "requester")?;
-    let funding = zero_fee_peer_method()?;
+    let funding = PeerFundingSource::external(zero_fee_peer_method()?);
 
     for (body, expected_error) in cases {
         let response = scripted_json_response(200, body)?;

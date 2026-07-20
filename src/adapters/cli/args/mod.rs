@@ -47,7 +47,7 @@ pub enum Command {
     /// Validate and manage the stored Venmo bearer token.
     Auth(AuthArgs),
 
-    /// Pay users or inspect payment methods.
+    /// Pay users or inspect payment options.
     Pay(PayArgs),
 
     /// Inspect and manage friends of the active account.

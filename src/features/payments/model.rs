@@ -86,6 +86,92 @@ impl fmt::Debug for PeerFundingMethod {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PeerFundingSourceSelection {
+    Automatic,
+    Explicit,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum PeerFundingSource {
+    Balance(PaymentMethod),
+    External(PeerFundingMethod),
+}
+
+impl PeerFundingSource {
+    #[must_use]
+    pub const fn balance(method: PaymentMethod) -> Self {
+        Self::Balance(method)
+    }
+
+    #[must_use]
+    pub const fn external(method: PeerFundingMethod) -> Self {
+        Self::External(method)
+    }
+
+    #[must_use]
+    pub const fn method(&self) -> &PaymentMethod {
+        match self {
+            Self::Balance(method) => method,
+            Self::External(method) => method.method(),
+        }
+    }
+
+    #[must_use]
+    pub const fn external_method(&self) -> Option<&PeerFundingMethod> {
+        match self {
+            Self::Balance(_) => None,
+            Self::External(method) => Some(method),
+        }
+    }
+
+    #[must_use]
+    pub const fn is_balance(&self) -> bool {
+        matches!(self, Self::Balance(_))
+    }
+}
+
+impl fmt::Debug for PeerFundingSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Balance(_) => "PeerFundingSource::Balance([REDACTED])",
+            Self::External(_) => "PeerFundingSource::External([REDACTED])",
+        })
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct PeerFundingSources {
+    balance: Option<PaymentMethod>,
+    external: Vec<PeerFundingMethod>,
+}
+
+impl PeerFundingSources {
+    #[must_use]
+    pub(crate) const fn new(
+        balance: Option<PaymentMethod>,
+        external: Vec<PeerFundingMethod>,
+    ) -> Self {
+        Self { balance, external }
+    }
+
+    #[must_use]
+    pub const fn balance(&self) -> Option<&PaymentMethod> {
+        self.balance.as_ref()
+    }
+
+    #[must_use]
+    pub fn external(&self) -> &[PeerFundingMethod] {
+        &self.external
+    }
+}
+
+impl fmt::Debug for PeerFundingSources {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PeerFundingSources([REDACTED])")
+    }
+}
+
 #[derive(Eq, PartialEq)]
 pub struct EligibilityToken(Zeroizing<String>);
 
@@ -180,7 +266,8 @@ pub struct PayPlan {
     amount: Money,
     note: Note,
     balance: Balance,
-    backup_method: PeerFundingMethod,
+    funding_source: PeerFundingSource,
+    funding_source_selection: PeerFundingSourceSelection,
     eligibility_fee_cents: u64,
     eligibility_token: EligibilityToken,
     visibility: Visibility,
@@ -196,7 +283,8 @@ impl PayPlan {
         amount: Money,
         note: Note,
         balance: Balance,
-        backup_method: PeerFundingMethod,
+        funding_source: PeerFundingSource,
+        funding_source_selection: PeerFundingSourceSelection,
         eligibility_fee_cents: u64,
         eligibility_token: EligibilityToken,
         visibility: Visibility,
@@ -208,7 +296,8 @@ impl PayPlan {
             amount,
             note,
             balance,
-            backup_method,
+            funding_source,
+            funding_source_selection,
             eligibility_fee_cents,
             eligibility_token,
             visibility,
@@ -246,8 +335,13 @@ impl PayPlan {
     }
 
     #[must_use]
-    pub const fn backup_method(&self) -> &PeerFundingMethod {
-        &self.backup_method
+    pub const fn funding_source(&self) -> &PeerFundingSource {
+        &self.funding_source
+    }
+
+    #[must_use]
+    pub const fn funding_source_selection(&self) -> PeerFundingSourceSelection {
+        self.funding_source_selection
     }
 
     #[must_use]

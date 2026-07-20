@@ -156,10 +156,17 @@ constructing either argument struct directly must select a value, normally
 corresponding requested, frontend-neutral `Visibility` through `visibility()`; it does not claim
 the eventual audience Venmo applies after participant privacy settings.
 
+`PayUserArgs` and `AcceptArgs` expose a public `source: Option<PaymentMethodId>` field. `None`
+preserves automatic balance/default-or-sole-external selection; `Some` requests one exact
+peer-eligible balance, bank, or card source. `PayOperation::Options` is the read-only payment-option
+leaf that supplies copyable candidate IDs. The former `PayOperation::Methods` variant and
+`venmo pay methods` spelling are intentionally not retained as aliases.
+
 ## Initial 0.0.1 surface
 
-Version 0.0.1 exposes grouped `PayOperation::Methods` and `PayOperation::User`, read-only transfer
-options, and guarded standard-bank `TransferOperation::Out` with typed exact/all amount selection.
+Version 0.0.1 exposes grouped `PayOperation::Options` and `PayOperation::User`, matching
+`TransferOperation::Options` plus guarded standard-bank `TransferOperation::Out` with typed
+exact/all amount selection.
 It intentionally does not expose
 inbound transfers. Library callers cannot invoke private adapter internals or bypass preflight,
 confirmation, ambiguity, and no-retry policy.

@@ -197,7 +197,7 @@ where
             }
         },
         Command::Pay(args) => match args.operation {
-            PayOperation::Methods => {
+            PayOperation::Options => {
                 let (store, api) = provider.credential_store_and_api()?;
                 reads::run_payment_methods(&store, &api, stdout).await
             }

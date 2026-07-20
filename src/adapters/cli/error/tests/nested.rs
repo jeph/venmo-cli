@@ -132,6 +132,18 @@ fn nested_financial_failure_variants_have_deliberate_classes() {
             FundingSelectionError::AmbiguousAutomaticSelection,
             ApplicationFailureKind::Usage,
         ),
+        (
+            FundingSelectionError::RequestedSourceUnavailable,
+            ApplicationFailureKind::Usage,
+        ),
+        (
+            FundingSelectionError::RequestedBalanceInsufficient,
+            ApplicationFailureKind::Usage,
+        ),
+        (
+            FundingSelectionError::MissingBalanceSource,
+            ApplicationFailureKind::ApiContract,
+        ),
     ];
     for (error, expected) in funding {
         assert_eq!(error.failure_kind(), expected, "{error:?}");

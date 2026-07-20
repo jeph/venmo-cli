@@ -34,6 +34,9 @@ pub(super) enum FundingFailure {
     DuplicateMethodIds,
     MultipleDefaults,
     AmbiguousAutomaticSelection,
+    RequestedSourceUnavailable,
+    RequestedBalanceInsufficient,
+    MissingBalanceSource,
 }
 
 impl From<&FundingSelectionError> for FundingFailure {
@@ -43,6 +46,11 @@ impl From<&FundingSelectionError> for FundingFailure {
             FundingSelectionError::DuplicateMethodIds => Self::DuplicateMethodIds,
             FundingSelectionError::MultipleDefaults => Self::MultipleDefaults,
             FundingSelectionError::AmbiguousAutomaticSelection => Self::AmbiguousAutomaticSelection,
+            FundingSelectionError::RequestedSourceUnavailable => Self::RequestedSourceUnavailable,
+            FundingSelectionError::RequestedBalanceInsufficient => {
+                Self::RequestedBalanceInsufficient
+            }
+            FundingSelectionError::MissingBalanceSource => Self::MissingBalanceSource,
         }
     }
 }

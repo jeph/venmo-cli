@@ -13,8 +13,8 @@ Request acceptance details:
   Current request status: pending
   Created: 1969-12-31T16:00:00
   Available Venmo balance: $0.00
-  Funding plan: external backup method
-  Submitted backup method: Synthetic bank (bank ending 1234, ID bank-1)
+  Funding source selection: automatic
+  Submitted funding source: Synthetic bank (bank ending 1234, ID bank-1)
   Submitted method fee: unknown
   Estimated purchase-protection seller fee: $0.25
   Estimated recipient proceeds: $0.75

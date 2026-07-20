@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use serde_json::Value;
 
-use crate::features::payments::{EligibilityToken, FinancialStatus, PaymentId, PeerFundingMethod};
+use crate::features::payments::{EligibilityToken, FinancialStatus, PaymentId, PeerFundingSource};
 use crate::features::people::User;
 use crate::features::requests::{
     AcceptRequestPlan, AcceptedRequest, CreateRequestPlan, CreatedRequest, DeclineRequestPlan,
@@ -248,7 +248,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         device_id: &DeviceId,
         plan: &AcceptRequestPlan,
     ) -> Result<AcceptedRequest, VenmoApiError> {
-        if plan.uses_external_funding() {
+        if plan.uses_modern_funding() {
             return self
                 .accept_source_funded_request(access_token, device_id, plan)
                 .await;
@@ -329,7 +329,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         requester: &User,
         amount_cents: u64,
         note: &str,
-        funding: &PeerFundingMethod,
+        funding: &PeerFundingSource,
     ) -> Result<RequestApprovalEligibility, VenmoApiError> {
         let amount = amount_cents.to_string();
         let body = FormBody::pairs(&[
@@ -384,9 +384,11 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         device_id: &DeviceId,
         plan: &AcceptRequestPlan,
     ) -> Result<AcceptedRequest, VenmoApiError> {
-        let funding = plan.backup_method().ok_or(VenmoApiError::RequestEncoding {
-            operation: REQUEST_ACCEPTANCE_OPERATION,
-        })?;
+        let funding = plan
+            .funding_source()
+            .ok_or(VenmoApiError::RequestEncoding {
+                operation: REQUEST_ACCEPTANCE_OPERATION,
+            })?;
         let token = plan
             .eligibility_token()
             .ok_or(VenmoApiError::RequestEncoding {
@@ -654,7 +656,7 @@ impl<T: ApiTransport> RequestApprovalEligibilityApi for VenmoApiClient<T> {
         requester: &'a User,
         amount_cents: u64,
         note: &'a str,
-        funding: &'a PeerFundingMethod,
+        funding: &'a PeerFundingSource,
     ) -> impl Future<Output = Result<RequestApprovalEligibility, Self::Error>> + Send + 'a {
         self.fetch_request_approval_eligibility(
             access_token,

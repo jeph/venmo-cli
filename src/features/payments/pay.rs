@@ -9,7 +9,7 @@ use super::{
 };
 use crate::features::auth::{CurrentAccountApi, PromptError, prompt_failure_kind};
 use crate::features::people::{RecipientInput, UserLookupApi, UserSearchApi};
-use crate::features::wallet::BalanceApi;
+use crate::features::wallet::{BalanceApi, PaymentMethodId};
 use crate::shared::{
     ApiFailure, ApiOperationFailure, ApplicationFailureKind, ClientRequestIdGenerator,
     CredentialEnvelope, CredentialReader, Money, Note, Visibility,
@@ -115,6 +115,25 @@ impl PayError {
 #[derive(Debug)]
 pub(crate) struct AuthorizedPay(PreparedPay);
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PayOptions<'a> {
+    requested_source: Option<&'a PaymentMethodId>,
+    visibility: Visibility,
+}
+
+impl<'a> PayOptions<'a> {
+    #[must_use]
+    pub(crate) const fn new(
+        requested_source: Option<&'a PaymentMethodId>,
+        visibility: Visibility,
+    ) -> Self {
+        Self {
+            requested_source,
+            visibility,
+        }
+    }
+}
+
 pub(crate) async fn prepare<R, A, G>(
     credentials: &R,
     api: &A,
@@ -122,7 +141,7 @@ pub(crate) async fn prepare<R, A, G>(
     recipient: &RecipientInput,
     amount: Money,
     note: Note,
-    visibility: Visibility,
+    options: PayOptions<'_>,
 ) -> Result<PreparedPay, PayError>
 where
     R: CredentialReader,
@@ -144,13 +163,14 @@ where
         .map_err(|source| PayError::Balance {
             source: ApiOperationFailure::new(source),
         })?;
-    let methods = api
-        .peer_funding_methods(credential.access_token(), credential.device_id())
+    let sources = api
+        .peer_funding_sources(credential.access_token(), credential.device_id())
         .await
         .map_err(|source| PayError::FundingMethods {
             source: ApiOperationFailure::new(source),
         })?;
-    let funding = funding::select(&methods)?;
+    let (funding_source, funding_source_selection) =
+        funding::select_source(&sources, &balance, amount, options.requested_source)?.into_parts();
     let eligibility = api
         .blank_source_eligibility(
             credential.access_token(),
@@ -171,10 +191,11 @@ where
         amount,
         note,
         balance,
-        funding,
+        funding_source,
+        funding_source_selection,
         eligibility_fee_cents,
         eligibility.into_token(),
-        visibility,
+        options.visibility,
     );
     Ok(PreparedPay::new(credential, plan))
 }

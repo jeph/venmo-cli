@@ -53,6 +53,7 @@ where
     M: FnOnce() -> Result<S, AppError>,
     S: Future<Output = Result<(), AppError>>,
 {
+    let options = pay::PayOptions::new(args.source.as_ref(), args.visibility.into());
     let prepared = pay::prepare(
         store,
         api,
@@ -60,7 +61,7 @@ where
         &args.recipient,
         args.amount,
         args.note,
-        args.visibility.into(),
+        options,
     )
     .await?;
     write_and_flush(stderr, &prepared, output::write_pay_details)?;
@@ -142,8 +143,14 @@ where
     M: FnOnce() -> Result<S, AppError>,
     S: Future<Output = Result<(), AppError>>,
 {
-    let prepared =
-        accept::prepare_with_protection(store, api, &args.request_id, args.protect).await?;
+    let prepared = accept::prepare_with_protection(
+        store,
+        api,
+        &args.request_id,
+        args.source.as_ref(),
+        args.protect,
+    )
+    .await?;
     write_and_flush(stderr, &prepared, |writer, prepared| {
         output::write_accept_details(writer, prepared, timestamps)
     })?;

@@ -14,7 +14,7 @@ pub use crate::features::activity::model::{
 };
 pub use crate::features::payments::model::{
     CreatedPayment, FinancialStatus, PayPlan, PaymentId, PeerFundingFee, PeerFundingMethod,
-    PeerFundingRole,
+    PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection, PeerFundingSources,
 };
 pub use crate::features::payments::pay::PayResult;
 pub use crate::features::people::friends::FriendsResult;

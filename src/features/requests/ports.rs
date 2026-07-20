@@ -3,7 +3,7 @@ use super::{
     DeclinedRequest, RequestApprovalFees, RequestId, RequestNotificationId, RequestRecord,
     RequestsBefore,
 };
-use crate::features::payments::{EligibilityToken, PeerFundingMethod};
+use crate::features::payments::{EligibilityToken, PeerFundingSource};
 use crate::features::people::User;
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, UserId};
 use std::future::Future;
@@ -58,7 +58,7 @@ pub(crate) trait RequestApprovalEligibilityApi {
         requester: &'a User,
         amount_cents: u64,
         note: &'a str,
-        funding: &'a PeerFundingMethod,
+        funding: &'a PeerFundingSource,
     ) -> impl Future<Output = Result<RequestApprovalEligibility, Self::Error>> + Send + 'a;
 }
 

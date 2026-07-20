@@ -228,14 +228,16 @@ fn pay_rejects_removed_from_option() {
 }
 
 #[test]
-fn pay_methods_and_user_have_exact_grouped_grammar() {
-    let methods = Cli::try_parse_from(["venmo", "pay", "methods"]);
-    assert!(methods.is_ok_and(|cli| matches!(
+fn pay_options_and_user_have_exact_grouped_grammar() {
+    let options = Cli::try_parse_from(["venmo", "pay", "options"]);
+    assert!(options.is_ok_and(|cli| matches!(
         cli.command,
-        Command::Pay(args) if matches!(args.operation, PayOperation::Methods)
+        Command::Pay(args) if matches!(args.operation, PayOperation::Options)
     )));
 
-    let user = Cli::try_parse_from(["venmo", "pay", "user", "@alice", "12.34", "Dinner", "--yes"]);
+    let user = Cli::try_parse_from([
+        "venmo", "pay", "user", "@alice", "12.34", "Dinner", "--source", "bank-1", "--yes",
+    ]);
     assert!(user.is_ok_and(|cli| matches!(
         cli.command,
         Command::Pay(args)
@@ -244,6 +246,7 @@ fn pay_methods_and_user_have_exact_grouped_grammar() {
                 PayOperation::User(user)
                     if user.amount.cents() == 1_234
                         && user.note.as_str() == "Dinner"
+                        && user.source.as_ref().is_some_and(|id| id.as_str() == "bank-1")
                         && user.yes
             )
     )));
@@ -251,7 +254,8 @@ fn pay_methods_and_user_have_exact_grouped_grammar() {
     for arguments in [
         &["venmo", "payment-methods", "list"][..],
         &["venmo", "pay", "@alice", "1.00", "Dinner"][..],
-        &["venmo", "pay", "methods", "list"][..],
+        &["venmo", "pay", "methods"][..],
+        &["venmo", "pay", "options", "list"][..],
     ] {
         assert_rejected(arguments);
     }
@@ -277,20 +281,26 @@ fn grouped_accept_and_decline_have_distinct_minimal_arguments() {
         "requests",
         "accept",
         "request-123",
+        "--source",
+        "bank-1",
         "--protect",
         "--yes",
     ]);
     assert!(accept.is_ok_and(|cli| matches!(
         cli.command,
         Command::Requests(args)
-            if matches!(&args.operation, RequestsOperation::Accept(args) if args.yes && args.protect)
+            if matches!(&args.operation, RequestsOperation::Accept(args)
+                if args.yes
+                    && args.protect
+                    && args.source.as_ref().is_some_and(|id| id.as_str() == "bank-1"))
     )));
 
     let unprotected = Cli::try_parse_from(["venmo", "requests", "accept", "request-123"]);
     assert!(unprotected.is_ok_and(|cli| matches!(
         cli.command,
         Command::Requests(args)
-            if matches!(&args.operation, RequestsOperation::Accept(args) if !args.yes && !args.protect)
+            if matches!(&args.operation, RequestsOperation::Accept(args)
+                if !args.yes && !args.protect && args.source.is_none())
     )));
 
     let decline = Cli::try_parse_from(["venmo", "requests", "decline", "request-123"]);
@@ -319,11 +329,22 @@ fn grouped_accept_and_decline_have_distinct_minimal_arguments() {
     assert_rejected(&[
         "venmo",
         "requests",
+        "decline",
+        "request-123",
+        "--source",
+        "bank-1",
+    ]);
+    assert_rejected(&[
+        "venmo",
+        "requests",
         "create",
         "alice",
         "1.00",
         "Dinner",
         "--protect",
+    ]);
+    assert_rejected(&[
+        "venmo", "requests", "create", "alice", "1.00", "Dinner", "--source", "bank-1",
     ]);
 }
 
@@ -734,7 +755,7 @@ fn every_command_has_a_help_snapshot() {
         ("auth_logout", &["auth", "logout"]),
         ("auth_status", &["auth", "status"]),
         ("pay", &["pay"]),
-        ("pay_methods", &["pay", "methods"]),
+        ("pay_options", &["pay", "options"]),
         ("pay_user", &["pay", "user"]),
         ("friends", &["friends"]),
         ("friends_list", &["friends", "list"]),
@@ -785,7 +806,7 @@ fn request_visibility(cli: Cli) -> Option<VisibilityArg> {
     match cli.command {
         Command::Pay(args) => match args.operation {
             PayOperation::User(args) => Some(args.visibility),
-            PayOperation::Methods => None,
+            PayOperation::Options => None,
         },
         Command::Requests(args) => match args.operation {
             RequestsOperation::Create(args) => Some(args.visibility),

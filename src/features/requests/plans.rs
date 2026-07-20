@@ -1,6 +1,8 @@
 use std::fmt;
 
-use crate::features::payments::{EligibilityToken, FinancialStatus, PaymentId, PeerFundingMethod};
+use crate::features::payments::{
+    EligibilityToken, FinancialStatus, PaymentId, PeerFundingSource, PeerFundingSourceSelection,
+};
 use crate::features::people::User;
 use crate::features::wallet::Balance;
 use crate::shared::{Account, ClientRequestId, Money, Note, Visibility};
@@ -81,13 +83,14 @@ pub struct AcceptRequestPlan {
     account: Account,
     request: RequestRecord,
     balance: Balance,
-    external_funding: Option<ExternalAcceptFunding>,
+    modern_funding: Option<ModernAcceptFunding>,
 }
 
 #[derive(Eq, PartialEq)]
-struct ExternalAcceptFunding {
+struct ModernAcceptFunding {
     notification_id: RequestNotificationId,
-    method: PeerFundingMethod,
+    source: PeerFundingSource,
+    source_selection: PeerFundingSourceSelection,
     eligibility_token: EligibilityToken,
     fees: RequestApprovalFees,
     protected: bool,
@@ -214,23 +217,25 @@ impl AcceptRequestPlan {
             account,
             request,
             balance,
-            external_funding: None,
+            modern_funding: None,
         }
     }
 
     #[must_use]
-    pub(crate) fn with_external_funding(
+    pub(crate) fn with_modern_funding(
         self,
         notification_id: RequestNotificationId,
-        method: PeerFundingMethod,
+        source: PeerFundingSource,
+        source_selection: PeerFundingSourceSelection,
         eligibility_token: EligibilityToken,
         fees: RequestApprovalFees,
         protected: bool,
     ) -> Self {
         Self {
-            external_funding: Some(ExternalAcceptFunding {
+            modern_funding: Some(ModernAcceptFunding {
                 notification_id,
-                method,
+                source,
+                source_selection,
                 eligibility_token,
                 fees,
                 protected,
@@ -255,39 +260,44 @@ impl AcceptRequestPlan {
     }
 
     #[must_use]
-    pub fn backup_method(&self) -> Option<&PeerFundingMethod> {
-        self.external_funding
-            .as_ref()
-            .map(|funding| &funding.method)
+    pub fn funding_source(&self) -> Option<&PeerFundingSource> {
+        self.modern_funding.as_ref().map(|funding| &funding.source)
     }
 
     #[must_use]
-    pub const fn uses_external_funding(&self) -> bool {
-        self.external_funding.is_some()
+    pub fn funding_source_selection(&self) -> Option<PeerFundingSourceSelection> {
+        self.modern_funding
+            .as_ref()
+            .map(|funding| funding.source_selection)
+    }
+
+    #[must_use]
+    pub const fn uses_modern_funding(&self) -> bool {
+        self.modern_funding.is_some()
     }
 
     #[must_use]
     pub(crate) fn approval_notification_id(&self) -> Option<&RequestNotificationId> {
-        self.external_funding
+        self.modern_funding
             .as_ref()
             .map(|funding| &funding.notification_id)
     }
 
     #[must_use]
     pub(crate) fn eligibility_token(&self) -> Option<&EligibilityToken> {
-        self.external_funding
+        self.modern_funding
             .as_ref()
             .map(|funding| &funding.eligibility_token)
     }
 
     #[must_use]
     pub(crate) fn approval_fees(&self) -> Option<&RequestApprovalFees> {
-        self.external_funding.as_ref().map(|funding| &funding.fees)
+        self.modern_funding.as_ref().map(|funding| &funding.fees)
     }
 
     #[must_use]
     pub const fn approval_fee_cents(&self) -> Option<u64> {
-        match &self.external_funding {
+        match &self.modern_funding {
             Some(funding) if funding.protected => Some(funding.fees.total_cents()),
             Some(_) | None => None,
         }
@@ -295,7 +305,7 @@ impl AcceptRequestPlan {
 
     #[must_use]
     pub const fn is_purchase_protected(&self) -> bool {
-        match &self.external_funding {
+        match &self.modern_funding {
             Some(funding) => funding.protected,
             None => false,
         }

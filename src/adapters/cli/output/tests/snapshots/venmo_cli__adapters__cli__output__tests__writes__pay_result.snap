@@ -8,4 +8,4 @@ Recipient: @bob (Synthetic\nrecipient)
 Amount: $0.01
 Requested audience: private
 Eligibility-reported fee: $0.03
-Submitted backup method ID: bank-1
+Submitted funding source ID: bank-1

@@ -3,7 +3,7 @@ use std::future::Future;
 use std::str::FromStr;
 
 use crate::features::payments::{
-    PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole,
+    PeerFundingApi, PeerFundingFee, PeerFundingMethod, PeerFundingRole, PeerFundingSources,
 };
 use crate::features::wallet::{
     Balance, BalanceApi, PaymentMethod, PaymentMethodId, PaymentMethodsApi, SignedUsdAmount,
@@ -69,11 +69,11 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         Ok(Balance::new(available, on_hold))
     }
 
-    async fn fetch_peer_funding_methods(
+    async fn fetch_peer_funding_sources(
         &self,
         access_token: &AccessToken,
         device_id: &DeviceId,
-    ) -> Result<Vec<PeerFundingMethod>, VenmoApiError> {
+    ) -> Result<PeerFundingSources, VenmoApiError> {
         let response = self
             .transport
             .send_authenticated(
@@ -86,7 +86,7 @@ impl<T: ApiTransport> VenmoApiClient<T> {
             response,
             "the peer funding-method response did not match the supported envelope",
         )?;
-        map_peer_funding_methods(envelope.data.into_methods())
+        map_peer_funding_sources(envelope.data.into_methods())
     }
 }
 
@@ -105,12 +105,12 @@ impl<T: ApiTransport> PaymentMethodsApi for VenmoApiClient<T> {
 impl<T: ApiTransport> PeerFundingApi for VenmoApiClient<T> {
     type Error = VenmoApiError;
 
-    fn peer_funding_methods<'a>(
+    fn peer_funding_sources<'a>(
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
-        self.fetch_peer_funding_methods(access_token, device_id)
+    ) -> impl Future<Output = Result<PeerFundingSources, Self::Error>> + Send + 'a {
+        self.fetch_peer_funding_sources(access_token, device_id)
     }
 }
 
@@ -156,10 +156,11 @@ fn map_payment_methods(
     Ok(mapped)
 }
 
-fn map_peer_funding_methods(
+fn map_peer_funding_sources(
     methods: Vec<PaymentMethodDto>,
-) -> Result<Vec<PeerFundingMethod>, VenmoApiError> {
+) -> Result<PeerFundingSources, VenmoApiError> {
     let mut mapped = Vec::with_capacity(methods.len());
+    let mut balance = None;
     let mut ids = HashSet::with_capacity(methods.len());
     for method in methods {
         let PaymentMethodDto {
@@ -212,7 +213,22 @@ fn map_peer_funding_methods(
             .as_str()
             .to_ascii_lowercase();
         match funding_kind.as_str() {
-            "balance" => continue,
+            "balance" => {
+                if balance.is_some() {
+                    return Err(VenmoApiError::Contract {
+                        operation: PEER_FUNDING_OPERATION,
+                        problem: "the peer funding-method response contained multiple eligible Venmo balance sources",
+                    });
+                }
+                balance = Some(PaymentMethod::new(
+                    id,
+                    name.map(|value| value.into_string()),
+                    method_type.map(|value| value.into_string()),
+                    last_four.map(|value| value.into_string()),
+                    matches!(role, PeerFundingRole::Default),
+                ));
+                continue;
+            }
             "bank" | "card" => {}
             _ => {
                 return Err(VenmoApiError::Contract {
@@ -235,5 +251,5 @@ fn map_peer_funding_methods(
         );
         mapped.push(PeerFundingMethod::new(payment_method, role, fee));
     }
-    Ok(mapped)
+    Ok(PeerFundingSources::new(balance, mapped))
 }

@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use super::{CreatedPayment, EligibilityToken, PayPlan, PeerFundingMethod};
+use super::{CreatedPayment, EligibilityToken, PayPlan, PeerFundingSources};
 use crate::features::auth::{PromptAvailability, PromptError};
 use crate::features::people::User;
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Money, Note};
@@ -44,11 +44,11 @@ impl BlankSourceEligibility {
 pub(crate) trait PeerFundingApi {
     type Error: ApiFailure;
 
-    fn peer_funding_methods<'a>(
+    fn peer_funding_sources<'a>(
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a;
+    ) -> impl Future<Output = Result<PeerFundingSources, Self::Error>> + Send + 'a;
 }
 
 pub(crate) trait BlankSourceEligibilityApi {

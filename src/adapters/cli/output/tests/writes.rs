@@ -8,7 +8,7 @@ use super::super::{
 use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{
     CreatedPayment, EligibilityToken, FinancialStatus, PayPlan, PaymentId, PeerFundingFee,
-    PeerFundingMethod, PeerFundingRole,
+    PeerFundingMethod, PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection,
 };
 use crate::features::people::{User, UserProfileKind};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
@@ -210,7 +210,7 @@ fn synthetic_pay_plan_with_visibility(visibility: Visibility) -> Result<PayPlan,
             SignedUsdAmount::from_cents(0),
             SignedUsdAmount::from_cents(0),
         ),
-        PeerFundingMethod::new(
+        PeerFundingSource::external(PeerFundingMethod::new(
             PaymentMethod::new(
                 PaymentMethodId::from_str("bank-1")?,
                 Some("Synthetic bank".to_owned()),
@@ -220,7 +220,8 @@ fn synthetic_pay_plan_with_visibility(visibility: Visibility) -> Result<PayPlan,
             ),
             PeerFundingRole::Default,
             PeerFundingFee::Unknown,
-        ),
+        )),
+        PeerFundingSourceSelection::Automatic,
         3,
         EligibilityToken::parse_owned("synthetic-eligibility".to_owned())?,
         visibility,
@@ -303,9 +304,9 @@ fn synthetic_accept_plan_with_balance_and_amount(
 
 fn synthetic_external_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>> {
     Ok(
-        synthetic_accept_plan_with_balance_and_amount(0, 100)?.with_external_funding(
+        synthetic_accept_plan_with_balance_and_amount(0, 100)?.with_modern_funding(
             RequestNotificationId::from_str("notification-1")?,
-            PeerFundingMethod::new(
+            PeerFundingSource::external(PeerFundingMethod::new(
                 PaymentMethod::new(
                     PaymentMethodId::from_str("bank-1")?,
                     Some("Synthetic bank".to_owned()),
@@ -315,7 +316,8 @@ fn synthetic_external_accept_plan() -> Result<AcceptRequestPlan, Box<dyn Error>>
                 ),
                 PeerFundingRole::Default,
                 PeerFundingFee::Unknown,
-            ),
+            )),
+            PeerFundingSourceSelection::Automatic,
             EligibilityToken::parse_owned("synthetic-approval-eligibility".to_owned())?,
             RequestApprovalFees::present(
                 vec![RequestApprovalFee::new(

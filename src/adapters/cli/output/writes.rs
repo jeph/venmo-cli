@@ -1,7 +1,9 @@
 use std::io::{self, Write};
 
 use crate::features::payments::pay::{PayResult, PreparedPay};
-use crate::features::payments::{FinancialStatus, PeerFundingFee, PeerFundingMethod};
+use crate::features::payments::{
+    FinancialStatus, PeerFundingFee, PeerFundingSource, PeerFundingSourceSelection,
+};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
 use crate::features::requests::create::{PreparedRequest, RequestCreateResult};
 use crate::features::requests::decline::{DeclineResult, PreparedDecline};
@@ -39,8 +41,11 @@ pub(crate) fn write_pay_details<W: Write>(
         "  Available Venmo balance: {}",
         plan.balance().available()
     )?;
-    write_backup_method(writer, plan.backup_method())?;
-    write_method_fee(writer, plan.backup_method().fee())?;
+    write_source_selection(writer, plan.funding_source_selection())?;
+    write_funding_source(writer, plan.funding_source())?;
+    if let Some(method) = plan.funding_source().external_method() {
+        write_method_fee(writer, method.fee())?;
+    }
     writeln!(
         writer,
         "  Eligibility-reported fee: ${}",
@@ -80,8 +85,8 @@ pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> 
     )?;
     writeln!(
         writer,
-        "Submitted backup method ID: {}",
-        sanitize_terminal_text(result.plan().backup_method().method().id().as_str())
+        "Submitted funding source ID: {}",
+        sanitize_terminal_text(result.plan().funding_source().method().id().as_str())
     )
 }
 
@@ -191,10 +196,16 @@ pub(crate) fn write_accept_details<W: Write>(
         "  Available Venmo balance: {}",
         plan.balance().available()
     )?;
-    if let Some(method) = plan.backup_method() {
-        writeln!(writer, "  Funding plan: external backup method")?;
-        write_backup_method(writer, method)?;
-        write_method_fee(writer, method.fee())?;
+    if let Some(source) = plan.funding_source() {
+        write_source_selection(
+            writer,
+            plan.funding_source_selection()
+                .unwrap_or(PeerFundingSourceSelection::Automatic),
+        )?;
+        write_funding_source(writer, source)?;
+        if let Some(method) = source.external_method() {
+            write_method_fee(writer, method.fee())?;
+        }
         if plan.is_purchase_protected() {
             let fee_cents = plan.approval_fee_cents().unwrap_or(0);
             writeln!(
@@ -211,6 +222,7 @@ pub(crate) fn write_accept_details<W: Write>(
             Ok(())
         }
     } else {
+        write_source_selection(writer, PeerFundingSourceSelection::Automatic)?;
         writeln!(writer, "  Funding plan: available Venmo balance")
     }
 }
@@ -242,11 +254,11 @@ pub(crate) fn write_accept_result<W: Write>(
         ))
     )?;
     writeln!(writer, "Amount: ${}", result.plan().request().amount())?;
-    if let Some(method) = result.plan().backup_method() {
+    if let Some(source) = result.plan().funding_source() {
         writeln!(
             writer,
-            "Submitted backup method ID: {}",
-            sanitize_terminal_text(method.method().id().as_str())
+            "Submitted funding source ID: {}",
+            sanitize_terminal_text(source.method().id().as_str())
         )?;
     }
     Ok(())
@@ -325,8 +337,22 @@ pub(crate) fn write_decline_details<W: Write>(
     )
 }
 
-fn write_backup_method(writer: &mut impl Write, method: &PeerFundingMethod) -> io::Result<()> {
-    let method = method.method();
+fn write_source_selection(
+    writer: &mut impl Write,
+    selection: PeerFundingSourceSelection,
+) -> io::Result<()> {
+    writeln!(
+        writer,
+        "  Funding source selection: {}",
+        match selection {
+            PeerFundingSourceSelection::Automatic => "automatic",
+            PeerFundingSourceSelection::Explicit => "explicit",
+        }
+    )
+}
+
+fn write_funding_source(writer: &mut impl Write, source: &PeerFundingSource) -> io::Result<()> {
+    let method = source.method();
     let name = sanitize_terminal_text(method.name().unwrap_or("Payment method"));
     let method_type = sanitize_terminal_text(method.method_type().unwrap_or("unknown type"));
     let last_four = method
@@ -335,7 +361,7 @@ fn write_backup_method(writer: &mut impl Write, method: &PeerFundingMethod) -> i
         .unwrap_or_default();
     writeln!(
         writer,
-        "  Submitted backup method: {name} ({method_type}{last_four}, ID {})",
+        "  Submitted funding source: {name} ({method_type}{last_four}, ID {})",
         sanitize_terminal_text(method.id().as_str())
     )
 }

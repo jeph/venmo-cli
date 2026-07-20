@@ -70,33 +70,49 @@ async fn recipient_and_funding_contract_failures_never_reach_eligibility_or_writ
             PayFailure::Recipient(RecipientResolutionFailureKind::ApiContract),
         ),
         (
-            PayScript::successful()?.with_methods(Ok(vec![
-                peer_method(
-                    "duplicate",
-                    PeerFundingRole::Backup,
-                    PeerFundingFee::ProvenZero,
-                )?,
-                peer_method(
-                    "duplicate",
-                    PeerFundingRole::Backup,
-                    PeerFundingFee::ProvenZero,
-                )?,
-            ])),
+            PayScript::successful()?
+                .with_balance(Ok(Balance::new(
+                    SignedUsdAmount::from_cents(0),
+                    SignedUsdAmount::from_cents(0),
+                )))
+                .with_sources(Ok(peer_sources(
+                    None,
+                    vec![
+                        peer_method(
+                            "duplicate",
+                            PeerFundingRole::Backup,
+                            PeerFundingFee::ProvenZero,
+                        )?,
+                        peer_method(
+                            "duplicate",
+                            PeerFundingRole::Backup,
+                            PeerFundingFee::ProvenZero,
+                        )?,
+                    ],
+                ))),
             PayFailure::FundingSelection(FundingFailure::DuplicateMethodIds),
         ),
         (
-            PayScript::successful()?.with_methods(Ok(vec![
-                peer_method(
-                    "bank-1",
-                    PeerFundingRole::Backup,
-                    PeerFundingFee::ProvenZero,
-                )?,
-                peer_method(
-                    "bank-2",
-                    PeerFundingRole::Backup,
-                    PeerFundingFee::from_cents(1),
-                )?,
-            ])),
+            PayScript::successful()?
+                .with_balance(Ok(Balance::new(
+                    SignedUsdAmount::from_cents(0),
+                    SignedUsdAmount::from_cents(0),
+                )))
+                .with_sources(Ok(peer_sources(
+                    None,
+                    vec![
+                        peer_method(
+                            "bank-1",
+                            PeerFundingRole::Backup,
+                            PeerFundingFee::ProvenZero,
+                        )?,
+                        peer_method(
+                            "bank-2",
+                            PeerFundingRole::Backup,
+                            PeerFundingFee::from_cents(1),
+                        )?,
+                    ],
+                ))),
             PayFailure::FundingSelection(FundingFailure::AmbiguousAutomaticSelection),
         ),
     ] {
@@ -217,7 +233,7 @@ fn failure_case(
         ),
         FailureStage::FundingMethods => (
             ReaderScript::Present,
-            script.with_methods(Err(FakeApiError(ApiFailureKind::Contract))),
+            script.with_sources(Err(FakeApiError(ApiFailureKind::Contract))),
             PayFailure::FundingMethods(ApiFailureKind::Contract),
             6,
         ),

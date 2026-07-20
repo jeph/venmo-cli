@@ -16,7 +16,7 @@ use crate::features::payments::{
     DefaultNoConfirmation, FinancialValidationError, PeerFundingApi, validate_recipient,
 };
 use crate::features::people::UserLookupApi;
-use crate::features::wallet::BalanceApi;
+use crate::features::wallet::{BalanceApi, PaymentMethodId};
 use crate::shared::{
     ApiFailure, ApiOperationFailure, ApplicationFailureKind, CredentialEnvelope, CredentialReader,
 };
@@ -151,6 +151,7 @@ pub(crate) async fn prepare_with_protection<R, A>(
     credentials: &R,
     api: &A,
     request_id: &RequestId,
+    requested_source: Option<&PaymentMethodId>,
     protect: bool,
 ) -> Result<PreparedAccept, AcceptError>
 where
@@ -193,7 +194,7 @@ where
     let balance_covers_request = u64::try_from(balance.available().cents())
         .is_ok_and(|available_cents| available_cents >= request.amount().cents());
     let mut plan = AcceptRequestPlan::new(account, request, balance);
-    if protect || !balance_covers_request {
+    if protect || requested_source.is_some() || !balance_covers_request {
         let notification_id = api
             .request_approval_notification_id(
                 credential.access_token(),
@@ -204,13 +205,19 @@ where
             .map_err(|source| AcceptError::NotificationLookup {
                 source: ApiOperationFailure::new(source),
             })?;
-        let methods = api
-            .peer_funding_methods(credential.access_token(), credential.device_id())
+        let sources = api
+            .peer_funding_sources(credential.access_token(), credential.device_id())
             .await
             .map_err(|source| AcceptError::FundingMethods {
                 source: ApiOperationFailure::new(source),
             })?;
-        let funding = funding::select(&methods)?;
+        let (funding_source, funding_source_selection) = funding::select_source(
+            &sources,
+            plan.balance(),
+            plan.request().amount(),
+            requested_source,
+        )?
+        .into_parts();
         let note = plan
             .request()
             .note()
@@ -222,7 +229,7 @@ where
                 plan.request().counterparty(),
                 plan.request().amount().cents(),
                 note,
-                &funding,
+                &funding_source,
             )
             .await
             .map_err(|source| AcceptError::Eligibility {
@@ -237,8 +244,14 @@ where
         } else {
             RequestApprovalFees::omitted()
         };
-        plan =
-            plan.with_external_funding(notification_id, funding, eligibility_token, fees, protect);
+        plan = plan.with_modern_funding(
+            notification_id,
+            funding_source,
+            funding_source_selection,
+            eligibility_token,
+            fees,
+            protect,
+        );
     }
     Ok(PreparedAccept::new(credential, plan))
 }

@@ -51,8 +51,8 @@ The initial MCP release provides structured, read-only access to the already imp
 - Group request reads and writes under `venmo requests`: `list`, `create`, `accept`, `decline`, and `info`. Remove the former top-level `request`, `accept`, and `decline` forms without compatibility aliases.
 - Call transaction history `activity`.
 - Let `pay user` and `requests create` select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective. Do not add the option to request acceptance or decline.
-- Limit ordinary payment release to personal-profile peer-to-peer operations with a valid eligibility token. Allow any peer-eligible external method regardless of method-level or eligibility-reported fee, disclose available fee evidence before confirmation, and do not claim the final fee is proven. Acceptance defaults to an unprotected personal payment: it retains its live-validated balance-covered route or, on shortfall, selects the same unique default-or-sole external policy and omits returned fee records. Explicit `--protect` uses the modern route, strictly validates and submits bounded fee records, and displays the estimated seller deduction and recipient proceeds. Neither response proves the actual source or final fee beyond the eligibility response.
-- Choose the submitted peer-eligible external backup method internally: validate duplicate IDs and multiple defaults, choose the unique default regardless of fee, otherwise choose only a sole eligible method, and fail closed on multiple non-default methods. Never choose by response order or fee, and expose no user funding-method override. Venmo wallet balance may take priority; payment details must state that behavior and success output may name an actual source only when authoritative evidence proves it.
+- Limit ordinary payment release to personal-profile peer-to-peer operations with a valid eligibility token. Allow a peer-eligible Venmo balance, bank, or card source regardless of method-level or eligibility-reported fee, disclose available fee evidence before confirmation, and do not claim the final fee is proven. Acceptance defaults to an unprotected personal payment: it retains its live-validated legacy route only for automatic balance-covered acceptance; any shortfall, explicit `--source`, or `--protect` uses the modern route. Unprotected modern acceptance omits returned fee records. Explicit `--protect` strictly validates and submits bounded fee records and displays the estimated seller deduction and recipient proceeds. Neither response proves the actual source or final fee beyond the eligibility response.
+- Select the submitted peer source deterministically. Without `--source`, use the peer-eligible Venmo balance source when authoritative available balance covers the full amount; otherwise validate external duplicate IDs and defaults, choose the unique external default regardless of fee, choose only a sole eligible external method when no default exists, and fail closed on external ambiguity. `--source` must exactly match a peer-eligible balance, bank, or card ID from `pay options`; explicit balance must cover the full amount, and unknown or ineligible IDs fail before confirmation. Explicit selection never silently substitutes another source and does not require an automatic choice among other external methods. Never choose by response order or fee. Success output may name an actual source only when authoritative evidence proves it.
 - Require default-No confirmation for `pay user`, `requests create`, `requests accept`, and the destructive request-state change performed by `requests decline`.
 - Expose `--yes` only on `pay user` and all three request mutation commands, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or the details display.
 - Do not expose any `--dry-run` flags.
@@ -109,9 +109,9 @@ venmo auth login
 venmo auth logout
 venmo auth status
 
-venmo pay user <USERNAME> <AMOUNT> <NOTE> [--visibility <VISIBILITY>] [--yes]
+venmo pay user <USERNAME> <AMOUNT> <NOTE> [--source <SOURCE_ID>] [--visibility <VISIBILITY>] [--yes]
 venmo requests create <USERNAME> <AMOUNT> <NOTE> [--visibility <VISIBILITY>] [--yes]
-venmo requests accept <REQUEST_ID> [--protect] [--yes]
+venmo requests accept <REQUEST_ID> [--source <SOURCE_ID>] [--protect] [--yes]
 venmo requests decline <REQUEST_ID> [--yes]
 
 venmo friends list [--limit <N>] [--offset <N>]
@@ -119,7 +119,7 @@ venmo friends add <USERNAME> [--yes]
 venmo friends remove <USERNAME> [--yes]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
 venmo users info <USERNAME>
-venmo pay methods
+venmo pay options
 venmo balance
 
 venmo activity list [--user <USERNAME>] [--limit <N>] [--before-id <TOKEN>]
@@ -194,6 +194,7 @@ Proposed stable exit codes:
 ```text
 venmo pay user @alice 12.50 "Dinner"
 venmo pay user alice 12.50 "Dinner" --visibility friends --yes
+venmo pay user alice 12.50 "Dinner" --source bank-123 --yes
 ```
 
 Contract:
@@ -204,17 +205,17 @@ Contract:
 - Amount is a positive decimal with at most two fractional digits.
 - `<NOTE>` is a required positional argument and must contain non-whitespace text.
 - `--visibility` accepts exactly `private`, `friends`, or `public` and defaults to `private`.
-- Funding-method input is not exposed; `--from` is rejected.
+- `--source` accepts one exact peer-eligible balance, bank, or card ID listed by `venmo pay options`; `--from` is rejected.
 - `--yes` skips only confirmation; it does not skip validation or the payment-details display.
 
-Automatic funding-source policy:
+Funding-source policy:
 
-1. Validate the complete eligible set for duplicate IDs and multiple defaults.
-2. Choose the unique default, regardless of method-level fee or response position.
-3. If there is no default, choose the method only when exactly one eligible method exists.
-4. Otherwise fail closed with a Usage-class ambiguity error.
+1. Without `--source`, use the peer-eligible Venmo balance source when authoritative available balance covers the full amount.
+2. If automatic selection needs an external source, validate external duplicate IDs and multiple defaults, choose the unique default regardless of method-level fee or response position, or choose a sole external candidate when no default exists.
+3. Otherwise fail closed with a Usage-class ambiguity error.
+4. With `--source`, require an exact peer-eligible balance, bank, or card ID. Explicit balance must cover the full amount; unavailable or ineligible IDs fail before confirmation. Submit the requested source exactly without substitution.
 
-Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact external `bank`/`card` type; wallet balance, merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible backup source. Method-level fee evidence does not filter or rank those peer-eligible methods: proven-zero, known-nonzero, and unknown-fee methods may be submitted under the automatic policy. The transaction-specific blank-source eligibility call remains required for its token, but its fee is not used as a rejection gate or tiebreaker. Because that call sends an empty funding-source field, payment details display its reported fee separately from the internally selected method's fee evidence. Duplicate IDs, unknown peer roles, or multiple defaults are contract failures; multiple non-default methods are an ambiguity Usage error and send no write.
+Selection operates only on methods that the verified mobile contract identifies as eligible for peer payment. Writer-side selection preserves and interprets only the exact peer-payment role and exact `balance`, `bank`, or `card` type; merchant/default-transfer roles, unknown types, and substring matches cannot establish an eligible source. Method-level fee evidence does not filter or rank peer-eligible external methods: proven-zero, known-nonzero, and unknown-fee methods may be submitted. The transaction-specific blank-source eligibility call remains required for its token, but its fee is not used as a rejection gate or tiebreaker. Because that call sends an empty funding-source field, payment details display its reported fee separately from the selected external method's fee evidence. Duplicate IDs and unknown peer roles are contract failures. Multiple external defaults are a contract failure only when automatic external selection is required; multiple non-default external methods are then an ambiguity Usage error. Explicit external selection and automatic balance use do not need to resolve unrelated external-default ambiguity.
 
 Before confirmation, show:
 
@@ -222,10 +223,10 @@ Before confirmation, show:
 - Exact amount.
 - Note.
 - Requested audience.
-- Internally selected method fee evidence (`$0.00`, a known nonzero amount, or `unknown`).
+- Selected external-method fee evidence (`$0.00`, a known nonzero amount, or `unknown`) when applicable.
 - Eligibility-reported fee and corresponding total.
 - Current Venmo wallet balance when supplied by the verified preflight contract.
-- Submitted internally selected external backup payment method, including a safe label and ID.
+- Funding source selection (`automatic` or `explicit`) and the exact submitted balance, bank, or card source, including a safe label and ID.
 
 Confirmation defaults to **No**. Non-interactive execution without `--yes` is rejected.
 
@@ -249,24 +250,26 @@ The command shares recipient, amount, note, and preflight validation with `pay u
 - Rejects payment-only options and `--dry-run` instead of ignoring them.
 - Still performs at most one write and is never retried automatically.
 
-#### `venmo requests accept <REQUEST_ID> [--protect]`
+#### `venmo requests accept <REQUEST_ID> [--source <SOURCE_ID>] [--protect]`
 
 ```text
 venmo requests accept 123456789
+venmo requests accept 123456789 --source bank-123
 venmo requests accept 123456789 --protect
 venmo requests accept 123456789 --yes
 ```
 
-This is a financial write that pays exactly one existing incoming request. Available balance selects one of two immutable funding plans:
+This is a financial write that pays exactly one existing incoming request. Available balance and optional source selection produce one of two immutable funding plans:
 
 - `REQUEST_ID` is the canonical request identifier printed by `requests list`; its validated syntax must follow the verified API contract.
 - Fetches the server-side request record before prompting.
 - Requires the request to be pending, incoming, addressed to the authenticated account, and explicitly payable through the verified acceptance contract.
 - Rejects outgoing, completed, declined, cancelled, inaccessible, malformed, or wrong-account records before any write.
 - Takes no recipient, amount, or note arguments. The requester, amount, and note come only from the fetched request record and cannot be changed by this command.
-- Acceptance is unprotected by default. Full nonnegative balance coverage retains the live-validated action-only approval route.
-- Any negative, zero, or partial-balance shortfall first resolves exactly one unacknowledged notification whose nested payment ID equals `REQUEST_ID`, then loads peer-eligible external methods, chooses the unique default or otherwise sole candidate, and requires source-bound approval eligibility with a valid token. The modern write uses the notification's top-level ID; missing, duplicate, or malformed matches fail before funding selection or confirmation. Returned fee records are omitted from an unprotected approval. The CLI exposes no funding-method input.
-- `--protect` explicitly turns on Purchase Protection, forces the modern external/options route even when balance covers, and submits strictly validated fee records. The checked seller fee must not exceed the request amount.
+- Acceptance is unprotected by default. Full nonnegative balance coverage retains the live-validated action-only approval route only when `--source` and `--protect` are both absent.
+- Any negative, zero, or partial-balance shortfall, explicit `--source`, or `--protect` first resolves exactly one unacknowledged notification whose nested payment ID equals `REQUEST_ID`, then loads peer-eligible balance and external methods and applies the shared funding-source policy. The modern write uses the notification's top-level ID and the selected source exactly; missing, duplicate, or malformed notification matches, unavailable explicit sources, and insufficient explicit balance fail before confirmation. Returned fee records are omitted from an unprotected approval.
+- `--source` accepts one exact peer-eligible balance, bank, or card ID listed by `venmo pay options`, forces the modern route, and never silently substitutes another source.
+- `--protect` explicitly turns on Purchase Protection, forces the modern route even when balance covers, and submits strictly validated fee records. The checked seller fee must not exceed the request amount.
 - Requires a verified private audience and a personal, payable requester in the first release.
 - `--yes` skips only confirmation; it does not skip account, lookup, request-state, identity, audience, or balance validation.
 
@@ -276,8 +279,8 @@ Before confirmation, show:
 - Requester username and user ID, plus the display name when supplied by the authoritative user record.
 - Exact requested amount and sanitized note.
 - Request creation time when supplied by the verified contract.
-- Current available wallet balance and the selected balance or external-backup funding plan.
-- The sanitized selected backup method and its method-level fee evidence when the external branch is used.
+- Current available wallet balance, funding selection (`automatic` or `explicit`), and the selected balance or external funding plan.
+- The sanitized selected source and, for an external source, its method-level fee evidence when the modern branch is used.
 - For `--protect`, the estimated seller fee deducted from the recipient and estimated recipient proceeds. The fee is never added to the payer's amount.
 
 Confirmation defaults to **No**. Non-interactive execution without `--yes` is rejected. The acceptance operation must use a verified request-acceptance contract; it must not silently substitute an unrelated ordinary payment to the requester. A stale-state rejection is a confirmed failure, while a timeout or disconnect after possible transmission is an ambiguous financial outcome with exit code `3`.
@@ -386,12 +389,12 @@ All command-level username resolution is shared and fail-closed around the live-
 - No exact match within the bounded traversal is reported as username not found.
 - Username input is locally bounded to 1,023 bytes so the leading `@` plus username fits the 1,024-byte search-query bound.
 
-### 3.6 Payment methods and balance
+### 3.6 Payment and transfer options, and balance
 
-#### `venmo pay methods`
+#### `venmo pay options`
 
 - Lists method ID, safe display name, type, masked last four digits when available, and default status.
-- Provides inspectable method metadata, including IDs used internally in ordinary payment wire requests. Neither pay nor request acceptance exposes a funding-method option.
+- Provides inspectable method metadata, including peer-eligible IDs accepted by `pay user --source` and `requests accept --source` after feature-level validation.
 - Never displays full account or card numbers.
 
 #### `venmo balance`
@@ -622,10 +625,10 @@ Model request operations as exhaustive `RequestsOperation::List`, `Create`, `Acc
 Requirements:
 
 - Prefer typed fields and custom `FromStr` value types over parsing `Vec<String>` manually.
-- Model `PayOperation::Methods` and `PayOperation::User(PayUserArgs)` as exhaustive grouped operations, keeping payment-only fields out of the read-only methods branch.
+- Model `PayOperation::Options` and `PayOperation::User(PayUserArgs)` as exhaustive grouped operations, keeping payment-only fields out of the read-only options branch and matching `TransferOperation::Options` terminology.
 - Prove that `requests create @user ...`, `requests create <bare-or-numeric-username> ...`, `requests create @accept ...`, `requests accept <request-id>`, and `requests decline <request-id>` dispatch exactly as documented.
 - Reject removed top-level and mixed forms such as `request @user ...`, `accept <id>`, `decline <id>`, and `requests accept <id> <amount>`.
-- Reject `--from` everywhere; accept `--yes` only on `pay user`, `requests create`, `requests accept`, and `requests decline`, and reject it on `pay methods`.
+- Reject `--from` everywhere; accept `--yes` only on `pay user`, `requests create`, `requests accept`, and `requests decline`, and reject it on `pay options`.
 - Reject `--dry-run` everywhere; it is not part of the schema.
 - Use `ValueEnum` for request direction.
 - Put validation that depends only on one value in `clap` parsers.
@@ -772,9 +775,9 @@ This is not a reproducible pure-HTTP CLI contract. Before credential verificatio
 
 The raw capture was kept only in a mode-0700 temporary directory with mode-0600 files, never printed through agent output, and deleted immediately after local analysis; the temporary Chrome profile and all experimental capture code were also removed. The owner elected to rotate exposed login/session material after the experiment and should review official remembered-device and session controls.
 
-Immediately afterward, separate processes successfully used the mobile-issued token for `auth status`, `balance`, bounded `friends list`, bounded `users search`, `pay methods`, bounded `activity list`, and bounded `requests list`, with sensitive stdout discarded. This proves authentication compatibility across the implemented read-only adapters and native keychain reload. It does not establish token lifetime or authorize any financial-write contract; no financial mutation was attempted.
+Immediately afterward, separate processes successfully used the mobile-issued token for `auth status`, `balance`, bounded `friends list`, bounded `users search`, the payment-option listing now exposed as `pay options`, bounded `activity list`, and bounded `requests list`, with sensitive stdout discarded. This proves authentication compatibility across the implemented read-only adapters and native keychain reload. It does not establish token lifetime or authorize any financial-write contract; no financial mutation was attempted.
 
-The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and `pay methods` all succeeded. User search confirmed the inherited endpoint is fuzzy even for username-specific requests and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. Public single-token searches now intentionally normalize optional `@` spelling to the same `type=username` request, while multi-word searches remain general; the separate internal exhaustive traversal retains its fail-closed exact-match checks. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
+The same credential pair was then exercised against every currently implemented read-only API command. `auth status`, bounded `users search`, and the payment-option listing now exposed as `pay options` all succeeded. User search confirmed the inherited endpoint is fuzzy even for username-specific requests and can have more than ten matches; no ordering or exact-lookup guarantee may be inferred from the first result. Public single-token searches now intentionally normalize optional `@` spelling to the same `type=username` request, while multi-word searches remain general; the separate internal exhaustive traversal retains its fail-closed exact-match checks. Payment-method listing returned multiple method classes and one default-role indication, proving the current list shape but not transaction eligibility, fees, fallback, or actual funding behavior. Live output exposed a duplicated `@` rendering bug; it was fixed and regression-tested. No account identity, user result, payment-method identifier, institution name, or last-four value is retained here.
 
 The root Rust package implements `friends list`, `balance`, `activity list`, `activity info`, and `requests list` behind typed feature ports and strict response mapping. Their synthetic HTTP/feature/output test suites pass, and each command completed a read-only live smoke test with sensitive stdout suppressed.
 
@@ -1185,7 +1188,7 @@ The implementation targets the [MCP specification dated 2025-11-25](https://mode
 
 ### 10.1 Pagination policy
 
-Pagination applies to `friends list`, `users search`, `activity list`, and `requests list`. Single-resource commands and `pay methods` are not paginated unless Phase 0 proves that their verified endpoint requires it.
+Pagination applies to `friends list`, `users search`, `activity list`, and `requests list`. Single-resource commands and `pay options` are not paginated unless Phase 0 proves that their verified endpoint requires it.
 
 User-visible contract:
 
@@ -1259,12 +1262,12 @@ Before writing, and before the confirmation prompt for `pay user`:
 3. Parse the amount into checked integer cents.
 4. Validate the non-empty note.
 5. Verify a personal, payable, non-self recipient for the exact operation.
-6. Resolve the strictly peer-eligible backup funding method for `pay user` under the automatic fail-closed policy: validate duplicate IDs and multiple defaults; choose the unique default regardless of fee, otherwise choose only a sole eligible method, and never choose by response order or fee.
-7. Preserve the internally selected method's fee evidence and the eligibility-reported fee without rejecting zero, nonzero, or unknown fee states.
-8. Read the wallet balance required for the balance-priority disclosure.
+6. Read authoritative available Venmo balance and peer-eligible balance/bank/card sources. Without `--source`, choose sufficient balance or the unique default/sole external method; with `--source`, require and preserve that exact eligible source, including full coverage for explicit balance. Never choose by response order or fee.
+7. Preserve the selected external method's fee evidence, when applicable, and the eligibility-reported fee without rejecting zero, nonzero, or unknown fee states.
+8. Preserve whether funding selection was automatic or explicit and the exact submitted source ID.
 9. Build an immutable plan carrying the selected requested audience, which defaults to private.
 10. For `pay user`, render sanitized complete payment details including the requested audience,
-    method fee evidence, eligibility-reported fee and total, wallet balance, and backup method before
+    selection mode, selected source, applicable method fee evidence, eligibility-reported fee and total, and wallet balance before
     confirmation or immediate `--yes` execution.
 
 If any preflight step fails, send no write request.
@@ -1283,18 +1286,18 @@ Before prompting or writing:
 4. Verify that the record is incoming, pending, payable, and addressed to the authenticated account.
 5. Require complete, understood requester, amount, note, status, profile type, payability, and ownership fields; never guess missing safety-critical values. Until independently proven otherwise, only exact `pending` is payable and `held` is read-only data.
 6. Read authoritative available Venmo balance. Full nonnegative coverage selects the legacy
-   balance plan without payment-method or eligibility calls only for default unprotected acceptance.
-7. For any shortfall or explicit `--protect`, read unacknowledged notifications and require exactly
+   balance plan without payment-method or eligibility calls only for default unprotected acceptance with no explicit source.
+7. For any shortfall, explicit `--source`, or explicit `--protect`, read unacknowledged notifications and require exactly
    one valid top-level notification ID whose nested payment ID equals the authoritative request ID.
-8. Then read peer funding methods, apply the shared unique default-or-sole external selection
+8. Then read peer funding sources, apply the shared sufficient-balance/requested-source/unique-default-or-sole-external selection
    policy, and request source-bound approval eligibility for the exact requester,
-   amount, note, and method. Denial, missing token, malformed/oversized/unknown fee fields, a
+   amount, note, and source. An unavailable explicit source, insufficient explicit balance, denial, missing token, malformed/oversized/unknown fee fields, a
    negative percentage, or checked fee-total overflow sends no write. Valid zero or nonzero fee
    records are normalized; unprotected plans discard them, while protected plans retain them and
    reject a fee exceeding the request amount.
 9. Build an immutable acceptance plan tied to the fetched request ID/state, resolved notification
-   ID, and selected funding branch; callers cannot supply or override either ID or the method.
-10. Render the exact balance or external-backup funding plan before default-No confirmation. For
+   ID, selected source, and automatic/explicit selection mode; callers cannot supply or override either server-resolved ID.
+10. Render the exact balance or external funding plan before default-No confirmation. For
    `--protect`, show the estimated seller deduction and estimated recipient proceeds; never add the
    fee to the payer's amount.
 
@@ -1404,11 +1407,12 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Every command and subcommand.
 - Required recipient, amount, and note.
 - Grouped `requests create`/`accept`/`decline`, rejection of the removed top-level forms, and the valid `accept` or `@accept` recipient after `requests create`.
-- `--from` rejected by `pay user` and every other command; `--yes` accepted by `pay user`,
+- `--from` rejected by `pay user` and every other command; `--source` accepted only by `pay user`
+  and `requests accept` with a typed payment-method ID; `--yes` accepted by `pay user`,
   `requests accept`, `requests decline`, `friends add`, and `friends remove`, and rejected by
-  `pay methods`, `friends list`, and `requests create`.
+  `pay options`, `friends list`, and `requests create`.
 - `--dry-run` rejected by every command.
-- Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported funding arguments.
+- Request acceptance and decline each require one request ID and reject recipient, amount, note, and unsupported arguments; only acceptance accepts `--source` and `--protect`.
 - Absence of compatibility aliases for the removed top-level `request`, `accept`, and `decline` forms.
 - Direction enum.
 - Limit bounds.
@@ -1443,7 +1447,7 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Every public paginated feature flow makes exactly one source request, uses `--limit` as its page size, validates and buffers the page before output, preserves source continuation after local request-direction filtering, and rejects oversized/conflicting/no-progress pages.
 - The separate internal exact-recipient traversal remains limited to four 50-record pages/200 unique users and accepts no public continuation. Exhaustion is required for normal not-found; one exact match found at the bound still requires matching authoritative detail-by-ID before use.
 - Balance does not infer unsupported values.
-- Funding is displayed in details before confirmation or `--yes` execution: `pay user` shows its backup method, while `accept` shows either the available-balance plan or its automatically selected external backup and method-level fee evidence. Explicit `--protect` additionally shows the estimated seller deduction and recipient proceeds.
+- Funding is displayed in details before confirmation or `--yes` execution: `pay user` shows automatic/explicit selection and its exact submitted balance or external source; `accept` shows either the legacy available-balance plan or its modern submitted source, selection mode, and applicable external method-level fee evidence. Explicit `--protect` additionally shows the estimated seller deduction and recipient proceeds.
 - Cancelled `pay user`, request creation, acceptance, and decline prompts and all preflight failures send zero writes.
 - `pay user` and all three request mutations prompt default-No on a TTY and require `--yes` off a TTY.
 - The `dialoguer` adapter sends prompts to stderr, never echoes the bearer token, maps default Enter to No, and distinguishes cancellation from terminal failure.
@@ -1453,7 +1457,7 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Request acceptance uses the exact server-side requester, amount, note, and request ID rather than caller-supplied substitutes.
 - Only an incoming, pending request addressed to the active account can reach the acceptance write.
 - Outgoing, stale, settled, cancelled, declined, wrong-account, incomplete, and malformed request records send zero writes.
-- Unprotected request acceptance preserves the balance-covered route and resolves every shortfall through exact external-method selection plus source-bound eligibility before confirmation while omitting returned fee records. Explicit `--protect` forces the modern route, checks/displays/submits normalized fee records, and rejects malformed, overflowing, or greater-than-request fees before any write.
+- Unprotected request acceptance preserves the legacy balance-covered route only without `--source`; every shortfall or explicit source uses exact shared source selection plus source-bound eligibility before confirmation while omitting returned fee records. Explicit `--protect` forces the modern route, checks/displays/submits normalized fee records, and rejects malformed, overflowing, or greater-than-request fees before any write.
 - Request decline accepts only authoritative incoming exact-`pending` records, performs one `deny` write, and never sends funding fields or money.
 - Outgoing-request `cancel` and local-only dismissal semantics cannot satisfy decline.
 - A request-state conflict is reported as a confirmed failure; an uncertain transport outcome is classified as ambiguous and is not retried.
@@ -1585,7 +1589,7 @@ Required sections:
 6. `venmo auth login`, trust-device warnings, status, and local-only logout behavior.
 7. Friends and user-search examples, including server-page `--limit`, typed `--offset`, copyable next offsets, one-page behavior, and changing-dataset/no-snapshot semantics.
 8. Payment-method and balance examples.
-9. Grouped `pay methods`/`pay user` and `requests create`/`requests accept`/`requests decline` examples; automatic fail-closed payment and acceptance funding policies; rejection of funding-method input; and uniform default-No confirmation/`--yes` rules for `pay user` and all three request mutations.
+9. Grouped `pay options`/`pay user`, `transfer options`/`transfer out`, and `requests create`/`requests accept`/`requests decline` examples; automatic fail-closed and exact explicit `--source` payment/acceptance funding policies; rejection of source input elsewhere; and uniform default-No confirmation/`--yes` rules for `pay user` and all three request mutations.
 10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `requests accept` or `requests decline`.
 11. Ambiguous mutation recovery steps, including checking activity, request state, and the official app before any later operation.
 12. Troubleshooting guidance.
@@ -1709,13 +1713,13 @@ Deliverables:
 
 - `friends list`.
 - `users search`.
-- `pay methods`.
+- `pay options`.
 - `balance`.
 - Sanitized output and truthful pagination.
 
 Exit criteria:
 
-- Output provides recipient identifiers accepted by `pay user`/request creation and inspectable payment-method metadata; no command accepts a user funding-method ID, and acceptance never claims the unproven actual source or fee.
+- Output provides recipient identifiers accepted by `pay user`/request creation and inspectable payment-method metadata, including IDs accepted by the typed `--source` options after peer-eligibility validation; acceptance never claims the unproven actual debit source or fee.
 - No command silently truncates without saying so.
 - Public `--limit` is enforced as the one-request endpoint page size, and any validated native continuation is reported without describing the page as the complete collection.
 
@@ -1854,7 +1858,7 @@ Exit criteria:
 - Activity supports list and detail views usable for write reconciliation.
 - Pending requests are based on complete verified records and expose canonical IDs accepted by `requests accept` and `requests decline`.
 - Payment and request-acceptance confirmation follows recipient/request and operation-specific funding resolution; request creation and decline confirmation follows authoritative operation-specific preflight.
-- Only `pay user`, `requests create`, `requests accept`, and `requests decline` expose `--yes` or use mutation confirmation; `pay methods` does neither.
+- Only `pay user`, `requests create`, `requests accept`, and `requests decline` expose `--yes` or use mutation confirmation; `pay options` does neither.
 - No command exposes `--dry-run`.
 - `requests accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
 - `requests decline` validates an authoritative incoming pending record, sends no money, and proves that exact record reached the supported terminal server state.

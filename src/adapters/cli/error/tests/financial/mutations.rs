@@ -91,6 +91,18 @@ fn request_mutation_variants_have_deliberate_categories() {
             ErrorCategory::Usage,
         ),
         (
+            AppError::from(AcceptError::FundingSelection(
+                FundingSelectionError::RequestedBalanceInsufficient,
+            )),
+            ErrorCategory::Usage,
+        ),
+        (
+            AppError::from(AcceptError::FundingSelection(
+                FundingSelectionError::MissingBalanceSource,
+            )),
+            ErrorCategory::ApiContract,
+        ),
+        (
             AppError::from(AcceptError::Eligibility {
                 source: api_operation_failure(ApiFailureKind::Rejected),
             }),

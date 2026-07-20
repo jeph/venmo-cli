@@ -95,16 +95,16 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 1 | `auth login` | Password: **A1 → A5**. OTP: **A1 → A2 → A3 → A5**, verified local save, then **A4** (maximum 5). | Remote auth plus hidden identifier/password/fresh-device prompts and optional hidden OTP. |
 | 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
-| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
+| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1 → F1 → F2** (maximum 10). | Financial; exactly one **F2**. |
 | 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **F3** (maximum 7). | Financial; exactly one **F3** after default-No confirmation. |
-| 6 | `requests accept <REQUEST_ID> [--protect] [--yes]` | Common **A5 → R2 → P2 → W2**; unprotected covered balance then **F4** (5 total), otherwise **F4N → W1 → F4E → F4S** (8 total). | Financial; exactly one **F4** or **F4S** after default-No confirmation. `--protect` explicitly selects the modern branch even with balance coverage. |
+| 6 | `requests accept <REQUEST_ID> [--source SOURCE_ID] [--protect] [--yes]` | Common **A5 → R2 → P2 → W2**; default unprotected covered balance then **F4** (5 total), otherwise **F4N → W1 → F4E → F4S** (8 total). | Financial; exactly one **F4** or **F4S** after default-No confirmation. Any explicit source or `--protect` selects the modern branch even with balance coverage. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
 | 8 | `friends list [--limit N] [--offset N]` | **P3** once. | One page; stored self ID. |
 | 9 | `friends add <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P4**, then reconciling **P2** (maximum 8). | Relationship write; sends or accepts according to authoritative state. |
 | 10 | `friends remove <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P5**, then reconciling **P2** (maximum 8). | Relationship write; unfriends or cancels an outgoing request. |
 | 11 | `users search <QUERY> [--limit N] [--offset N]` | **P1** once. | One page. |
 | 12 | `users info <USERNAME>` | 1–4 × **P1** then **P2** (maximum 5). | Shared exact-username resolution followed by detail read. |
-| 13 | `pay methods` | **W1** once. | One read. |
+| 13 | `pay options` | **W1** once. | One read. |
 | 14 | `balance` | **W2** once. | One read. |
 | 15 | `activity list [--user USERNAME] [--limit N] [--before-id TOKEN]` | Self: **AC1** once. Other: 1–4 × **P1**, then **P2 → AC1** (maximum 6). | One page; direction relative to selected personal subject. |
 | 16 | `activity info <ACTIVITY_ID>` | **AC2** once. | One detail read. |
@@ -309,19 +309,25 @@ valid IDs and accepts optional `name`/`display_name`/`label`,
 `payment_method_role`, `peer_payment_role`, or `merchant_payment_role`
 case-insensitively contains `default`.
 
-The `pay user` consumer is stricter:
+The peer-funding consumer used by `pay user` and modern request acceptance is stricter:
 
 1. every method has exact case-insensitive `peer_payment_role` `default`, `backup`,
    or `none`; `none` is skipped and any unknown/omitted role fails the response;
-2. participating type is `balance`, `bank`, or `card`; balance is skipped and only
-   external bank/card is eligible; unknown participating types fail closed;
+2. participating type is `balance`, `bank`, or `card`; at most one peer-eligible
+   balance source is retained, external bank/card sources are retained with their
+   roles, and unknown participating types fail closed;
 3. IDs are valid and unique across the full response;
 4. method fee is proven only by `fee.calculated_fee_amount_in_cents` as JSON `u64`;
    otherwise it is unknown; and
-5. choose the unique eligible external default even with backup methods present. If
-   none is default, only a sole eligible external method is selected; multiple
-   no-default candidates are ambiguous. Multiple eligible external defaults fail.
-   Response order and fee never choose a source, and no CLI override exists.
+5. without `--source`, choose the balance source when authoritative available balance
+   covers the full amount. Otherwise choose the unique eligible external default even
+   with backup methods present; if none is default, only a sole eligible external
+   method is selected. Multiple no-default candidates are ambiguous and multiple
+   eligible external defaults fail. Response order and fee never choose a source; and
+6. `--source` must exactly match a retained peer-eligible balance, bank, or card ID.
+   An explicit balance source must cover the full amount. Unknown or ineligible IDs
+   fail before confirmation, and an explicit external source is not blocked by other
+   external defaults because no automatic external choice is needed.
 #### Activity story classes and viewed-user scope
 An activity has a valid top-level ID and exactly one non-null class:
 
@@ -432,7 +438,7 @@ POST /v1/payments
   "amount": <POSITIVE_USD_JSON_NUMBER>,
   "note": "<NOTE>",
   "eligibility_token": "<ELIGIBILITY_TOKEN>",
-  "funding_source_id": "<SELECTED_EXTERNAL_METHOD_ID>"
+  "funding_source_id": "<SELECTED_PEER_SOURCE_ID>"
 }
 ```
 
@@ -499,7 +505,7 @@ Content-Type: application/x-www-form-urlencoded
 ```
 
 Exact fields are `target_type=user_id`, requester `target_id`, `country_code=1`, positive
-integer-cent `amount`, request `note`, and selected external `funding_source_id`. This is distinct
+integer-cent `amount`, request `note`, and selected peer-source `funding_source_id`. This is distinct
 from F1's blank-source JSON payment eligibility. The response must prove `eligible: true` and
 provide a valid eligibility token. Optional `fees` is a bounded array of exact objects containing
 required bounded `product_uri`, `applied_to`, and `fee_token` strings, optional nonnegative integer
@@ -513,7 +519,7 @@ unknown fee field, or total overflow fails before approval.
 PUT /v1/requests/<NOTIFICATION_ID>
 ```
 
-The JSON body contains exact selected `funding_source_id`, F4E `eligibility_token`, and
+The JSON body contains the exact selected peer-source `funding_source_id`, F4E `eligibility_token`, and
 `metadata.quasi_cash_disclaimer_viewed: false`. An unprotected acceptance omits F4E fee records.
 Explicit `--protect` includes normalized validated `fees`, preserving omitted versus explicit
 empty. The checked fee may not exceed the request amount; terminal output treats it as Venmo's
@@ -559,12 +565,14 @@ equivalence.
 - Status is A5 validation, not token-presence inspection.
 ### 6.2 Financial workflows
 **Pay:** A5 validates self; recipient search/detail proves a nonself personal/payable
-user; W2 captures balance; strict W1 selects an external peer method; F1 either
+user; W2 captures balance; strict W1 supplies peer-eligible balance and external sources; the
+shared policy selects sufficient balance, the requested exact source, or the unique default/sole
+external source; F1 either
 confirms eligibility or denies it without F2. The CLI generates a UUID, renders and
 flushes validated payment details, then requires default-No confirmation unless `--yes`
 (noninteractive always needs `--yes`). It installs interruption protection before
-exactly one F2. W2 may coexist with an external backup; neither W1 nor F1 proves the
-final source/fee.
+exactly one F2. The selected source ID is submitted exactly, but neither W1, F1, nor
+the creation response proves the final debit source or fee.
 
 **Request:** A5 and recipient resolution build an immutable F3 plan. There is no W1, W2, F1,
 funding field, or balance gate. The CLI renders and flushes the account, recipient, amount, note,
@@ -574,9 +582,9 @@ requested audience, and create action, then requires default-No confirmation unl
 **Accept:** A5 and R2 prove an incoming exact-`pending`, exact-`private` request; P2 proves the
 requester personal/payable; W2 selects the acceptance branch. Full nonnegative coverage retains the
 live-validated F4 plan only for default unprotected acceptance. Any shortfall or explicit
-`--protect` first requires an exact F4N match, then loads W1, applies the same unique
-default-or-sole external peer method selection as pay, and requires F4E before building an F4S
-plan. Unprotected plans discard/omit returned fee records;
+`--source` or `--protect` first requires an exact F4N match, then loads W1, applies the same
+balance/requested-source/unique-default-or-sole-external selection policy as pay, and requires F4E
+before building an F4S plan. Unprotected plans discard/omit returned fee records;
 protected plans retain normalized records, reject a fee above the request amount, and display the
 estimated seller fee and recipient proceeds. Validated details are always flushed; unless `--yes`
 is supplied, default-No confirmation follows. Interruption protection is then installed and exactly
@@ -1089,7 +1097,7 @@ of §13 rather than duplicated here.
 | Compatibility User-Agent | Exact hard-coded value. | That server still requires it or that it is current. |
 | Natural pagination endings | First→second; friends exhaustion. | Natural search/activity/request ending. |
 | F4 balance response ID | Valid returned payment ID is enforced. | That response ID is necessarily distinct from request ID. F4S does not require an ID. |
-| F4/F4S funding | W2 branch selection; F4 action-only unprotected balance plan; signer-verified F4N/F4E/F4S notification ID, selected external source, and token; client-1 structure-only F4N read; one owner-run corrected unprotected F4S success; fee records omitted by default and normalized only for explicit `--protect`; exact synthetic protected/unprotected source bodies. | Actual debited source or final fee beyond the eligibility-reported amount; live protected F4S success; webview/SMS-step-up continuation. |
+| F4/F4S funding | W2 branch selection; F4 action-only default unprotected balance plan; signer-verified F4N/F4E/F4S notification ID, selected peer source, and token; exact automatic/explicit balance/bank/card selection tests; client-1 structure-only F4N read; one owner-run corrected unprotected F4S success; fee records omitted by default and normalized only for explicit `--protect`; exact synthetic protected/unprotected source bodies. | Actual debited source or final fee beyond the eligibility-reported amount; live validation of explicit source selection or protected F4S; webview/SMS-step-up continuation. |
 | Non-private decline | Audience-generic code, common supported-audience validation, and representative response-preservation tests. | An exact friends/public success fixture, independent current live proof, or every accepted envelope alternative being individually pinned. |
 | General mobile payment reads | Pending requests and activity. | `payments list`, settled PaymentId detail, or ActivityId substitution. |
 | Model limits | Existing leading-zero IDs, username matching, nonblank note, read-only role compatibility, 200-record resolution bound. | Normalization, stricter grammar/note limit, exact read-only role set, or global username uniqueness without evidence. |

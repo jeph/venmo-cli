@@ -120,7 +120,12 @@ async fn peer_funding_uses_only_peer_roles_and_explicit_fee_evidence() -> TestRe
         .await;
     let client = test_client(&server)?;
     let (token, device_id) = test_session()?;
-    let methods = client.peer_funding_methods(&token, &device_id).await?;
+    let sources = client.peer_funding_sources(&token, &device_id).await?;
+    let methods = sources.external();
+    assert_eq!(
+        sources.balance().map(|method| method.id().as_str()),
+        Some("balance-1")
+    );
     assert_eq!(methods.len(), 2);
     assert_eq!(methods[0].role(), PeerFundingRole::Backup);
     assert_eq!(methods[0].fee(), PeerFundingFee::ProvenZero);
@@ -144,6 +149,10 @@ async fn peer_funding_rejects_missing_unknown_or_duplicate_peer_contracts() -> T
             {"id": "one", "peer_payment_role": "none"},
             {"id": "one", "peer_payment_role": "backup"}
         ]}),
+        serde_json::json!({"data": [
+            {"id": "balance-1", "type": "balance", "peer_payment_role": "default"},
+            {"id": "balance-2", "type": "balance", "peer_payment_role": "backup"}
+        ]}),
     ] {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -153,7 +162,7 @@ async fn peer_funding_rejects_missing_unknown_or_duplicate_peer_contracts() -> T
             .await;
         let client = test_client(&server)?;
         let (token, device_id) = test_session()?;
-        let result = client.peer_funding_methods(&token, &device_id).await;
+        let result = client.peer_funding_sources(&token, &device_id).await;
         assert!(matches!(result, Err(VenmoApiError::Contract { .. })));
     }
     Ok(())
@@ -171,7 +180,8 @@ async fn peer_funding_preserves_an_unrecognized_method_fee_as_unknown() -> TestR
         .await;
     let client = test_client(&server)?;
     let (token, device_id) = test_session()?;
-    let methods = client.peer_funding_methods(&token, &device_id).await?;
+    let sources = client.peer_funding_sources(&token, &device_id).await?;
+    let methods = sources.external();
     assert_eq!(methods.len(), 1);
     assert_eq!(methods[0].fee(), PeerFundingFee::Unknown);
     Ok(())

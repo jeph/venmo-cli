@@ -16,7 +16,8 @@ use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
 use crate::features::payments::{
-    DefaultNoConfirmation, FinancialStatus, PaymentId, PeerFundingApi, PeerFundingMethod,
+    DefaultNoConfirmation, FinancialStatus, PaymentId, PeerFundingApi, PeerFundingSource,
+    PeerFundingSources,
 };
 use crate::features::people::{User, UserLookupApi, UserProfileKind};
 use crate::features::requests::{
@@ -62,7 +63,7 @@ struct AcceptPlanCall {
     note: Option<String>,
     audience: Option<String>,
     available_balance_cents: i64,
-    backup_method_id: Option<PaymentMethodId>,
+    funding_source_id: Option<PaymentMethodId>,
 }
 
 impl From<&AcceptRequestPlan> for AcceptPlanCall {
@@ -75,8 +76,8 @@ impl From<&AcceptRequestPlan> for AcceptPlanCall {
             note: plan.request().note().map(str::to_owned),
             audience: plan.request().audience().map(str::to_owned),
             available_balance_cents: plan.balance().available().cents(),
-            backup_method_id: plan
-                .backup_method()
+            funding_source_id: plan
+                .funding_source()
                 .map(|funding| funding.method().id().clone()),
         }
     }
@@ -387,11 +388,11 @@ impl BalanceApi for FakeAcceptApi {
 impl PeerFundingApi for FakeAcceptApi {
     type Error = FakeApiError;
 
-    fn peer_funding_methods<'a>(
+    fn peer_funding_sources<'a>(
         &'a self,
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
+    ) -> impl Future<Output = Result<PeerFundingSources, Self::Error>> + Send + 'a {
         self.transcript
             .borrow_mut()
             .push(AcceptCall::FundingMethods);
@@ -425,7 +426,7 @@ impl RequestApprovalEligibilityApi for FakeAcceptApi {
         _requester: &'a User,
         _amount_cents: u64,
         _note: &'a str,
-        _funding: &'a PeerFundingMethod,
+        _funding: &'a PeerFundingSource,
     ) -> impl Future<Output = Result<RequestApprovalEligibility, Self::Error>> + Send + 'a {
         self.transcript
             .borrow_mut()

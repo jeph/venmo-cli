@@ -21,7 +21,8 @@ pub(super) struct PayPlanCall {
     pub(super) amount: Money,
     pub(super) note: Note,
     pub(super) balance: Balance,
-    pub(super) backup_method: PeerFundingMethod,
+    pub(super) funding_source: PeerFundingSource,
+    pub(super) funding_source_selection: PeerFundingSourceSelection,
     pub(super) eligibility_fee_cents: u64,
     pub(super) eligibility_token: RedactedSecret,
     pub(super) visibility: Visibility,
@@ -36,7 +37,8 @@ impl From<&PayPlan> for PayPlanCall {
             amount: plan.amount(),
             note: plan.note().clone(),
             balance: plan.balance().clone(),
-            backup_method: plan.backup_method().clone(),
+            funding_source: plan.funding_source().clone(),
+            funding_source_selection: plan.funding_source_selection(),
             eligibility_fee_cents: plan.eligibility_fee_cents(),
             eligibility_token: RedactedSecret::Redacted,
             visibility: plan.visibility(),
@@ -157,7 +159,7 @@ pub(super) struct PayScript {
     search_user: User,
     user: Result<User, FakeApiError>,
     balance: Result<Balance, FakeApiError>,
-    methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    sources: Result<PeerFundingSources, FakeApiError>,
     eligibility: Result<BlankSourceEligibility, FakeApiError>,
     creation: Result<CreatedPayment, FakeApiError>,
 }
@@ -170,11 +172,14 @@ impl PayScript {
             search_user: user.clone(),
             user: Ok(user),
             balance: Ok(test_balance()),
-            methods: Ok(vec![peer_method(
-                "bank-1",
-                PeerFundingRole::Default,
-                PeerFundingFee::ProvenZero,
-            )?]),
+            sources: Ok(peer_sources(
+                Some(balance_method()?),
+                vec![peer_method(
+                    "bank-1",
+                    PeerFundingRole::Default,
+                    PeerFundingFee::ProvenZero,
+                )?],
+            )),
             eligibility: Ok(blank_eligibility(0)?),
             creation: Ok(created_payment()?),
         })
@@ -192,11 +197,8 @@ impl PayScript {
         Self { balance, ..self }
     }
 
-    pub(super) fn with_methods(
-        self,
-        methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
-    ) -> Self {
-        Self { methods, ..self }
+    pub(super) fn with_sources(self, sources: Result<PeerFundingSources, FakeApiError>) -> Self {
+        Self { sources, ..self }
     }
 
     pub(super) fn with_eligibility(
@@ -219,7 +221,7 @@ pub(super) struct FakeApi {
     search_user: User,
     user: Result<User, FakeApiError>,
     balance: Result<Balance, FakeApiError>,
-    methods: Result<Vec<PeerFundingMethod>, FakeApiError>,
+    sources: Result<PeerFundingSources, FakeApiError>,
     eligibility: RefCell<Option<Result<BlankSourceEligibility, FakeApiError>>>,
     creation: Result<CreatedPayment, FakeApiError>,
     transcript: Transcript,
@@ -232,7 +234,7 @@ impl FakeApi {
             search_user: script.search_user,
             user: script.user,
             balance: script.balance,
-            methods: script.methods,
+            sources: script.sources,
             eligibility: RefCell::new(Some(script.eligibility)),
             creation: script.creation,
             transcript,
@@ -312,15 +314,15 @@ impl BalanceApi for FakeApi {
 impl PeerFundingApi for FakeApi {
     type Error = FakeApiError;
 
-    fn peer_funding_methods<'a>(
+    fn peer_funding_sources<'a>(
         &'a self,
         _access_token: &'a AccessToken,
         _device_id: &'a DeviceId,
-    ) -> impl Future<Output = Result<Vec<PeerFundingMethod>, Self::Error>> + Send + 'a {
+    ) -> impl Future<Output = Result<PeerFundingSources, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(Call::FundingMethods {
             session: RedactedSecret::Redacted,
         });
-        ready(self.methods.clone())
+        ready(self.sources.clone())
     }
 }
 
@@ -475,7 +477,16 @@ pub(super) async fn run_pay_with_visibility(
             },
         ))
     })?;
-    let prepared = prepare(reader, api, generator, &recipient, amount, note, visibility).await?;
+    let prepared = prepare(
+        reader,
+        api,
+        generator,
+        &recipient,
+        amount,
+        note,
+        PayOptions::new(None, visibility),
+    )
+    .await?;
     let authorized = authorize(prompt, prepared, assume_yes)?;
     execute(api, authorized).await
 }
@@ -492,11 +503,7 @@ pub(super) fn successful_calls_with_fee(
     let recipient = financial_user()?;
     let account = test_account()?;
     let balance = test_balance();
-    let method = peer_method(
-        "bank-1",
-        PeerFundingRole::Default,
-        PeerFundingFee::ProvenZero,
-    )?;
+    let source = PeerFundingSource::balance(balance_method()?);
     Ok(vec![
         Call::ReadCredential,
         current_account_call(),
@@ -522,7 +529,8 @@ pub(super) fn successful_calls_with_fee(
                 amount,
                 note,
                 balance,
-                backup_method: method,
+                funding_source: source,
+                funding_source_selection: PeerFundingSourceSelection::Automatic,
                 eligibility_fee_cents,
                 eligibility_token: RedactedSecret::Redacted,
                 visibility: Visibility::Private,
@@ -627,6 +635,23 @@ pub(super) fn peer_method(
     ))
 }
 
+pub(super) fn balance_method() -> Result<PaymentMethod, Box<dyn Error>> {
+    Ok(PaymentMethod::new(
+        PaymentMethodId::from_str("balance-1")?,
+        Some("Venmo balance".to_owned()),
+        Some("balance".to_owned()),
+        None,
+        true,
+    ))
+}
+
+pub(super) const fn peer_sources(
+    balance: Option<PaymentMethod>,
+    external: Vec<PeerFundingMethod>,
+) -> PeerFundingSources {
+    PeerFundingSources::new(balance, external)
+}
+
 pub(super) fn blank_eligibility(fee_cents: u64) -> Result<BlankSourceEligibility, Box<dyn Error>> {
     Ok(BlankSourceEligibility::new(
         EligibilityToken::parse_owned(ELIGIBILITY_TOKEN.to_owned())?,
@@ -698,7 +723,7 @@ pub(super) fn pay_plan_with_fee_and_visibility(
     amount: Money,
     note: Note,
     balance: Balance,
-    method: PeerFundingMethod,
+    _method: PeerFundingMethod,
     eligibility_fee_cents: u64,
     visibility: Visibility,
 ) -> Result<PayPlan, Box<dyn Error>> {
@@ -709,7 +734,8 @@ pub(super) fn pay_plan_with_fee_and_visibility(
         amount,
         note,
         balance,
-        method,
+        PeerFundingSource::balance(balance_method()?),
+        PeerFundingSourceSelection::Automatic,
         eligibility_fee_cents,
         EligibilityToken::parse_owned(ELIGIBILITY_TOKEN.to_owned())?,
         visibility,
