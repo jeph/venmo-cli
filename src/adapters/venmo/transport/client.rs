@@ -14,7 +14,7 @@ use super::error::{
     classify_send_error,
 };
 use super::request::{ApiEndpoint, HttpRequest, RequestCredentials, ResponseCapture};
-use super::response::{HttpResponse, read_bounded_body};
+use super::response::{HttpResponse, ResponseDiagnostics, read_bounded_body};
 use super::{
     ApiTransport, CONNECT_TIMEOUT, DEVICE_ID_HEADER, ENGLISH_ACCEPT_LANGUAGE, FORM_CONTENT_TYPE,
     JSON_ACCEPT, JSON_CONTENT_TYPE, MAX_OTP_SECRET_HEADER_BYTES, MAX_RESPONSE_BYTES,
@@ -165,22 +165,32 @@ impl VenmoHttpTransport {
         let status = response.status();
         let otp_secret = match request.response_capture {
             ResponseCapture::None => None,
-            ResponseCapture::OtpSecret => {
-                capture_otp_secret(response.headers()).map_err(|failure| {
-                    classify_post_send_failure(request.operation, failure, self.response_limit)
-                })?
-            }
+            ResponseCapture::OtpSecret => match capture_otp_secret(response.headers()) {
+                Ok(otp_secret) => otp_secret,
+                Err(failure) => {
+                    trace_response_failure(
+                        request.method.as_str(),
+                        request.route_template,
+                        status.as_u16(),
+                        started_at,
+                        "response-headers",
+                    );
+                    return Err(classify_post_send_failure(
+                        request.operation,
+                        failure,
+                        self.response_limit,
+                    ));
+                }
+            },
         };
-        tracing::debug!(
-            http.method = request.method.as_str(),
-            http.route = request.route_template,
-            http.status = status.as_u16(),
-            http.duration_ms = duration_millis(started_at.elapsed()),
-            http.retry_count = 0_u8,
-            "Venmo API response"
-        );
-
         if status.is_redirection() {
+            trace_response_failure(
+                request.method.as_str(),
+                request.route_template,
+                status.as_u16(),
+                started_at,
+                "redirect",
+            );
             return Err(classify_post_send_failure(
                 request.operation,
                 PostSendFailure::Redirect,
@@ -188,11 +198,31 @@ impl VenmoHttpTransport {
             ));
         }
 
-        let body = read_bounded_body(response, self.response_limit)
-            .await
-            .map_err(|failure| {
-                classify_post_send_failure(request.operation, failure, self.response_limit)
-            })?;
+        let body = match read_bounded_body(response, self.response_limit).await {
+            Ok(body) => body,
+            Err(failure) => {
+                trace_response_failure(
+                    request.method.as_str(),
+                    request.route_template,
+                    status.as_u16(),
+                    started_at,
+                    "body-read",
+                );
+                return Err(classify_post_send_failure(
+                    request.operation,
+                    failure,
+                    self.response_limit,
+                ));
+            }
+        };
+        trace_response(
+            request.method.as_str(),
+            request.route_template,
+            status.as_u16(),
+            started_at,
+            &body,
+            credentials,
+        );
 
         Ok(HttpResponse {
             status,
@@ -428,6 +458,198 @@ fn trace_failure(method: &str, route_template: &str, started_at: Instant) {
     );
 }
 
+fn trace_response(
+    method: &str,
+    route_template: &str,
+    status: u16,
+    started_at: Instant,
+    body: &[u8],
+    credentials: RequestCredentials<'_>,
+) {
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    let redactions = credential_redactions(credentials);
+    let diagnostics = ResponseDiagnostics::from_body(body, &redactions);
+    tracing::debug!(
+        http.method = method,
+        http.route = route_template,
+        http.status = status,
+        http.duration_ms = duration_millis(started_at.elapsed()),
+        http.retry_count = 0_u8,
+        http.response_bytes = body.len(),
+        http.body_kind = diagnostics.body_kind,
+        venmo.error_code = ?diagnostics.error_code,
+        venmo.error_title = ?diagnostics.error_title,
+        venmo.error_message = ?diagnostics.error_message,
+        "Venmo API response"
+    );
+}
+
+fn trace_response_failure(
+    method: &str,
+    route_template: &str,
+    status: u16,
+    started_at: Instant,
+    stage: &'static str,
+) {
+    tracing::debug!(
+        http.method = method,
+        http.route = route_template,
+        http.status = status,
+        http.duration_ms = duration_millis(started_at.elapsed()),
+        http.retry_count = 0_u8,
+        failure.stage = stage,
+        "Venmo API response failure"
+    );
+}
+
+fn credential_redactions(credentials: RequestCredentials<'_>) -> [Option<&str>; 3] {
+    match credentials {
+        RequestCredentials::Authenticated(session) => [
+            Some(session.access_token.expose_secret()),
+            Some(session.device_id.as_str()),
+            None,
+        ],
+        RequestCredentials::Device(device_id) => [Some(device_id.as_str()), None, None],
+        RequestCredentials::OtpSecret {
+            device_id,
+            otp_secret,
+        } => [Some(device_id.as_str()), Some(otp_secret.expose()), None],
+        RequestCredentials::OtpCode {
+            device_id,
+            otp_secret,
+            otp_code,
+        } => [
+            Some(device_id.as_str()),
+            Some(otp_secret.expose()),
+            Some(otp_code.expose()),
+        ],
+    }
+}
+
 fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod debug_logging_tests {
+    use std::error::Error;
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+
+    use tracing::Level;
+    use tracing_subscriber::fmt::MakeWriter;
+
+    use super::*;
+    use crate::adapters::venmo::transport::request::ApiSession;
+    use crate::shared::{AccessToken, DeviceId};
+
+    type TestResult = Result<(), Box<dyn Error>>;
+
+    #[derive(Clone, Default)]
+    struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
+
+    struct CapturedWriterGuard(Arc<Mutex<Vec<u8>>>);
+
+    impl CapturedWriter {
+        fn rendered(&self) -> Result<String, Box<dyn Error>> {
+            let bytes = self
+                .0
+                .lock()
+                .map_err(|_| io::Error::other("captured debug output lock was poisoned"))?
+                .clone();
+            Ok(String::from_utf8(bytes)?)
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for CapturedWriter {
+        type Writer = CapturedWriterGuard;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            CapturedWriterGuard(Arc::clone(&self.0))
+        }
+    }
+
+    impl Write for CapturedWriterGuard {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .map_err(|_| io::Error::other("captured debug output lock was poisoned"))?
+                .extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn response_debug_event_exposes_only_bounded_safe_fields() -> TestResult {
+        let token = AccessToken::from_normalized_owned("private-token".to_owned())?;
+        let device_id = DeviceId::from_owned("private-device".to_owned())?;
+        let body = serde_json::to_vec(&serde_json::json!({
+            "error": {
+                "code": "10100",
+                "title": "Payment blocked",
+                "message": "private-token and private-device rejected OTP 123456 and source 123456789012"
+            },
+            "data": {
+                "note": "private-note",
+                "funding_source_id": "private-source",
+                "otp": "123456"
+            }
+        }))?;
+        let captured = CapturedWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(Level::DEBUG)
+            .with_writer(captured.clone())
+            .with_ansi(false)
+            .without_time()
+            .with_target(false)
+            .compact()
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            trace_response(
+                "POST",
+                "/payments",
+                403,
+                Instant::now(),
+                &body,
+                RequestCredentials::Authenticated(ApiSession::new(&token, &device_id)),
+            );
+        });
+        let rendered = captured.rendered()?;
+
+        for expected in [
+            "http.method=\"POST\"",
+            "http.route=\"/payments\"",
+            "http.status=403",
+            "http.retry_count=0",
+            "http.body_kind=\"json\"",
+            "10100",
+            "Payment blocked",
+            "[REDACTED] and [REDACTED] rejected OTP [REDACTED] and source [REDACTED]",
+        ] {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?}: {rendered}"
+            );
+        }
+        for private in [
+            "private-token",
+            "private-device",
+            "private-note",
+            "private-source",
+            "123456",
+        ] {
+            assert!(
+                !rendered.contains(private),
+                "exposed {private:?}: {rendered}"
+            );
+        }
+        Ok(())
+    }
 }

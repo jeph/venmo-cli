@@ -46,7 +46,7 @@ The initial MCP release provides structured, read-only access to the already imp
 - Support one recipient per new `pay user` or `requests create` invocation and one request ID per `requests accept` or `requests decline` invocation.
 - Ship `pay user`, request creation, request acceptance, and request decline as independently validated operations. `pay user` and request creation passed their dated contract, synthetic-test, controlled-live-validation, and reconciliation requirements on 2026-07-12. Balance-covered acceptance and decline passed their operation-specific synthetic and reconciled live validation on 2026-07-14. Unprotected external-funded acceptance is signer-verified, synthetically pinned, and owner-validated under client 1; protected approval, continuation, actual-source, and final-fee evidence gaps remain.
 - Keep terminal-capability policy inside private CLI production composition. The public facade exposes no terminal-capability value, and neither normal dispatch nor runtime-initialization fallback accepts caller-supplied terminal state. Prompt capability comes from the actual process; crate-private unit tests may inject synthetic terminal snapshots only while delegating to fake handlers.
-- Initialize verbose CLI logging only after service-free dispatch preconditions. Noninteractive login does not install the global subscriber. `requests accept` and `requests decline` follow normal delegated-command logging and runtime behavior. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
+- Initialize global `--debug` CLI logging only after service-free dispatch preconditions. Noninteractive login does not install the global subscriber. Every current and future delegated command passes through the same command-lifecycle logging boundary; `requests accept` and `requests decline` require no command-specific setup. Runtime construction remains the one unavoidable asynchronous bootstrap, and runtime-failure logout preserves local deletion semantics.
 - Normally limit controlled live mutations to $0.01 and reconcile each mutation before authorizing another. On 2026-07-14 the owner made a narrow exception for one existing legitimate $25 incoming request that the owner already owes: one `approve` attempt, no retries or field variation, full authoritative preflight and default-No confirmation, followed by immediate CLI and official-app reconciliation. This exception does not prove the final funding source or fee and does not authorize any other elevated-value test.
 - Group request reads and writes under `venmo requests`: `list`, `create`, `accept`, `decline`, and `info`. Remove the former top-level `request`, `accept`, and `decline` forms without compatibility aliases.
 - Call transaction history `activity`.
@@ -135,10 +135,11 @@ All request operations share the plural `requests` group. After the explicit `cr
 ### 3.1 Global behavior
 
 ```text
-venmo [--verbose] <COMMAND>
+venmo [--debug] <COMMAND>
 ```
 
-- `--verbose` writes redacted diagnostics to stderr.
+- `--debug` writes bounded diagnostics to stderr and is global at every command depth. It is
+  disabled by default. Removed `-v` and `--verbose` forms are rejected rather than aliased.
 - Data and successful results go to stdout.
 - Prompts, warnings, diagnostics, and errors go to stderr.
 - `--help` and `--version` must not touch the keychain or network.
@@ -615,9 +616,9 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[derive(Debug, Parser)]
 #[command(name = "venmo", version, about)]
 pub struct Cli {
-    /// Write redacted diagnostics to stderr.
-    #[arg(short, long, global = true)]
-    pub verbose: bool,
+    /// Write bounded debug diagnostics to stderr.
+    #[arg(long, global = true)]
+    pub debug: bool,
 
     #[command(subcommand)]
     pub command: Command,
@@ -1198,8 +1199,16 @@ The implementation targets the [MCP specification dated 2025-11-25](https://mode
 - Disable redirects, automatic referer generation, system/environment proxies, and gzip/Brotli/Zstandard/deflate decompression in the first release. A future proxy feature requires an explicit product/security decision because it exposes authenticated traffic to the configured proxy.
 - Use rustls with reqwest's native platform verifier. Do not enable native-tls or OpenSSL.
 - Disable every reqwest-layer retry, including protocol-NACK retries. A separately tested endpoint-aware layer may retry only verified idempotent reads.
-- Log route template, method, status, duration, retry count, and sanitized API code in verbose mode.
-- Never log authorization values, full device IDs, request notes, raw bodies, or credential payloads.
+- In `--debug` mode, centrally log a static command name plus route template, method, status,
+  duration, retry count, response byte count/type, sanitized API code, and bounded single-line root
+  error title/message or first GraphQL error. Known credential values reflected by Venmo are
+  replaced before logging.
+- Never log authorization values, device IDs, passwords, OTP material, dynamic path/query values,
+  command arguments, funding-source IDs, usernames, notes, amounts, raw bodies, headers, or
+  credential payloads. Venmo-provided error text is untrusted remote account context; bound and
+  terminal-sanitize it and tell operators to review it before sharing.
+- Filter out every third-party tracing target; `--debug` enables only first-party `venmo_cli`
+  events and must never turn on reqwest, Hyper, Rustls, SDK, or protocol-frame diagnostics.
 
 ### 10.1 Pagination policy
 
@@ -1383,7 +1392,7 @@ Rendering rules:
 
 - One concise primary error by default.
 - Actionable next step when known.
-- Source-chain and request metadata only with `--verbose`.
+- Bounded command-lifecycle and request metadata only with `--debug`; never print raw source chains.
 - No secrets at any verbosity.
 - Sanitize all API, user, friend, activity, request, note, payment-method, and keyring-originated strings before human terminal output.
 - Sanitize display only; preserve the intended note payload sent to the API.
@@ -1393,7 +1402,7 @@ Rendering rules:
 
 - Reserve MCP-process stdout exclusively for SDK-managed JSON-RPC framing. Never write banners, terminal tables, prompt UI, tracing, panic reports, diagnostics, or ad hoc acknowledgements to stdout.
 - Send redacted tracing and fatal startup diagnostics only to stderr. Do not log tool arguments, structured results, account/user/payment/request IDs, notes, continuation values, keychain source chains, or protocol payloads.
-- Filter SDK and stdio transport logging independently from server verbosity so `--verbose` can never enable raw JSON-RPC/frame diagnostics.
+- Filter SDK and stdio transport logging independently from CLI debug mode so `--debug` can never enable raw JSON-RPC/frame diagnostics.
 - Return successful data through explicit structured output conforming to the declared `outputSchema`; provide an equivalent serialized JSON text content item only for MCP client compatibility, not a second independently formatted representation.
 - Map feature failures to stable categories such as `invalid_input`, `authentication_required`, `credential_unavailable`, `server_busy`, `rate_limited`, `network`, `timeout`, `remote_rejected`, `remote_contract`, `response_contract`, and `internal`. Return normal feature and validated-input failures as tool execution errors with `isError: true`; malformed JSON-RPC, unknown tools, and invalid protocol shapes remain protocol errors.
 - Never expose `Debug`, nested source chains, raw platform errors, raw response text, input values, query text, IDs, notes, or continuation tokens in an error. Messages should be static or category-based and provide a safe remediation where known.
@@ -1889,7 +1898,8 @@ Exit criteria:
 - Corrupt credentials can be replaced or deleted.
 - Every terminal-bound untrusted string is sanitized.
 - Unit, property, feature, HTTP, keyring, CLI, and release smoke tests pass.
-- Packaged verbose logging works and leaks no secrets.
+- Packaged `--debug` logging works at every command depth, remains silent by default, bounds and
+  terminal-sanitizes remote error text, and leaks no known secrets or request data.
 - Public production dispatch and runtime fallback own actual terminal detection; no external caller
   can inject synthetic TTY state.
 - Service-free dispatch preconditions do not initialize the process-global logging subscriber.

@@ -141,6 +141,14 @@ transfer-destination selection.
   `application/x-www-form-urlencoded`; P5 sends no body.
 - Query values are URL-encoded. Dynamic path segments must be nonempty, not `.` or
   `..`, contain neither slash nor backslash, and contain no control character.
+- The global `--debug` flag installs bounded stderr diagnostics for every command. API events expose
+  only method, static route template, status, duration, retry count, response byte count/type,
+  sanitized error code, and bounded single-line root error title/message or first GraphQL error.
+  They never expose raw bodies, headers, credentials, OTPs, dynamic URL values, or command
+  arguments, and the subscriber filters out third-party dependency targets. Known credential
+  values are replaced if Venmo reflects them in diagnostic text.
+  Venmo-provided human-readable text remains untrusted account context and must be reviewed before
+  sharing. No tracing subscriber is installed by default; removed `-v`/`--verbose` forms are errors.
 - The iOS-compatible header profile is code truth. Venmo Android 26.13.0 and a maintained
   current client independently establish the current-version/session-header pattern; controlled
   live diagnostics under the old profile repeatedly produced generic code `10100`, while the

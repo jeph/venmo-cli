@@ -352,17 +352,11 @@ fn grouped_accept_and_decline_have_distinct_minimal_arguments() {
 fn optional_at_usernames_and_global_option_placement_are_supported() {
     for username in ["alice", "@alice"] {
         let parsed = Cli::try_parse_from([
-            "venmo",
-            "requests",
-            "--verbose",
-            "create",
-            username,
-            "0.01",
-            "Test",
+            "venmo", "requests", "--debug", "create", username, "0.01", "Test",
         ]);
         let dispatches_to_create = match parsed {
             Ok(cli) => {
-                cli.verbose
+                cli.debug
                     && matches!(
                         cli.command,
                         Command::Requests(args)
@@ -374,8 +368,14 @@ fn optional_at_usernames_and_global_option_placement_are_supported() {
         assert!(dispatches_to_create, "username: {username}");
     }
 
-    let accept = Cli::try_parse_from(["venmo", "--verbose", "requests", "accept", "request-123"]);
-    assert!(accept.is_ok_and(|cli| cli.verbose));
+    let accept = Cli::try_parse_from(["venmo", "--debug", "requests", "accept", "request-123"]);
+    assert!(accept.is_ok_and(|cli| cli.debug));
+}
+
+#[test]
+fn removed_verbose_flags_are_rejected() {
+    assert_rejected(&["venmo", "--verbose", "balance"]);
+    assert_rejected(&["venmo", "-v", "balance"]);
 }
 
 #[test]

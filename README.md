@@ -31,6 +31,18 @@ limitations, and signature inspection.
 
 All `cargo run -- ...` examples below run from the repository root. After installation, use the same arguments after `venmo` instead.
 
+## Debug diagnostics
+
+Pass the global `--debug` flag before or after any subcommand to write bounded diagnostics to
+stderr. Debug mode records a static command name and API method/route template, HTTP status,
+duration, retry count, response size/type, sanitized error code, and bounded Venmo error
+title/message when present. It never prints raw request or response bodies, authorization values,
+device IDs, OTPs, dynamic path/query values, funding-source IDs, usernames, notes, or amounts.
+Third-party dependency tracing is filtered out rather than enabled by the flag.
+Venmo's human-readable error text is untrusted remote content and can contain account context;
+review debug output before sharing it. Debug output is disabled by default. The former `-v` and
+`--verbose` flags are intentionally rejected rather than retained as aliases.
+
 ## Migration from the removed TypeScript CLI
 
 The repository now ships only the Rust implementation. Node.js, pnpm, the TypeScript source tree, generated JavaScript, and standalone Node packaging are no longer part of the build or release path.

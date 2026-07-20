@@ -121,7 +121,8 @@ Prompt availability is owned by the production boundary. The public `cli::run` a
 runtime-initialization fallback inspect the actual process streams rather than accepting a caller
 supplied terminal snapshot. Synthetic terminal state exists only behind crate-private test seams.
 The dispatcher resolves noninteractive authentication before invoking the delegated production
-executor; that executor owns verbose logging initialization and service
+executor; that executor owns global debug logging initialization, safe static command-lifecycle
+events, and service
 composition. The runtime itself is the one process bootstrap attempted before those asynchronous
 preconditions.
 

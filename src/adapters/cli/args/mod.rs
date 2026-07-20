@@ -34,9 +34,9 @@ pub use writes::{PayArgs, PayOperation, PayUserArgs, VisibilityArg};
     after_long_help = "Financial exit code 3 means the write outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
 )]
 pub struct Cli {
-    /// Write redacted diagnostics to stderr.
-    #[arg(short, long, global = true)]
-    pub verbose: bool,
+    /// Write bounded debug diagnostics to stderr.
+    #[arg(long, global = true)]
+    pub debug: bool,
 
     #[command(subcommand)]
     pub command: Command,

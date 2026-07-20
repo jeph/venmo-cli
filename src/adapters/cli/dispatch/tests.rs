@@ -14,7 +14,7 @@ type TestResult = Result<(), Box<dyn Error>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum DispatchCall {
-    InitializeLogging { verbose: bool },
+    InitializeLogging { debug: bool },
     Execute(Command),
 }
 
@@ -112,6 +112,82 @@ enum ResultSnapshot {
     },
 }
 
+#[test]
+fn debug_command_names_are_static_and_argument_free() -> TestResult {
+    for (arguments, expected) in [
+        (&["venmo", "auth", "login"][..], "auth.login"),
+        (&["venmo", "auth", "logout"][..], "auth.logout"),
+        (&["venmo", "auth", "status"][..], "auth.status"),
+        (&["venmo", "pay", "options"][..], "pay.options"),
+        (
+            &[
+                "venmo",
+                "pay",
+                "user",
+                "private-user",
+                "0.01",
+                "private-note",
+            ][..],
+            "pay.user",
+        ),
+        (&["venmo", "friends", "list"][..], "friends.list"),
+        (
+            &["venmo", "friends", "add", "private-user"][..],
+            "friends.add",
+        ),
+        (
+            &["venmo", "friends", "remove", "private-user"][..],
+            "friends.remove",
+        ),
+        (
+            &["venmo", "users", "search", "private-query"][..],
+            "users.search",
+        ),
+        (
+            &["venmo", "users", "info", "private-user"][..],
+            "users.info",
+        ),
+        (&["venmo", "balance"][..], "balance"),
+        (&["venmo", "activity", "list"][..], "activity.list"),
+        (
+            &["venmo", "activity", "info", "private-activity"][..],
+            "activity.info",
+        ),
+        (&["venmo", "requests", "list"][..], "requests.list"),
+        (
+            &[
+                "venmo",
+                "requests",
+                "create",
+                "private-user",
+                "0.01",
+                "private-note",
+            ][..],
+            "requests.create",
+        ),
+        (
+            &["venmo", "requests", "accept", "private-request"][..],
+            "requests.accept",
+        ),
+        (
+            &["venmo", "requests", "decline", "private-request"][..],
+            "requests.decline",
+        ),
+        (
+            &["venmo", "requests", "info", "private-request"][..],
+            "requests.info",
+        ),
+        (&["venmo", "transfer", "options"][..], "transfer.options"),
+        (&["venmo", "transfer", "out", "0.01"][..], "transfer.out"),
+    ] {
+        let cli = Cli::try_parse_from(arguments)?;
+        let observed = debug_command_name(&cli.command);
+        assert_eq!(observed, expected, "arguments: {arguments:?}");
+        assert!(!observed.contains("private"));
+    }
+    Ok(())
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
@@ -151,7 +227,7 @@ async fn service_free_dispatch_branches_have_complete_outcomes() -> TestResult {
 async fn production_preconditions_do_not_call_the_logging_initializer() -> TestResult {
     let terminals = TerminalCapabilities::new(false, false);
     for (arguments, variant, message) in [(
-        &["venmo", "--verbose", "auth", "login"][..],
+        &["venmo", "--debug", "auth", "login"][..],
         ErrorVariant::AuthLogin,
         "an interactive terminal is required",
     )] {
@@ -184,12 +260,19 @@ async fn production_preconditions_do_not_call_the_logging_initializer() -> TestR
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn delegated_production_commands_initialize_logging_before_execution() -> TestResult {
+async fn every_top_level_command_initializes_global_debugging_before_execution() -> TestResult {
     for arguments in [
-        &["venmo", "--verbose", "balance"][..],
+        &["venmo", "auth", "--debug", "status"][..],
+        &["venmo", "pay", "options", "--debug"][..],
+        &["venmo", "friends", "--debug", "list"][..],
+        &["venmo", "--debug", "users", "search", "alice"][..],
+        &["venmo", "--debug", "balance"][..],
+        &["venmo", "activity", "--debug", "list"][..],
+        &["venmo", "requests", "--debug", "list"][..],
+        &["venmo", "transfer", "options", "--debug"][..],
         &[
             "venmo",
-            "--verbose",
+            "--debug",
             "requests",
             "accept",
             "request-1",
@@ -197,7 +280,7 @@ async fn delegated_production_commands_initialize_logging_before_execution() -> 
         ][..],
         &[
             "venmo",
-            "--verbose",
+            "--debug",
             "requests",
             "decline",
             "request-1",
@@ -211,7 +294,7 @@ async fn delegated_production_commands_initialize_logging_before_execution() -> 
             ResultSnapshot::Success,
             DispatchState {
                 calls: vec![
-                    DispatchCall::InitializeLogging { verbose: true },
+                    DispatchCall::InitializeLogging { debug: true },
                     DispatchCall::Execute(delegated_command),
                 ],
                 ..DispatchState::default()
@@ -228,10 +311,10 @@ async fn delegated_production_commands_initialize_logging_before_execution() -> 
 #[tokio::test(flavor = "current_thread")]
 async fn logging_initialization_failures_prevent_production_execution() -> TestResult {
     for arguments in [
-        &["venmo", "--verbose", "balance"][..],
+        &["venmo", "--debug", "balance"][..],
         &[
             "venmo",
-            "--verbose",
+            "--debug",
             "requests",
             "accept",
             "request-1",
@@ -239,7 +322,7 @@ async fn logging_initialization_failures_prevent_production_execution() -> TestR
         ][..],
         &[
             "venmo",
-            "--verbose",
+            "--debug",
             "requests",
             "decline",
             "request-1",
@@ -254,10 +337,10 @@ async fn logging_initialization_failures_prevent_production_execution() -> TestR
                 variant: ErrorVariant::LoggingInitialization,
                 category: ErrorCategory::Internal,
                 exit_code: 1,
-                message: "failed to initialize verbose diagnostics".to_owned(),
+                message: "failed to initialize debug diagnostics".to_owned(),
             },
             DispatchState {
-                calls: vec![DispatchCall::InitializeLogging { verbose: true }],
+                calls: vec![DispatchCall::InitializeLogging { debug: true }],
                 ..DispatchState::default()
             },
         );
@@ -389,7 +472,7 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
     let terminals = TerminalCapabilities::new(false, false);
     for (arguments, variant, category, exit_code, message) in [
         (
-            &["venmo", "--verbose", "auth", "login"][..],
+            &["venmo", "--debug", "auth", "login"][..],
             ErrorVariant::AuthLogin,
             ErrorCategory::Usage,
             2,
@@ -447,7 +530,7 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
             },
             DispatchState {
                 calls: if variant == ErrorVariant::RuntimeInitialization {
-                    vec![DispatchCall::InitializeLogging { verbose: false }]
+                    vec![DispatchCall::InitializeLogging { debug: false }]
                 } else {
                     Vec::new()
                 },
@@ -465,7 +548,7 @@ fn runtime_initialization_keeps_every_service_free_precondition_service_free() -
 #[test]
 fn runtime_failure_preserves_logging_errors_before_delegated_fallbacks() -> TestResult {
     let setup = DispatchSetup::parse(
-        &["venmo", "--verbose", "balance"],
+        &["venmo", "--debug", "balance"],
         TerminalCapabilities::new(false, false),
     )?
     .with_logging_behavior(LoggingBehavior::Fail);
@@ -475,10 +558,10 @@ fn runtime_failure_preserves_logging_errors_before_delegated_fallbacks() -> Test
             variant: ErrorVariant::LoggingInitialization,
             category: ErrorCategory::Internal,
             exit_code: 1,
-            message: "failed to initialize verbose diagnostics".to_owned(),
+            message: "failed to initialize debug diagnostics".to_owned(),
         },
         DispatchState {
-            calls: vec![DispatchCall::InitializeLogging { verbose: true }],
+            calls: vec![DispatchCall::InitializeLogging { debug: true }],
             ..DispatchState::default()
         },
     );
@@ -538,10 +621,10 @@ async fn execute_production_dispatch(
         &mut stdout,
         &mut stderr,
         setup.terminals,
-        move |verbose| {
+        move |debug| {
             logging_transcript
                 .borrow_mut()
-                .push(DispatchCall::InitializeLogging { verbose });
+                .push(DispatchCall::InitializeLogging { debug });
             match logging_behavior {
                 LoggingBehavior::Succeed => Ok(()),
                 LoggingBehavior::Fail => Err(Box::new(io::Error::other(
@@ -585,10 +668,10 @@ fn execute_runtime_failure(
         &mut stderr,
         setup.terminals,
         io::Error::other("sensitive runtime detail"),
-        move |verbose| {
+        move |debug| {
             logging_transcript
                 .borrow_mut()
-                .push(DispatchCall::InitializeLogging { verbose });
+                .push(DispatchCall::InitializeLogging { debug });
             match logging_behavior {
                 LoggingBehavior::Succeed => Ok(()),
                 LoggingBehavior::Fail => Err(Box::new(io::Error::other(

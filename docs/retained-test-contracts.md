@@ -28,7 +28,7 @@ live credential, keychain prompt, Venmo service, or remote mutation.
 
 ## Global tracing subscriber
 
-Verbose delegated production execution installs Rust's one-per-process global tracing subscriber.
+Debug-enabled delegated production execution installs Rust's one-per-process global tracing subscriber.
 Phase 7 keeps that real installation out of in-process unit tests because exercising it would make
 results depend on test order, parallelism, and subscribers installed by the test harness or
 dependencies. An injected recording/failing initializer proves that noninteractive authentication
@@ -38,7 +38,7 @@ contract proves that disabled diagnostics do not install a subscriber. Exact red
 the structured values, HTTP request/response wrappers, errors, and renderers that can carry
 sensitive data.
 
-A future packaged-binary diagnostics test may exercise `--verbose` only in a fresh child process
+A future packaged-binary diagnostics test may exercise `--debug` only in a fresh child process
 with deterministic stderr capture and no keychain or network access. It must not weaken the
 single-subscriber production behavior, add a reset hook, serialize the entire unit suite, or assert
 unstable formatting such as timing data.

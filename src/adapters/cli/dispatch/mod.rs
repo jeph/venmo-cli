@@ -1,7 +1,10 @@
 use std::future::Future;
 use std::io::{self, Write};
 
-use super::args::{AuthArgs, AuthOperation, Cli, Command};
+use super::args::{
+    ActivityOperation, AuthArgs, AuthOperation, Cli, Command, FriendsOperation, PayOperation,
+    RequestsOperation, TransferOperation, UsersOperation,
+};
 use super::error::AppError;
 use super::logging::InitializationError;
 use super::prompt::TerminalCapabilities;
@@ -48,28 +51,21 @@ where
     X: FnOnce(Command, &'a mut W, &'a mut E) -> F + 'a,
     F: Future<Output = Result<(), AppError>> + 'a,
 {
-    let verbose = cli.verbose;
+    let debug = cli.debug;
     run_with(
         cli,
         stdout,
         stderr,
         terminal_capabilities,
         move |command, stdout, stderr| {
-            execute_after_logging(
-                verbose,
-                command,
-                stdout,
-                stderr,
-                initialize_logging,
-                execute,
-            )
+            execute_after_logging(debug, command, stdout, stderr, initialize_logging, execute)
         },
     )
     .await
 }
 
 async fn execute_after_logging<'a, W, E, I, X, F>(
-    verbose: bool,
+    debug: bool,
     command: Command,
     stdout: &'a mut W,
     stderr: &'a mut E,
@@ -83,8 +79,12 @@ where
     X: FnOnce(Command, &'a mut W, &'a mut E) -> F + 'a,
     F: Future<Output = Result<(), AppError>> + 'a,
 {
-    initialize_logging(verbose).map_err(|source| AppError::LoggingInitialization { source })?;
-    execute(command, stdout, stderr).await
+    initialize_logging(debug).map_err(|source| AppError::LoggingInitialization { source })?;
+    let command_name = debug_command_name(&command);
+    trace_command_started(command_name);
+    let result = execute(command, stdout, stderr).await;
+    trace_command_result(command_name, &result);
+    result
 }
 
 /// Test seam for the service-free dispatch boundary.
@@ -162,9 +162,11 @@ where
         command => command,
     };
 
-    initialize_logging(cli.verbose).map_err(|source| AppError::LoggingInitialization { source })?;
+    initialize_logging(cli.debug).map_err(|source| AppError::LoggingInitialization { source })?;
+    let command_name = debug_command_name(&command);
+    trace_command_started(command_name);
     let failure = AppError::RuntimeInitialization { source };
-    match command {
+    let result = match command {
         Command::Auth(AuthArgs {
             operation: AuthOperation::Logout,
         }) => {
@@ -172,6 +174,63 @@ where
             auth::run_logout_local_with(&store, stdout, stderr)
         }
         _ => Err(failure),
+    };
+    trace_command_result(command_name, &result);
+    result
+}
+
+fn trace_command_started(command_name: &'static str) {
+    tracing::debug!(cli.command = command_name, "CLI command started");
+}
+
+fn trace_command_result(command_name: &'static str, result: &Result<(), AppError>) {
+    match result {
+        Ok(()) => tracing::debug!(cli.command = command_name, "CLI command completed"),
+        Err(error) => tracing::debug!(
+            cli.command = command_name,
+            error.category = ?error.category(),
+            error.exit_code = error.exit_code(),
+            "CLI command failed"
+        ),
+    }
+}
+
+fn debug_command_name(command: &Command) -> &'static str {
+    match command {
+        Command::Auth(args) => match args.operation {
+            AuthOperation::Login => "auth.login",
+            AuthOperation::Logout => "auth.logout",
+            AuthOperation::Status => "auth.status",
+        },
+        Command::Pay(args) => match args.operation {
+            PayOperation::Options => "pay.options",
+            PayOperation::User(_) => "pay.user",
+        },
+        Command::Friends(args) => match args.operation {
+            FriendsOperation::List(_) => "friends.list",
+            FriendsOperation::Add(_) => "friends.add",
+            FriendsOperation::Remove(_) => "friends.remove",
+        },
+        Command::Users(args) => match args.operation {
+            UsersOperation::Search(_) => "users.search",
+            UsersOperation::Info(_) => "users.info",
+        },
+        Command::Balance => "balance",
+        Command::Activity(args) => match args.operation {
+            ActivityOperation::List(_) => "activity.list",
+            ActivityOperation::Info(_) => "activity.info",
+        },
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::List(_) => "requests.list",
+            RequestsOperation::Create(_) => "requests.create",
+            RequestsOperation::Accept(_) => "requests.accept",
+            RequestsOperation::Decline(_) => "requests.decline",
+            RequestsOperation::Info(_) => "requests.info",
+        },
+        Command::Transfer(args) => match args.operation {
+            TransferOperation::Options => "transfer.options",
+            TransferOperation::Out(_) => "transfer.out",
+        },
     }
 }
 

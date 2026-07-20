@@ -55,7 +55,7 @@ impl ErrorCategory {
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("failed to initialize verbose diagnostics")]
+    #[error("failed to initialize debug diagnostics")]
     LoggingInitialization {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,

@@ -32,9 +32,10 @@ and black-box tests.
 - Functions: `run`, `handle_runtime_initialization_failure`, and `write_error`.
 
 `run(cli, stdout, stderr)` is the only asynchronous production dispatcher. It reads prompt
-capability from the actual process stdin/stderr and initializes verbose diagnostics only after
+capability from the actual process stdin/stderr and initializes global debug diagnostics only after
 service-free preconditions delegate a command to the production executor. Callers can supply
-output writers, but cannot supply synthetic terminal state.
+output writers, but cannot supply synthetic terminal state. Every current and future command passes
+through this central boundary; no command-specific debug initialization is exposed publicly.
 
 `handle_runtime_initialization_failure(cli, stdout, stderr, source)` is the synchronous fallback
 used when the process runtime cannot be built. It owns the same process terminal check.

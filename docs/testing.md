@@ -171,6 +171,13 @@ exit category, and—only where it is a user contract—exact sanitized display 
 platform source chains, timing, addresses, raw response bodies, or `Debug` output that could carry
 secrets. Renderer and process snapshots must contain only reviewed synthetic data.
 
+Debug-diagnostic tests must use a scoped test subscriber rather than installing the process-global
+production subscriber. Exact fixtures must prove that `--debug` emits only static command names,
+static route templates, bounded transport metadata, and bounded terminal-safe error fields. Include
+synthetic tokens, device IDs, OTP material, dynamic URL values, notes, amounts, funding IDs, and
+unrelated JSON fields and prove none appear. Default execution must remain silent, and removed
+`-v`/`--verbose` forms must be parser errors.
+
 ## Exact assertions and property assertions
 
 Use **exact assertions** for contracts where any changed byte, field, order, or count matters:
@@ -206,7 +213,7 @@ argument rejection, and manpage rendering. A process test
 must fail before keyring or network access unless access is the explicitly isolated contract under
 test.
 
-Verbose precondition coverage injects a recording/failing logging initializer into the private
+Debug precondition coverage injects a recording/failing logging initializer into the private
 dispatch seam. Complete state equality proves noninteractive login makes zero initializer and
 executor calls. Delegated fake
 commands, including `requests accept` and `requests decline`, prove initialization occurs first and
