@@ -81,7 +81,33 @@ venmo requests cancel <REQUEST_ID> [--yes]
 
 The former top-level `request`, `accept`, and `decline` forms are not compatibility aliases.
 
-`requests accept` fetches an authoritative incoming exact-`pending` private request and requires a personal/payable requester. Acceptance is an unprotected personal payment by default. Full balance coverage retains the reconciled legacy `approve` route only when neither `--source` nor `--protect` is present. Any shortfall, explicit `--source`, or `--protect` resolves the unique unacknowledged notification whose nested payment ID equals the pending request ID, loads peer-eligible balance/bank/card sources, applies the shared automatic or explicit source policy, obtains source-bound eligibility, and uses the notification ID for the modern approval route. Missing, duplicate, or malformed notification matches, unavailable explicit sources, and insufficient explicit balance fail before confirmation or a write. An explicit source is submitted exactly without silent substitution. Unprotected modern approval omits eligibility fee records. `--protect` turns on Venmo Purchase Protection, always uses the modern route, and submits only strictly validated normalized fee records. Current official Venmo guidance says the buyer pays no extra Purchase Protection fee and the seller pays 2.99%; the seller fee is removed from the received amount. The CLI does not calculate that rate itself: before confirmation it labels the exact eligibility response amount as an estimated seller deduction and shows estimated recipient proceeds, never a larger payer total. Every path shows its immutable plan before default-No confirmation and attempts exactly one non-retried financial write. The modern path is pinned by signer-verified Android 10.31.1 and 26.13.0 plus exact synthetic tests. A separately approved client-1 structure-only read confirmed distinct top-level notification and nested payment IDs; an earlier attempt using the payment ID returned non-success and reconciled as no mutation. A subsequent owner-run unprotected source-funded approval using the corrected notification ID completed successfully. Neither that response nor current source-selection tests prove the actual debit source or final fee, and explicit source selection has not been separately validated live.
+`requests accept` fetches an authoritative incoming exact-`pending` private request and requires a
+personal/payable requester. Acceptance is an unprotected personal payment by default. Full balance
+coverage retains the reconciled legacy `approve` route only when neither `--source` nor `--protect`
+is present. Any shortfall, explicit `--source`, or `--protect` resolves one unacknowledged request
+notification whose payment ID equals the pending request ID, loads peer-eligible balance/bank/card
+sources, applies the shared automatic or explicit source policy, obtains source-bound eligibility,
+and uses the request notification's own action ID for the modern approval route. Missing, duplicate,
+conflicting, or malformed notification matches, unavailable explicit sources, and insufficient
+explicit balance fail before confirmation or a write. An explicit source is submitted exactly
+without silent substitution. Unprotected modern approval omits eligibility fee records.
+`--protect` turns on Venmo Purchase Protection, always uses the modern route, and submits only
+strictly validated normalized fee records. Current official Venmo guidance says the buyer pays no
+extra Purchase Protection fee and the seller pays 2.99%; the seller fee is removed from the received
+amount. The CLI does not calculate that rate itself: before confirmation it labels the exact
+eligibility response amount as an estimated seller deduction and shows estimated recipient proceeds,
+never a larger payer total. Every path shows its immutable plan before default-No confirmation and
+attempts exactly one non-retried financial write. The modern path is pinned by signer-verified
+Android 10.31.1 and 26.13.0, exact synthetic tests, and reconciled client-1 approvals. Neither those
+responses nor current source-selection tests prove the actual debit source or final fee, and explicit
+source selection has not been separately validated live.
+
+Current notification responses can wrap the actionable request at `additional_properties.request`.
+In that shape, the CLI matches the canonical pending request to the nested request's `payment.id`
+and submits the nested request's own `id`; it never substitutes the wrapper's outer notification
+ID. A bounded live read proved the three-ID structure. An outer-ID attempt returned HTTP 404 and
+reconciled as no mutation; the corrected nested-action-ID attempt returned 200 and reconciled as
+exactly one settled $20 activity with the pending request removed.
 
 `requests decline` fetches an authoritative incoming exact-`pending` request with a supported audience, displays and flushes validated request details, and asks for default-No confirmation before writing. When either stdin or stderr is not a terminal, `--yes` is required; the flag skips only confirmation, never validation or the details display. Decline sends no money or funding fields and uses historical incoming action `deny`—never outgoing-request `cancel`. A controlled live validation of a private request sent one non-retried `deny` update, received the original request ID with exact terminal `cancelled` status, removed the request from pending results, produced no payment activity, and left available balance unchanged. The implementation accepts and preserves any supported audience, but non-private success has not been independently pinned. Both incoming-request actions treat any unverified response or transport uncertainty as ambiguous and must not be retried before reconciliation.
 

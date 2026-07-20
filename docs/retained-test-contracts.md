@@ -89,10 +89,11 @@ external amounts, amount suppression, privacy checks, and continuation scope.
 
 The ignored `live_notification_request_id_shape_probe` performs one bounded authenticated
 `GET /v1/notifications?acknowledged=false` and emits only structural paths plus aggregate counts.
-It was executed once with separate owner approval on 2026-07-19 and confirmed that a request
-notification's top-level ID is distinct from its nested payment ID. It retains no ID, name, note,
-amount, token, URL, body, or other response value and must not become routine verification. Exact
-synthetic tests maintain unique nested-ID matching and top-level-ID approval routing.
+It was executed with separate owner approval and confirmed both the older direct request-notification
+shape and the current wrapper whose outer notification ID, nested request-action ID, and nested
+payment ID are distinct. It retains no ID, name, note, amount, token, URL, body, or other response
+value and must not become routine verification. Exact synthetic tests maintain unique payment-ID
+matching and route only with the associated direct or nested request-action ID.
 
 There is deliberately no ignored live friendship mutation test. Signer-verified Android artifacts
 and service-free synthetic contracts retain the route, form body, state matrix, reconciliation, and

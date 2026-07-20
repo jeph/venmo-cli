@@ -62,18 +62,20 @@ absence of another exact match beyond the bounded search.
 ## Request-acceptance funding and fee evidence
 
 Signer-verified Android 10.31.1 and 26.13.0 establish unacknowledged notification lookup,
-association of nested `payment.id` with a distinct top-level notification ID, source-bound
-eligibility, and explicit funding options on `PUT /v1/requests/{notification-id}`. A separately
-approved bounded client-1 read confirmed the direct array and distinct paired IDs without retaining
-values. Native code includes applied fees only when Purchase Protection
+association of a request notification's `payment.id` with that request's own action ID, source-bound
+eligibility, and explicit funding options on `PUT /v1/requests/{request-action-id}`. Current
+production wraps some request notifications at `additional_properties.request`; a separately
+approved bounded client-1 read confirmed distinct outer notification, nested request-action, and
+nested payment IDs without retaining values. Native code includes applied fees only when Purchase Protection
 is selected. The CLI uses the branch after any balance shortfall, explicit `--source`, or explicit
 `--protect`, only with its deterministic automatic/explicit peer-source policy and a valid
 eligibility token. Unprotected approval
 omits returned fees. Protected approval strictly validates and submits normalized fee objects and
 shows the eligibility amount as an estimated seller deduction with estimated recipient proceeds.
-An earlier payment-ID write returned non-success and reconciled as no mutation. A subsequent
-owner-run unprotected source-funded approval using the corrected top-level notification ID
-completed successfully, proving current client-1 authorization for that F4S branch. Residual gaps
+An outer-wrapper-ID write returned HTTP 404 and reconciled as no mutation. A subsequent owner-run
+unprotected source-funded approval using the corrected nested request-action ID returned 200,
+removed the pending request, and produced exactly one matching settled $20 activity, proving current
+client-1 authorization for that F4S branch. Residual gaps
 remain: the successful object does not prove the actual debit source or final fee beyond the
 eligibility response; explicit source selection and protected approval have not received separate
 live validation; and

@@ -314,10 +314,35 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 problem: "the request-approval notification response exceeded its record limit",
             });
         }
-        let mut matches = envelope.data.into_iter().filter_map(|notification| {
-            let payment = notification.payment?;
-            (payment.id.into_string() == request_id.as_str()).then_some(notification.id)
-        });
+        let mut matches = Vec::new();
+        for notification in envelope.data {
+            let notification_id = notification.id.into_string();
+            let direct_candidate = notification
+                .payment
+                .map(|payment| (notification_id, payment.id.into_string()));
+            let current_candidate = notification
+                .additional_properties
+                .and_then(|properties| properties.request)
+                .and_then(|request| {
+                    request
+                        .payment
+                        .map(|payment| (request.id.into_string(), payment.id.into_string()))
+                });
+            let (approval_id, payment_id) = match (direct_candidate, current_candidate) {
+                (Some(direct), Some(current)) if direct != current => {
+                    return Err(VenmoApiError::Contract {
+                        operation: REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+                        problem: "an approval notification contained conflicting request references",
+                    });
+                }
+                (Some(candidate), _) | (None, Some(candidate)) => candidate,
+                (None, None) => continue,
+            };
+            if payment_id == request_id.as_str() {
+                matches.push(approval_id);
+            }
+        }
+        let mut matches = matches.into_iter();
         let notification_id = match (matches.next(), matches.next()) {
             (Some(notification_id), None) => notification_id,
             (None, _) => {
@@ -333,11 +358,9 @@ impl<T: ApiTransport> VenmoApiClient<T> {
                 });
             }
         };
-        RequestNotificationId::from_str(&notification_id.into_string()).map_err(|_| {
-            VenmoApiError::Contract {
-                operation: REQUEST_APPROVAL_NOTIFICATION_OPERATION,
-                problem: "the matching approval notification had an invalid ID",
-            }
+        RequestNotificationId::from_str(&notification_id).map_err(|_| VenmoApiError::Contract {
+            operation: REQUEST_APPROVAL_NOTIFICATION_OPERATION,
+            problem: "the matching approval notification had an invalid request-action ID",
         })
     }
 

@@ -275,37 +275,49 @@ async fn request_acceptance_uses_exact_approve_update_and_validates_settlement()
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn request_approval_notification_resolves_the_unique_nested_payment_id() -> TestResult {
-    let response = scripted_json_response(
-        200,
-        serde_json::json!({"data":[
-            {"id":"notification-other"},
-            {"id":"notification-1","payment":{"id":"request-1"}}
-        ]}),
-    )?;
-    let (client, transport) = scripted_client([Ok(response)])?;
-    let (token, device_id) = test_session()?;
-    let request_id = RequestId::from_str("request-1")?;
-
-    let result = client
-        .request_approval_notification_id(&token, &device_id, &request_id)
-        .await;
-    let observed = ScriptedObservation::observed(
-        project_result(result, |notification_id| {
-            notification_id.as_str().to_owned()
+async fn request_approval_notification_resolves_current_and_legacy_payment_locations() -> TestResult
+{
+    for matching_notification in [
+        serde_json::json!({
+            "id":"outer-notification-1",
+            "additional_properties":{"request":{
+                "id":"notification-1",
+                "payment":{"id":"request-1"}
+            }}
         }),
-        &transport,
-    );
-    let expected = ScriptedObservation::expected(
-        Ok("notification-1".to_owned()),
-        vec![authenticated_read_request(
-            "/notifications",
-            &["notifications"],
-            &[("acknowledged", "false")],
-        )],
-    );
+        serde_json::json!({"id":"notification-1","payment":{"id":"request-1"}}),
+    ] {
+        let response = scripted_json_response(
+            200,
+            serde_json::json!({"data":[
+                {"id":"notification-other"},
+                matching_notification
+            ]}),
+        )?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let request_id = RequestId::from_str("request-1")?;
 
-    assert_eq!(observed, expected);
+        let result = client
+            .request_approval_notification_id(&token, &device_id, &request_id)
+            .await;
+        let observed = ScriptedObservation::observed(
+            project_result(result, |notification_id| {
+                notification_id.as_str().to_owned()
+            }),
+            &transport,
+        );
+        let expected = ScriptedObservation::expected(
+            Ok("notification-1".to_owned()),
+            vec![authenticated_read_request(
+                "/notifications",
+                &["notifications"],
+                &[("acknowledged", "false")],
+            )],
+        );
+
+        assert_eq!(observed, expected);
+    }
     Ok(())
 }
 
@@ -319,6 +331,21 @@ async fn request_approval_notification_rejects_missing_duplicate_or_invalid_matc
             {"id":"notification-2","payment":{"id":"request-1"}}
         ]}),
         serde_json::json!({"data":[{"id":"bad id","payment":{"id":"request-1"}}]}),
+        serde_json::json!({"data":[{
+            "id":"notification-1",
+            "payment":{"id":"request-1"},
+            "additional_properties":{"request":{
+                "id":"notification-2",
+                "payment":{"id":"request-2"}
+            }}
+        }]}),
+        serde_json::json!({"data":[{
+            "id":"outer-notification-1",
+            "additional_properties":{"request":{
+                "id":"bad id",
+                "payment":{"id":"request-1"}
+            }}
+        }]}),
     ] {
         let response = scripted_json_response(200, body)?;
         let (client, transport) = scripted_client([Ok(response)])?;

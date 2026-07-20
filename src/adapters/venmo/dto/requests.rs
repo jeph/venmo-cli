@@ -31,6 +31,21 @@ pub(crate) struct RequestApprovalNotificationDto {
     pub id: StringOrInteger,
     #[serde(default)]
     pub payment: Option<RequestApprovalNotificationPaymentDto>,
+    #[serde(default)]
+    pub additional_properties: Option<RequestApprovalNotificationAdditionalPropertiesDto>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct RequestApprovalNotificationAdditionalPropertiesDto {
+    #[serde(default)]
+    pub request: Option<RequestApprovalNotificationRequestDto>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct RequestApprovalNotificationRequestDto {
+    pub id: StringOrInteger,
+    #[serde(default)]
+    pub payment: Option<RequestApprovalNotificationPaymentDto>,
 }
 
 #[derive(Deserialize)]

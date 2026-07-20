@@ -126,13 +126,16 @@ Request-acceptance coverage proves both funding branches, explicit source select
 protection. Sufficient balance must skip payment methods and approval eligibility before the legacy
 action-only write only for a default unprotected acceptance. Every shortfall, explicit `--source`,
 and `--protect` plan must first resolve exactly one
-unacknowledged notification by matching its nested payment ID to the canonical pending-request ID,
-retain the top-level notification ID, then select sufficient balance, the exact requested
-peer-eligible balance/bank/card source, or the unique default-or-sole external method. Tests bind
+unacknowledged notification by matching its payment ID to the canonical pending-request ID. Tests
+cover both direct root `id`/`payment.id` notifications and current
+`additional_properties.request.id`/`additional_properties.request.payment.id` wrappers, retain the
+associated request-action ID rather than the current wrapper's outer ID, then select sufficient
+balance, the exact requested peer-eligible balance/bank/card source, or the unique default-or-sole
+external method. Tests bind
 source eligibility to the authoritative requester/amount/note/source, reject unavailable explicit
 sources and insufficient explicit balance, reject denial/missing token/malformed or overflowing fee
-data before writing, and send one modern source-funded approval to that notification ID. Missing,
-duplicate, invalid, and oversized notification responses fail before funding selection.
+data before writing, and send one modern source-funded approval to that action ID. Missing,
+duplicate, conflicting, invalid, and oversized notification responses fail before funding selection.
 Unprotected plans must omit returned fees.
 Protected plans must reject a fee above the request amount, submit normalized fee records, and show
 the estimated seller deduction plus recipient proceeds without increasing the payer amount. Webview
