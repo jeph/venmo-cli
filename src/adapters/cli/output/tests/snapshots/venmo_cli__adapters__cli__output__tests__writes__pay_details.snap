@@ -9,8 +9,5 @@ Payment details:
   Note: Synthetic\nnote
   Requested audience: private
   Available Venmo balance: $0.00
-  Funding source selection: automatic
-  Submitted funding source: Synthetic bank (bank ending 1234, ID bank-1)
-  Submitted method fee: unknown
-  Eligibility-reported fee: $0.03
-  Eligibility-reported total: $0.04
+  Funding source: Synthetic bank (bank ending 1234, ID bank-1)
+  Funding-source fee: unknown

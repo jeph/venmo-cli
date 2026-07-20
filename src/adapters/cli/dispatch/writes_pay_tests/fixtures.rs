@@ -97,10 +97,7 @@ pub(super) const PAY_DETAILS: &str = concat!(
     "  Note: Synthetic payment\n",
     "  Requested audience: private\n",
     "  Available Venmo balance: $3.00\n",
-    "  Funding source selection: automatic\n",
-    "  Submitted funding source: Venmo balance (balance, ID balance-1)\n",
-    "  Eligibility-reported fee: $0.00\n",
-    "  Eligibility-reported total: $0.01\n",
+    "  Funding source: Venmo balance (balance, ID balance-1)\n",
 );
 
 pub(super) const PAY_RESULT: &str = concat!(
@@ -109,6 +106,5 @@ pub(super) const PAY_RESULT: &str = concat!(
     "Recipient: @bob (Synthetic recipient)\n",
     "Amount: $0.01\n",
     "Requested audience: private\n",
-    "Eligibility-reported fee: $0.00\n",
     "Submitted funding source ID: balance-1\n",
 );

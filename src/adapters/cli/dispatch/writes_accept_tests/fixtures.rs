@@ -86,7 +86,6 @@ pub(super) const ACCEPT_DETAILS: &str = concat!(
     "  Current request status: pending\n",
     "  Created: 1970-01-01T00:00:00Z\n",
     "  Available Venmo balance: $0.01\n",
-    "  Funding source selection: automatic\n",
     "  Funding plan: available Venmo balance\n",
 );
 

@@ -441,7 +441,8 @@ If true, the token must be nonempty, at most 4,096 bytes, and free of
 whitespace/controls; every fee must have unsigned
 `calculated_fee_amount_in_cents`, and the checked sum must not overflow. This
 nonfinancial preflight intentionally uses a blank source: its fee proves neither the
-selected W1 method's fee nor the final payment fee.
+selected W1 method's fee nor the final payment fee. The CLI therefore does not present
+that amount as a payer fee or add it to the displayed payment total.
 #### F2 — create peer payment
 ```http
 POST /v1/payments

@@ -39,8 +39,18 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
 
     let details = String::from_utf8(details)?;
     insta::assert_snapshot!("pay_details", details);
+    assert!(details.contains("  Funding source: Synthetic bank"));
+    assert!(details.contains("  Funding-source fee: unknown"));
     assert!(!details.contains("Warning:"));
     assert!(!details.contains("Synthetic\nrecipient"));
+    for omitted in [
+        "Funding source selection:",
+        "Submitted funding source:",
+        "Eligibility-reported fee:",
+        "Eligibility-reported total:",
+    ] {
+        assert!(!details.contains(omitted));
+    }
     for hidden in [
         "synthetic-token",
         "synthetic-device",
@@ -60,6 +70,7 @@ fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used
     insta::assert_snapshot!("pay_result", pay_output);
     assert!(!pay_output.contains("Actual funding"));
     assert!(!pay_output.contains("does not prove"));
+    assert!(!pay_output.contains("Eligibility-reported"));
 
     let request = RequestCreateResult::new(
         synthetic_request_plan()?,

@@ -150,6 +150,13 @@ acceptance, form-urlencoded `action=cancel`, self-to-counterparty response orien
 terminal `cancelled` status, and rejection of incoming, payment, stale, or mismatched records. An
 exact one-request assertion proves the mutation is never retried.
 
+Peer-payment output snapshots show the selected source under the neutral prewrite `Funding source`
+label and applicable method metadata under `Funding-source fee`. They omit the internal
+automatic/explicit policy marker and the blank-source eligibility fee/total, while success output
+continues to identify only the funding-source ID submitted in the request. Request-acceptance
+snapshots apply the same prewrite source labels while retaining the separate protected seller-fee
+and recipient-proceeds estimates.
+
 Payment step-up coverage is entirely service-free. Exact transcripts prove an initial creation
 challenge, terminal-capability check, one SMS issue, one hidden six-digit prompt, one verification,
 and at most one verified creation using the same immutable plan and UUID. Wire tests pin `/graphql`,

@@ -1,9 +1,7 @@
 use std::io::{self, Write};
 
 use crate::features::payments::pay::{PayResult, PreparedPay};
-use crate::features::payments::{
-    FinancialStatus, PeerFundingFee, PeerFundingSource, PeerFundingSourceSelection,
-};
+use crate::features::payments::{FinancialStatus, PeerFundingFee, PeerFundingSource};
 use crate::features::requests::accept::{AcceptResult, PreparedAccept};
 use crate::features::requests::cancel::{CancelResult, PreparedCancel};
 use crate::features::requests::create::{PreparedRequest, RequestCreateResult};
@@ -42,23 +40,11 @@ pub(crate) fn write_pay_details<W: Write>(
         "  Available Venmo balance: {}",
         plan.balance().available()
     )?;
-    write_source_selection(writer, plan.funding_source_selection())?;
     write_funding_source(writer, plan.funding_source())?;
     if let Some(method) = plan.funding_source().external_method() {
         write_method_fee(writer, method.fee())?;
     }
-    writeln!(
-        writer,
-        "  Eligibility-reported fee: ${}",
-        format_usd_cents(u128::from(plan.eligibility_fee_cents()))
-    )?;
-    writeln!(
-        writer,
-        "  Eligibility-reported total: ${}",
-        format_usd_cents(
-            u128::from(plan.amount().cents()) + u128::from(plan.eligibility_fee_cents())
-        )
-    )
+    Ok(())
 }
 
 pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> io::Result<()> {
@@ -79,11 +65,6 @@ pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> 
     )?;
     writeln!(writer, "Amount: ${}", result.plan().amount())?;
     writeln!(writer, "Requested audience: {}", result.plan().visibility())?;
-    writeln!(
-        writer,
-        "Eligibility-reported fee: ${}",
-        format_usd_cents(u128::from(result.plan().eligibility_fee_cents()))
-    )?;
     writeln!(
         writer,
         "Submitted funding source ID: {}",
@@ -198,11 +179,6 @@ pub(crate) fn write_accept_details<W: Write>(
         plan.balance().available()
     )?;
     if let Some(source) = plan.funding_source() {
-        write_source_selection(
-            writer,
-            plan.funding_source_selection()
-                .unwrap_or(PeerFundingSourceSelection::Automatic),
-        )?;
         write_funding_source(writer, source)?;
         if let Some(method) = source.external_method() {
             write_method_fee(writer, method.fee())?;
@@ -223,7 +199,6 @@ pub(crate) fn write_accept_details<W: Write>(
             Ok(())
         }
     } else {
-        write_source_selection(writer, PeerFundingSourceSelection::Automatic)?;
         writeln!(writer, "  Funding plan: available Venmo balance")
     }
 }
@@ -411,20 +386,6 @@ pub(crate) fn write_cancel_details<W: Write>(
     )
 }
 
-fn write_source_selection(
-    writer: &mut impl Write,
-    selection: PeerFundingSourceSelection,
-) -> io::Result<()> {
-    writeln!(
-        writer,
-        "  Funding source selection: {}",
-        match selection {
-            PeerFundingSourceSelection::Automatic => "automatic",
-            PeerFundingSourceSelection::Explicit => "explicit",
-        }
-    )
-}
-
 fn write_funding_source(writer: &mut impl Write, source: &PeerFundingSource) -> io::Result<()> {
     let method = source.method();
     let name = sanitize_terminal_text(method.name().unwrap_or("Payment method"));
@@ -435,20 +396,20 @@ fn write_funding_source(writer: &mut impl Write, source: &PeerFundingSource) -> 
         .unwrap_or_default();
     writeln!(
         writer,
-        "  Submitted funding source: {name} ({method_type}{last_four}, ID {})",
+        "  Funding source: {name} ({method_type}{last_four}, ID {})",
         sanitize_terminal_text(method.id().as_str())
     )
 }
 
 fn write_method_fee(writer: &mut impl Write, fee: PeerFundingFee) -> io::Result<()> {
     match fee {
-        PeerFundingFee::ProvenZero => writeln!(writer, "  Submitted method fee: $0.00"),
+        PeerFundingFee::ProvenZero => writeln!(writer, "  Funding-source fee: $0.00"),
         PeerFundingFee::NonZero { cents } => writeln!(
             writer,
-            "  Submitted method fee: ${}",
+            "  Funding-source fee: ${}",
             format_usd_cents(u128::from(cents.get()))
         ),
-        PeerFundingFee::Unknown => writeln!(writer, "  Submitted method fee: unknown"),
+        PeerFundingFee::Unknown => writeln!(writer, "  Funding-source fee: unknown"),
     }
 }
 

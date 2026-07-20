@@ -45,10 +45,11 @@ upgraded to `ProvenZero`. Method-level fee evidence does not gate selection: zer
 and unknown-fee peer methods may all be submitted under the automatic policy. That policy validates
 duplicate IDs and multiple defaults, chooses the unique default regardless of fee, otherwise chooses
 only a sole eligible method, and fails closed when multiple non-default methods remain; it never uses
-response order or fee as a tiebreaker and exposes no user override. Payment details report the method
-evidence and eligibility fee separately and warns that the final fee may differ. Binding the proof to a method
-requires a controlled capture showing the request field, token, response, and resulting payment all
-refer to that exact method.
+response order or fee as a tiebreaker. Payment details report only the selected source and its own
+method-level fee evidence. They do not present the blank-source eligibility amount as a payer fee or
+total because its application is not proven. Binding the eligibility proof to a method requires a
+controlled capture showing the request field, token, response, and resulting payment all refer to
+that exact method.
 
 ## Exact-recipient acceptance at the exhaustive bound
 
