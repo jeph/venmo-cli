@@ -11,10 +11,7 @@ fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapComman
             .get_subcommands()
             .find(|candidate| candidate.get_name() == *name)
             .cloned();
-        match next {
-            Some(next) => command = next,
-            None => return None,
-        }
+        command = next?;
     }
     Some(command)
 }

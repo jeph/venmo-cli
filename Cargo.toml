@@ -2,7 +2,7 @@
 name = "venmo-cli"
 version = "0.0.1"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.97"
 authors = ["Jeph"]
 description = "An unofficial Venmo command-line client"
 license = "MIT"
@@ -19,20 +19,20 @@ name = "venmo"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.6.1", default-features = false, features = ["color", "derive", "error-context", "help", "std", "suggestions", "usage"] }
+clap = { version = "4.6.3", default-features = false, features = ["color", "derive", "error-context", "help", "std", "suggestions", "usage"] }
 dialoguer = { version = "0.12.0", default-features = false, features = ["password"] }
-jiff = { version = "0.2.32", default-features = false, features = ["std", "tz-fat", "tz-system", "tzdb-bundle-platform", "tzdb-concatenated", "tzdb-zoneinfo"] }
-keyring = { version = "4.1.4", default-features = false, features = ["v1"] }
+jiff = { version = "0.2.34", default-features = false, features = ["std", "tz-fat", "tz-system", "tzdb-bundle-platform", "tzdb-concatenated", "tzdb-zoneinfo"] }
+keyring = { version = "4.1.5", default-features = false, features = ["v1"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
-serde = { version = "1.0.228", default-features = false, features = ["derive", "std"] }
-serde_json = { version = "1.0.149", default-features = false, features = ["arbitrary_precision", "std"] }
+serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0.151", default-features = false, features = ["arbitrary_precision", "std"] }
 tabled = { version = "0.21.0", default-features = false, features = ["std"] }
-thiserror = { version = "2.0.18", default-features = false }
-time = { version = "0.3.53", default-features = false, features = ["formatting", "parsing", "std"] }
-tokio = { version = "1.52.3", default-features = false, features = ["macros", "net", "rt", "signal", "time"] }
+thiserror = { version = "2.0.19", default-features = false }
+time = { version = "0.3.54", default-features = false, features = ["formatting", "parsing", "std"] }
+tokio = { version = "1.53.1", default-features = false, features = ["macros", "net", "rt", "signal", "time"] }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
-tracing-subscriber = { version = "0.3.22", default-features = false, features = ["fmt", "std"] }
-uuid = { version = "1.23.4", default-features = false, features = ["v4"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+uuid = { version = "1.24.0", default-features = false, features = ["v4"] }
 zeroize = { version = "1.9.0", default-features = false, features = ["alloc", "derive"] }
 
 [dev-dependencies]

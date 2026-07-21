@@ -8,7 +8,7 @@ See the [implemented CLI-to-Venmo private API contract inventory](API.md) for wi
 
 ## Requirements and installation
 
-Building requires Rust 1.95.0. The checked-in `rust-toolchain.toml` pins the required toolchain. From the repository root:
+Building requires Rust 1.97.1. The checked-in `rust-toolchain.toml` pins the required toolchain. From the repository root:
 
 ```sh
 cargo build
