@@ -1,12 +1,9 @@
-# venmo-cli
+# Venmo CLI
 
-`venmo-cli` is a Rust-only project that provides the `venmo` command for a small, unofficial Venmo CLI.
+> [!IMPORTANT]
+> This project uses reverse engineered non-public Venmo API endpoints. They can change or stop working without notice.
 
-> This project uses unsupported/private Venmo API endpoints. They can change or stop working without notice.
-
-See the [implemented CLI-to-Venmo private API contract inventory](API.md) for wire-level behavior, evidence status, current web discovery leads, and unresolved transfer gates.
-
-## Requirements and installation
+## Installation
 
 Building requires Rust 1.97.1. The checked-in `rust-toolchain.toml` pins the required toolchain. From the repository root:
 
