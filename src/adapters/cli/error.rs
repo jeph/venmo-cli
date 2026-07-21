@@ -97,6 +97,20 @@ pub enum AppError {
         source: TransportBuildError,
     },
 
+    #[error("failed to initialize credential storage")]
+    CredentialStoreInitialization {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[error(
+        "a fresh keyring credential was verified, but the superseded XDG fallback could not be removed; remove it before using other commands"
+    )]
+    CredentialFallbackCleanup {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     #[error(transparent)]
     AuthLogin {
         #[from]
@@ -288,6 +302,9 @@ impl AppError {
             Self::FinancialResultOutput { .. } => ErrorCategory::AmbiguousWrite,
             Self::StateWriteInterruptedUnknown | Self::StateMutationResultOutput { .. } => {
                 ErrorCategory::AmbiguousWrite
+            }
+            Self::CredentialStoreInitialization { .. } | Self::CredentialFallbackCleanup { .. } => {
+                ErrorCategory::Credential
             }
             Self::LoggingInitialization { .. }
             | Self::RuntimeInitialization { .. }

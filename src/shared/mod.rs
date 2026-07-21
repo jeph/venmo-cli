@@ -22,9 +22,9 @@ pub(crate) use credential::{
     AccessToken, AccessTokenParseError, CredentialEnvelope, DeviceId, DeviceIdParseError,
 };
 pub(crate) use credentials::{
-    CredentialAccessError, CredentialCapability, CredentialDeleteOutcome, CredentialDeleter,
-    CredentialFailureKind, CredentialFormat, CredentialReader, CredentialStoreFailure,
-    CredentialWriter, LoadedCredential, require_credential,
+    CredentialAccessError, CredentialBackend, CredentialCapability, CredentialDeleteOutcome,
+    CredentialDeleter, CredentialFailureKind, CredentialFormat, CredentialReader,
+    CredentialStoreFailure, CredentialWriter, LoadedCredential, require_credential,
 };
 pub(crate) use decimal::{DecimalMagnitudeError, parse_decimal_magnitude};
 pub(crate) use failure::{

@@ -141,7 +141,7 @@ pub enum LoginError {
     #[error(transparent)]
     Prompt(#[from] PromptError),
 
-    #[error("failed to read the existing OS credential entry: {source}")]
+    #[error("failed to read the existing local credential entry: {source}")]
     CredentialLoad {
         #[source]
         source: OperationFailure,
@@ -174,7 +174,7 @@ pub enum LoginError {
     },
 
     #[error(
-        "the issued token's OS credential update could not be verified; credential storage state is unknown and the remote token may remain active, so run `venmo auth status` and review official Venmo session controls"
+        "the issued token's local credential update could not be verified; credential storage state is unknown and the remote token may remain active, so run `venmo auth status` and review official Venmo session controls"
     )]
     IssuedCredentialStorageStateUnknown {
         #[source]

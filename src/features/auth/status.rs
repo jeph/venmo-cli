@@ -3,8 +3,8 @@ use time::OffsetDateTime;
 
 use super::CurrentAccountApi;
 use crate::shared::{
-    Account, ApiOperationFailure, ApplicationFailureKind, CredentialAccessError, CredentialFormat,
-    CredentialReader, require_credential,
+    Account, ApiOperationFailure, ApplicationFailureKind, CredentialAccessError, CredentialBackend,
+    CredentialFormat, CredentialReader, require_credential,
 };
 
 #[derive(Debug)]
@@ -12,6 +12,7 @@ pub struct AuthStatus {
     account: Account,
     saved_at: OffsetDateTime,
     credential_format: CredentialFormat,
+    credential_backend: CredentialBackend,
 }
 
 impl AuthStatus {
@@ -28,6 +29,11 @@ impl AuthStatus {
     #[must_use]
     pub const fn credential_format(&self) -> CredentialFormat {
         self.credential_format
+    }
+
+    #[must_use]
+    pub const fn credential_backend(&self) -> CredentialBackend {
+        self.credential_backend
     }
 }
 
@@ -76,5 +82,6 @@ where
         account,
         saved_at: loaded.envelope.saved_at(),
         credential_format: loaded.format,
+        credential_backend: credentials.credential_backend(),
     })
 }

@@ -36,9 +36,9 @@ The initial MCP release provides structured, read-only access to the already imp
 - Use [`dialoguer`](https://docs.rs/dialoguer/) behind a narrow prompt adapter for hidden token input and default-No confirmation.
 - Prefer mature, popular, actively community-maintained off-the-shelf crates for common functionality instead of rolling project-owned replacements; keep custom code focused on Venmo-specific model behavior, feature orchestration, and safety policy.
 - Use a hybrid command hierarchy: frequent actions are top-level; related management operations are grouped.
-- Use [`keyring`](https://docs.rs/keyring/) as the only persistent credential backend.
+- Always use [`keyring`](https://docs.rs/keyring/) when a native keyring exists. On Linux only, permit a hardened owner-only plaintext XDG state file when the user D-Bus authoritatively has no running or activatable Secret Service, or when the session-bus endpoint is absent.
 - `venmo auth login` always uses the legacy mobile-private account-identifier/password, newly supplied trusted-device-ID, and optional SMS-OTP flow. There is no token-import, stored-device reauthentication, password storage, automatic renewal, or authentication retry surface.
-- Typed login credentials and OTP material are zeroized on drop and never stored. Serialization, HTTP, and platform libraries may create bounded transient request/header copies that Rust cannot guarantee are overwritten; the CLI never logs or persists those copies and drops them promptly. Only a validated bearer token, persistent device ID, account identity, and local saved-at time enter the OS credential store.
+- Typed login credentials and OTP material are zeroized on drop and never stored. Serialization, HTTP, and platform libraries may create bounded transient request/header copies that Rust cannot guarantee are overwritten; the CLI never logs those copies and drops them promptly. Only a validated bearer token, persistent device ID, account identity, and local saved-at time enter the selected local credential store.
 - Target Venmo's bearer-token/device-ID mobile private `/v1` API rather than emulating the browser session API. Web-app traffic is discovery evidence only; do not adopt cookie/CSRF authentication, browser backend routes, or a browser User-Agent merely because the web client exposes an operation.
 - A successful explicit login may replace any readable existing credential, including another account, only after the new token validates and the replacement reads back exactly. A failed login leaves the existing entry untouched.
 - Do not ship browser automation, browser-cookie import, or web-session authentication as CLI features. Development-time browser observation under Section 7.4 is permitted solely to establish sanitized API contracts.
@@ -681,7 +681,7 @@ Annotations are hints for trusted harness UI, filtering, and approval policy. Th
 - Phone-number or email recipient resolution.
 - Multiple account profiles.
 - Browser automation, browser-cookie/session import, and web-session authentication.
-- Persistent token storage outside the OS credential store.
+- Persistent token storage outside the native keyring or the narrowly defined Linux XDG fallback.
 - JSON output from the terminal CLI in the first release; required MCP structured JSON is a separate adapter contract.
 - Remote MCP transports, MCP OAuth, remotely hosted MCP service operation, and network listeners in the initial MCP release.
 - MCP resources, prompts, sampling, elicitation, tasks, and client functionality until a specific reviewed use case is approved.
@@ -754,17 +754,18 @@ Prompt adapter rules:
 
 ### 6.1 Selected backend
 
-Follow the same high-level model as `pmail`: use the native OS credential store behind independent `CredentialReader`, `CredentialWriter`, and `CredentialDeleter` capabilities with one shared error type.
+Use independent `CredentialReader`, `CredentialWriter`, and `CredentialDeleter` capabilities with one selected, sticky backend per command.
 
-Use the maintained Rust `keyring` convenience crate's default `v1` API as the **only persistent credential backend**. Do not compose `keyring-core` and platform-store crates directly, expose a backend selector, or add an encrypted/plaintext file fallback in the first release.
+Use the maintained Rust `keyring` convenience crate's `v1` API whenever a platform keyring exists. macOS and Windows always select it. Linux uses a separate D-Bus presence probe before keyring initialization: `org.freedesktop.secrets` having an owner or appearing in `ListActivatableNames` selects keyring, and no later keyring error can trigger fallback. A reachable bus with neither condition selects XDG. A missing/refused/not-connected session-bus endpoint also selects XDG by explicit product decision; malformed addresses, permission failures, protocol failures, query failures, and timeouts fail closed.
 
 | Platform | Native store | Requirement |
 | --- | --- | --- |
 | macOS | Keychain Services | Usable login keychain; the OS may request approval |
 | Windows | Credential Manager | Normal interactive user profile |
-| Linux/Unix desktop | Secret Service | Secret Service provider and user-session D-Bus |
+| Linux desktop | Secret Service | Running or D-Bus-activatable provider always wins |
+| Linux without Secret Service | XDG state file | Plaintext, owner-only fallback with explicit login confirmation |
 
-Headless Linux without Secret Service is not a supported persistent-auth environment. Fail closed with setup guidance rather than downgrading storage security.
+The fallback path is `$XDG_STATE_HOME/venmo-cli/credential.json`, defaulting to `$HOME/.local/state/venmo-cli/credential.json`. Resolve the base with `directories`, require an absolute path, current effective-user ownership, an application directory no broader than `0700`, a regular single-link file no broader than `0600`, no-follow descriptor-relative opens, bounded reads, same-directory unique temporary writes, file and directory sync, and atomic rename. The file is not encrypted: it protects against other unprivileged users, not root, same-user malware, backups, or offline account access. Login must warn and obtain an explicit default-No confirmation before network authentication.
 
 ### 6.2 Entry contract
 
@@ -804,28 +805,30 @@ Popularity does not replace review. Recheck release status, advisories, licenses
 ### 6.4 Error and migration behavior
 
 - Match typed `keyring` errors such as `NoEntry`, `NoStorageAccess`, `BadEncoding`, `TooLong`, and `Ambiguous`; never match error strings.
-- Distinguish missing, locked/unavailable, corrupt, invalid, oversized, and ambiguous entries.
-- `auth logout` deletes the entry directly without parsing it first.
+- Distinguish missing, inaccessible, unavailable, corrupt, invalid, oversized, and ambiguous entries. `NoStorageAccess` is inaccessible; `NoDefaultStore` and `NotSupportedByStore` after native selection are platform/configuration failures, never absence signals.
+- `auth logout` deletes selected state directly without parsing it first. With keyring selected, delete the native entry first and only then remove a superseded fallback; a native deletion failure leaves the fallback untouched.
 - `auth login` replaces a readable or single targetable unusable old entry only after the newly issued token validates, then reads it back and verifies exact versioned content before reporting success. Failed login leaves a readable old entry untouched.
 - Explicit successful login may replace a valid different-account entry. Ambiguous or inaccessible entries may not be replaced.
+- If a fallback exists when Secret Service later appears, ordinary reads stop with fresh-login guidance. Login uses keyring and removes the fallback only after verified persistence; there is no automatic migration or read-side mutation.
+- `auth status` reports the backend that actually supplied the credential as `keyring` or `xdg`.
 - Decode the legacy TypeScript camelCase envelope for one-time migration.
 - Prove on each supported platform whether Rust `keyring` can access the item written by `@napi-rs/keyring` under the same service/account.
 - If transparent migration fails, do not delete the old item silently; document a new explicit login or provide a narrowly scoped migration helper.
 
 ### 6.5 MCP credential capability boundary
 
-`venmo-mcp` uses the same fixed service/account entry but receives only a read capability:
+`venmo-mcp` uses the same selected credential policy but receives only a read capability:
 
 - Feature paths that only load credentials, including auth status, require only `CredentialReader`. Login requires reader plus writer for verified persistence; local logout requires only `CredentialDeleter`.
 - Add a private production read-only credential façade, or equivalent concrete composition, that implements only `read_credential`; MCP server state must not have save/delete methods available by type.
 - Keep `CurrentAccountApi` and `PasswordLoginApi` as independent capabilities; terminal login composes only the capabilities it needs, while MCP receives no password/device-trust capability.
 - Load and decode the credential separately for every tool call, use it only for that call, and drop it afterward. Never cache the bearer token, device ID, or whole `CredentialEnvelope` in the server.
-- Constructing the server and handling `initialize` or `tools/list` must not instantiate a keyring entry, trigger an OS approval prompt, or make a network request.
-- No MCP tool input, server flag, environment variable, config file, stdin payload, or alternate backend may supply or override authentication material.
+- Constructing the server and handling `initialize` or `tools/list` must not probe/select credential storage, instantiate a keyring entry, trigger an OS approval prompt, or make a network request.
+- No MCP tool input, server flag, environment variable, config file, or stdin payload may supply or override authentication material; Linux selection remains automatic and identical to the CLI.
 - Missing, corrupt, locked, unavailable, ambiguous, or rejected credentials map to stable sanitized tool errors that direct the operator to the terminal `venmo` authentication commands without exposing platform source chains.
 - Per-call loading lets an already-running MCP process observe a successful `venmo auth login` replacement on its next invocation without restart.
 
-The second executable can have a distinct native-code identity from `venmo`. Validate macOS Keychain ACL/approval behavior manually with an isolated test service/account before claiming support. On Linux, an MCP host launched outside the desktop login session may lack Secret Service or user-session D-Bus even when the terminal CLI works. Fail closed with actionable setup guidance; never introduce a plaintext or environment-secret fallback. Automated validation must not access any native production credential entry.
+The second executable can have a distinct native-code identity from `venmo`. Validate macOS Keychain ACL/approval behavior manually with an isolated test service/account before claiming support. On Linux, an MCP host launched outside the desktop login session may select the XDG fallback when its session-bus endpoint is absent, but it must never bypass a running or activatable Secret Service or accept an environment-secret override. Automated validation must not access any native production credential entry.
 
 ## 7. Private API scope and discovery gates
 
@@ -1120,8 +1123,8 @@ reusable behavior must live in the library.
 #### Service adapters
 
 - Implements private HTTP endpoints and DTO mapping.
-- Implements the sole native keyring adapter.
-- Provides a read-only native credential capability for MCP without save/delete methods.
+- Implements the native keyring adapter, Linux Secret Service probe, selected store, and hardened XDG fallback.
+- Provides a read-only selected credential capability for MCP without save/delete methods.
 - Initializes redacted tracing.
 - Contains platform-specific behavior behind narrow interfaces.
 
@@ -1200,7 +1203,7 @@ Rolling a common component locally despite an appropriate crate requires an expl
 | Errors | `thiserror` | Typed categories and source chains |
 | Timestamp instants and storage | `time` | Typed exact instants and RFC 3339 persistence/wire parsing remain independent of display zones |
 | System-time-zone display | `jiff` 0.2.34 | Cross-platform system-zone discovery and historical rules; local whole-second CLI output, with explicit UTC fallback and `Z` only for UTC display |
-| Persistent secrets | `keyring` 4.1.5 with `v1` | Confirmed sole backend |
+| Persistent secrets | `keyring` 4.1.5 with `v1`; Linux-only `directories`/`rustix`/`zbus` selector and XDG fallback | Keyring always wins when present; fallback is owner-only plaintext; `directories` brings the reviewed MPL-2.0 `option-ext` dependency |
 | Secret memory handling | Redacted newtype; evaluate `zeroize` | Not a persistence backend |
 | IDs | Validated model newtypes | Device IDs are imported or reused, never generated by the CLI |
 | Logging | `tracing`, `tracing-subscriber` | Stderr only with explicit redaction |
@@ -1971,7 +1974,7 @@ Exit criteria:
 - `auth login` prompts for the identifier, hidden password, and a newly supplied hidden trusted device ID in that order, and handles SMS OTP when required. It accepts no secrets through arguments, stdin flags, environment variables, or files.
 - Interactive prompts use the tested `dialoguer` adapter and never echo token material or write prompt UI to stdout.
 - README trusted-device setup steps are verified and carry prominent secret-handling warnings.
-- The token is stored only in the native OS credential store through `keyring`.
+- The token is stored in the native OS credential store whenever one exists; Linux without Secret Service uses only the documented owner-only plaintext XDG fallback after explicit confirmation.
 - Friends and search output provide copyable recipient identifiers.
 - Payment-method output provides inspectable IDs and metadata but no command accepts them as funding input; acceptance selects any external backup internally and does not claim the planned source is the final debit source.
 - Balance semantics are verified and do not overclaim external balances.
@@ -2024,10 +2027,10 @@ Exit criteria:
 | Wrong recipient | Exact resolution and one recipient; show identity in `pay user` details before default-No confirmation and in the confirmed request-creation result |
 | Wrong funding source | Apply the validated automatic policy, fail closed on ambiguity, never rank by order or fee, and display the submitted safe method label and ID before confirmation |
 | Wrong, stale, or already-settled request | Fetch authoritative record, require incoming/pending/current-account ownership, confirm all immutable fields, and handle state conflict without a retry |
-| Token exposure | Hidden prompt, keyring-only persistence, redacted token type, no body/header logs |
+| Token exposure | Hidden prompt, keyring-preferred persistence, explicit plaintext-fallback warning, owner-only hardened XDG access, redacted token type, no body/header logs |
 | Malicious terminal text | Sanitize every human-rendered untrusted string |
 | Rust cannot read the legacy Node-created keychain item | Native migration spike, explicit-login replacement documentation, no silent deletion |
-| Linux has no Secret Service | Fail closed with actionable guidance; do not use insecure fallback |
+| Linux has no Secret Service | Use the explicit owner-only XDG fallback only after authoritative absence/no-bus classification and login confirmation; never fall back from an existing keyring's access failure |
 | Cross-compiled binary hides runtime failures | Native keyring and archive smoke tests before claiming support |
 | Third-party research has stale or incompatible code | Use it only as a behavioral lead; validate independently and do not copy incompatible code |
 | Browser network discovery exposes session or account data | Use the Section 7.4 `agent-browser` workflow, inspect only the correlated call through a local structural redactor, avoid HAR by default, never emit raw details, and destroy any approved temporary capture after sanitization |

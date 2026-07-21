@@ -33,6 +33,8 @@ enum AppErrorVariant {
     FinancialWriteInterruptedUnknown,
     StateWriteInterruptedUnknown,
     ApiInitialization,
+    CredentialStoreInitialization,
+    CredentialFallbackCleanup,
     AuthLogin,
     AuthStatus,
     AuthLogoutIncomplete,
@@ -86,6 +88,12 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         AppError::StateWriteInterruptedUnknown,
         AppError::ApiInitialization {
             source: TransportBuildError::ClientInitialization,
+        },
+        AppError::CredentialStoreInitialization {
+            source: Box::new(io::Error::other("synthetic selection failure")),
+        },
+        AppError::CredentialFallbackCleanup {
+            source: Box::new(io::Error::other("synthetic cleanup failure")),
         },
         AppError::from(LoginError::Prompt(PromptError::NotInteractive)),
         AppError::from(AuthStatusError::Credential(CredentialAccessError::Missing)),
@@ -171,6 +179,14 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
             ErrorCategory::AmbiguousWrite,
         ),
         classification(AppErrorVariant::ApiInitialization, ErrorCategory::Internal),
+        classification(
+            AppErrorVariant::CredentialStoreInitialization,
+            ErrorCategory::Credential,
+        ),
+        classification(
+            AppErrorVariant::CredentialFallbackCleanup,
+            ErrorCategory::Credential,
+        ),
         classification(AppErrorVariant::AuthLogin, ErrorCategory::Usage),
         classification(AppErrorVariant::AuthStatus, ErrorCategory::Credential),
         classification(
@@ -241,6 +257,10 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         }
         AppError::StateWriteInterruptedUnknown => AppErrorVariant::StateWriteInterruptedUnknown,
         AppError::ApiInitialization { .. } => AppErrorVariant::ApiInitialization,
+        AppError::CredentialStoreInitialization { .. } => {
+            AppErrorVariant::CredentialStoreInitialization
+        }
+        AppError::CredentialFallbackCleanup { .. } => AppErrorVariant::CredentialFallbackCleanup,
         AppError::AuthLogin { .. } => AppErrorVariant::AuthLogin,
         AppError::AuthStatus { .. } => AppErrorVariant::AuthStatus,
         AppError::AuthLogoutIncomplete { .. } => AppErrorVariant::AuthLogoutIncomplete,

@@ -186,8 +186,8 @@ pub type CredentialStoreErrorKind = CredentialFailureKind;
 
 #[derive(Debug, Error)]
 pub enum CredentialStoreError {
-    #[error("cannot {operation} credentials because the OS credential store is unavailable")]
-    Unavailable {
+    #[error("cannot {operation} credentials because the OS credential store is inaccessible")]
+    Inaccessible {
         operation: &'static str,
         #[source]
         source: KeyringError,
@@ -231,7 +231,7 @@ impl CredentialStoreError {
     #[must_use]
     pub const fn kind(&self) -> CredentialStoreErrorKind {
         match self {
-            Self::Unavailable { .. } => CredentialStoreErrorKind::Unavailable,
+            Self::Inaccessible { .. } => CredentialStoreErrorKind::Inaccessible,
             Self::Corrupt { .. } => CredentialStoreErrorKind::Corrupt,
             Self::Invalid { .. } => CredentialStoreErrorKind::Invalid,
             Self::TooLarge { .. } => CredentialStoreErrorKind::TooLarge,
@@ -258,10 +258,8 @@ impl CredentialStoreFailure for CredentialStoreError {
 
 fn classify_keyring_error(operation: &'static str, source: KeyringError) -> CredentialStoreError {
     match source {
-        source @ (KeyringError::NoStorageAccess(_)
-        | KeyringError::NoDefaultStore
-        | KeyringError::NotSupportedByStore(_)) => {
-            CredentialStoreError::Unavailable { operation, source }
+        source @ KeyringError::NoStorageAccess(_) => {
+            CredentialStoreError::Inaccessible { operation, source }
         }
         KeyringError::BadEncoding(_) | KeyringError::BadDataFormat(_, _) => {
             CredentialStoreError::Corrupt { operation }

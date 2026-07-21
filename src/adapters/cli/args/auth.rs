@@ -16,7 +16,7 @@ pub enum AuthOperation {
 
     /// Remove the local credential without revoking the remote token.
     #[command(
-        after_long_help = "Deletes only the local keyring entry. It does not contact Venmo or revoke the remote bearer token."
+        after_long_help = "Deletes local credential state from the selected store. When a keyring is available, it also removes any superseded XDG fallback. It does not contact Venmo or revoke the remote bearer token."
     )]
     Logout,
 

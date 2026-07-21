@@ -1,10 +1,10 @@
 use std::io::{self, Write};
 
+use crate::adapters::credentials::CredentialAccessPurpose;
 use crate::adapters::system::SystemClock;
-use crate::features::auth::{
-    self as auth, AuthenticationInput, CurrentAccountApi, PasswordLoginApi,
-};
-use crate::shared::{Clock, CredentialDeleter, CredentialReader, CredentialWriter};
+use crate::features::auth::{self as auth, CurrentAccountApi, PromptAvailability, PromptError};
+use crate::features::payments::DefaultNoConfirmation;
+use crate::shared::{CredentialDeleter, CredentialReader};
 
 use super::super::args::{AuthArgs, AuthOperation};
 use super::super::error::AppError;
@@ -24,9 +24,17 @@ where
 {
     match args.operation {
         AuthOperation::Login => {
-            let (store, api) = provider.credential_store_and_api()?;
+            let store = provider.credential_store(CredentialAccessPurpose::Login)?;
+            let api = provider.api()?;
             let prompt = provider.prompt();
-            run_password_login_with(&store, &prompt, &api, &SystemClock, stdout, stderr).await
+            confirm_plaintext_fallback_if_needed(store.backend(), &prompt, stderr)?;
+            let report = auth::login_with_password(&store, &prompt, &api, &SystemClock).await?;
+            store
+                .retire_fallback_after_verified_login()
+                .map_err(|source| AppError::CredentialFallbackCleanup {
+                    source: Box::new(source),
+                })?;
+            finish_password_login(stdout, stderr, &report)
         }
         AuthOperation::Status => {
             let (store, api) = provider.credential_store_and_api()?;
@@ -34,30 +42,42 @@ where
             run_auth_status_with(&store, &api, &timestamps, stdout).await
         }
         AuthOperation::Logout => {
-            let store = provider.credential_store();
+            let store = provider.credential_store(CredentialAccessPurpose::Logout)?;
             run_logout_local_with(&store, stdout, stderr)
         }
     }
 }
 
-async fn run_password_login_with<S, P, A, C, W, E>(
-    store: &S,
+const PLAINTEXT_FALLBACK_CONFIRMATION: &str =
+    "Store the bearer token in an owner-only plaintext XDG state file?";
+
+fn confirm_plaintext_fallback_if_needed<P, E>(
+    backend: crate::shared::CredentialBackend,
     prompt: &P,
-    api: &A,
-    clock: &C,
-    stdout: &mut W,
     stderr: &mut E,
 ) -> Result<(), AppError>
 where
-    S: CredentialReader + CredentialWriter,
-    P: AuthenticationInput,
-    A: CurrentAccountApi + PasswordLoginApi,
-    C: Clock,
-    W: Write,
+    P: DefaultNoConfirmation + PromptAvailability,
     E: Write,
 {
-    let report = auth::login_with_password(store, prompt, api, clock).await?;
-    finish_password_login(stdout, stderr, &report)
+    if backend != crate::shared::CredentialBackend::Xdg {
+        return Ok(());
+    }
+    writeln!(
+        stderr,
+        "warning: no Secret Service keyring is available; the Venmo bearer token will be stored unencrypted in an owner-only XDG state file."
+    )?;
+    stderr.flush()?;
+    if !prompt.can_prompt() {
+        return Err(auth::LoginError::Prompt(PromptError::NotInteractive).into());
+    }
+    if !prompt
+        .confirm_default_no(PLAINTEXT_FALLBACK_CONFIRMATION)
+        .map_err(auth::LoginError::Prompt)?
+    {
+        return Err(auth::LoginError::Prompt(PromptError::Cancelled).into());
+    }
+    Ok(())
 }
 
 async fn run_auth_status_with<R, A, W>(

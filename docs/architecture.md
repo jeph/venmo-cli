@@ -23,7 +23,7 @@ src/
     wallet/
   adapters/
     cli/                        # Clap, dispatch, prompts, tables, and terminal errors
-    credentials/                # credential codec and native keyring implementation
+    credentials/                # codec, native keyring, Linux selector, and hardened XDG fallback
     system/                     # wall clock, request IDs, and build information
     venmo/
       client/                   # feature-port implementations and response mapping
@@ -71,7 +71,7 @@ an owner.
 | `shared` | Cross-feature validated primitives, credential capability traits, common failure categories, `Clock`, and `ClientRequestIdGenerator` | Command workflows, endpoint DTOs, rendering, or feature-specific policy |
 | `features/<name>` | Models and invariants for that feature, use cases, errors, and the narrow ports those use cases consume | Concrete keyring/HTTP/UI technology or public protocol formatting |
 | `adapters/venmo` | The private API wire contract, DTO decoding/encoding, fixed-origin transport, response bounds, and feature-port implementations | Product orchestration or terminal/MCP presentation |
-| `adapters/credentials` | Versioned credential serialization and the sole native keyring implementation | Authentication workflow policy or file fallback |
+| `adapters/credentials` | Versioned serialization, native keyring, Linux Secret Service detection, hardened XDG file I/O, and sticky backend/transition policy | Venmo authentication or terminal presentation policy |
 | `adapters/cli` | Argument grammar, production composition, prompt capability, interruption handling, rendering, and CLI error/exit mapping | Venmo business invariants or a second API implementation |
 | `cli` and `model` | Deliberate external re-exports | New implementation logic or blanket exposure of internals |
 

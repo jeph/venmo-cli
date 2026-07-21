@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use super::{auth, reads, writes};
-use crate::adapters::credentials::NativeCredentialStore;
+use crate::adapters::credentials::{CredentialAccessPurpose, CredentialStore};
 use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
 
@@ -27,8 +27,15 @@ impl ProductionProvider {
         }
     }
 
-    pub(super) fn credential_store(self) -> NativeCredentialStore {
-        NativeCredentialStore::new()
+    pub(super) fn credential_store(
+        self,
+        purpose: CredentialAccessPurpose,
+    ) -> Result<CredentialStore, AppError> {
+        CredentialStore::production(purpose).map_err(|source| {
+            AppError::CredentialStoreInitialization {
+                source: Box::new(source),
+            }
+        })
     }
 
     pub(super) fn api(self) -> Result<VenmoApiClient, AppError> {
@@ -37,8 +44,11 @@ impl ProductionProvider {
 
     pub(super) fn credential_store_and_api(
         self,
-    ) -> Result<(NativeCredentialStore, VenmoApiClient), AppError> {
-        Ok((self.credential_store(), self.api()?))
+    ) -> Result<(CredentialStore, VenmoApiClient), AppError> {
+        Ok((
+            self.credential_store(CredentialAccessPurpose::Ordinary)?,
+            self.api()?,
+        ))
     }
 
     pub(super) fn prompt(self) -> DialoguerPrompt {

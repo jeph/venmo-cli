@@ -10,6 +10,22 @@ pub enum CredentialFormat {
     LegacyTypeScript,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CredentialBackend {
+    Keyring,
+    Xdg,
+}
+
+impl CredentialBackend {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Keyring => "keyring",
+            Self::Xdg => "xdg",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct LoadedCredential {
     pub envelope: CredentialEnvelope,
@@ -24,7 +40,9 @@ pub enum CredentialDeleteOutcome {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialFailureKind {
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Unavailable,
+    Inaccessible,
     Corrupt,
     Invalid,
     UnsupportedVersion,
@@ -54,6 +72,12 @@ pub trait CredentialCapability {
 
 pub trait CredentialReader: CredentialCapability {
     fn read_credential(&self) -> Result<Option<LoadedCredential>, Self::Error>;
+
+    /// Identifies the sticky backend used by this reader. Native keyrings are the default so
+    /// existing narrow test readers and non-Linux adapters need no fallback-specific plumbing.
+    fn credential_backend(&self) -> CredentialBackend {
+        CredentialBackend::Keyring
+    }
 }
 
 pub trait CredentialWriter: CredentialCapability {
@@ -69,7 +93,7 @@ pub enum CredentialAccessError {
     #[error("no Venmo credential is stored; run `venmo auth login`")]
     Missing,
 
-    #[error("failed to read the OS credential entry: {source}")]
+    #[error("failed to read the local credential entry: {source}")]
     Read {
         #[source]
         source: OperationFailure,
@@ -194,7 +218,7 @@ mod tests {
         assert!(matches!(read, CredentialAccessError::Read { .. }));
         assert_eq!(
             read.to_string(),
-            "failed to read the OS credential entry: synthetic credential failure"
+            "failed to read the local credential entry: synthetic credential failure"
         );
         assert!(!format!("{read:?}").contains("sensitive-credential-detail"));
         Ok(())

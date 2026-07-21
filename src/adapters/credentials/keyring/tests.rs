@@ -437,6 +437,9 @@ impl CredentialErrorSnapshot {
             CredentialStoreErrorKind::Unavailable => format!(
                 "cannot {operation} credentials because the OS credential store is unavailable"
             ),
+            CredentialStoreErrorKind::Inaccessible => format!(
+                "cannot {operation} credentials because the OS credential store is inaccessible"
+            ),
             CredentialStoreErrorKind::Corrupt => {
                 format!("cannot {operation} credentials because the OS credential entry is corrupt")
             }
@@ -549,7 +552,7 @@ fn entry_operation_failures() -> [(ScriptedFailure, CredentialStoreErrorKind); 7
     [
         (
             ScriptedFailure::NoStorageAccess,
-            CredentialStoreErrorKind::Unavailable,
+            CredentialStoreErrorKind::Inaccessible,
         ),
         (ScriptedFailure::Invalid, CredentialStoreErrorKind::Invalid),
         (ScriptedFailure::TooLong, CredentialStoreErrorKind::TooLarge),
@@ -593,15 +596,15 @@ fn entry_creation_failures_are_classified_for_every_operation() -> TestResult {
         for (failure, expected_kind) in [
             (
                 ScriptedFailure::NoDefaultStore,
-                CredentialStoreErrorKind::Unavailable,
+                CredentialStoreErrorKind::Platform,
             ),
             (
                 ScriptedFailure::NotSupported,
-                CredentialStoreErrorKind::Unavailable,
+                CredentialStoreErrorKind::Platform,
             ),
             (
                 ScriptedFailure::NoStorageAccess,
-                CredentialStoreErrorKind::Unavailable,
+                CredentialStoreErrorKind::Inaccessible,
             ),
             (
                 ScriptedFailure::Platform,

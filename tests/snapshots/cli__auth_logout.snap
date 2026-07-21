@@ -10,4 +10,4 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-Deletes only the local keyring entry. It does not contact Venmo or revoke the remote bearer token.
+Deletes local credential state from the selected store. When a keyring is available, it also removes any superseded XDG fallback. It does not contact Venmo or revoke the remote bearer token.

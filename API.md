@@ -93,7 +93,7 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | # | CLI leaf | Calls and maximum orchestration | Classification |
 |---:|---|---|---|
 | 1 | `auth login` | Password: **A1 → A5**. OTP: **A1 → A2 → A3 → A5**, verified local save, then **A4** (maximum 5). | Remote auth plus hidden identifier/password/fresh-device prompts and optional hidden OTP. |
-| 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
+| 2 | `auth logout` | No API call; delete selected local credential state. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
 | 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--protect] [--visibility ...] [--yes \| --dry-run]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1**, then ordinary **F1** or protected **F1P**, then **F2**; exact step-up only: **F2O → F2V → F2** (maximum 13). | Financial; protection is explicit and never falls back to ordinary payment. One initial **F2**, or one initial rejected **F2** plus one challenge-verified **F2** with the same UUID. No automatic retry. |
 | 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes \| --dry-run]` | **A5**; 1–4 × **P1** then **P2**; **F3**; exact step-up only: **F2O → F2V → F3** (maximum 10). | Financial; one initial **F3**, or one initial rejected **F3** plus one challenge-verified **F3** with the same UUID. No automatic retry. |
@@ -719,10 +719,17 @@ requests send no write. F6 sends no money or funding fields and is subject to fi
 policy because it mutates payment-request state. The CLI attempts it once with no retry.
 ## 6. Implemented orchestration and local gates
 ### 6.1 Credential lifecycle
-Credentials use OS-keyring service/account `venmo-cli` / `default`, not an API. The
+Credentials use OS-keyring service/account `venmo-cli` / `default`, not an API. On Linux only,
+when the user D-Bus has neither a running nor activatable `org.freedesktop.secrets`, the same
+envelope may instead use `$XDG_STATE_HOME/venmo-cli/credential.json` (default
+`$HOME/.local/state/venmo-cli/credential.json`). An absent session-bus endpoint counts as absent;
+permission, protocol, address, query, and timeout failures fail closed. Once Secret Service is
+present, keyring operation errors never trigger fallback. The
 ≤128 KiB v1 JSON stores schema version, validated token, device/user IDs, bare
 username, optional display name, and save time; legacy TypeScript envelopes remain
-readable. Secrets are hidden-prompted, never normal arguments/environment/files;
+readable. The XDG form is plaintext with owner-only directory/file permissions and hardened,
+atomic file access; fallback login warns and requires explicit default-No confirmation. Secrets are
+hidden-prompted and never normal arguments or environment variables;
 password/OTP values are zeroized and not stored. Login needs a terminal, always
 prompts for a new trusted device ID, and every save is reread and checked for v1
 equivalence.
@@ -734,9 +741,12 @@ equivalence.
   validated credential stored.
 - Replacement does not revoke the previous remote token; output directs the user to
   official Venmo session controls when invalidation is required.
-- Logout deletes only the local keyring entry, makes no remote call, and reports that
-  the bearer token may remain valid. Missing state succeeds.
-- Status is A5 validation, not token-presence inspection.
+- When Secret Service appears after fallback use, ordinary reads require a fresh login. Verified
+  keyring login then retires the fallback; logout deletes keyring state before fallback state.
+- Logout deletes local credential state, makes no remote call, and reports that the bearer token
+  may remain valid. Missing state succeeds.
+- Status is A5 validation, not token-presence inspection, and reports the backend that supplied the
+  credential as `keyring` or `xdg`.
 ### 6.2 Financial workflows
 All mutation workflows support a full-preflight `--dry-run` at the boundary between flushed details
 and authorization. This path sends none of the final mutation calls described below and never enters

@@ -42,7 +42,7 @@ through this central boundary; no command-specific debug initialization is expos
 `handle_runtime_initialization_failure(cli, stdout, stderr, source)` is the synchronous fallback
 used when the process runtime cannot be built. It owns the same process terminal check.
 Noninteractive authentication returns before logging initialization; local-only logout still
-deletes the keyring entry without a runtime.
+selects and deletes local credential state without a runtime.
 
 The concrete CLI adapter, production provider, prompts, renderers, and dispatch helpers remain
 private even though selected items are re-exported through this facade.

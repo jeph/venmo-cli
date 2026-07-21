@@ -12,7 +12,7 @@ use crate::shared::{
 };
 
 const CURRENT_SCHEMA_VERSION: u64 = 1;
-const MAX_ENCODED_CREDENTIAL_BYTES: usize = 128 * 1024;
+pub(super) const MAX_ENCODED_CREDENTIAL_BYTES: usize = 128 * 1024;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

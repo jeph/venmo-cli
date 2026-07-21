@@ -8,7 +8,7 @@ use super::args::{
 use super::error::AppError;
 use super::logging::InitializationError;
 use super::prompt::TerminalCapabilities;
-use crate::adapters::credentials::NativeCredentialStore;
+use crate::adapters::credentials::{CredentialAccessPurpose, CredentialStore};
 use crate::features::auth::{LoginError, PromptError};
 
 mod auth;
@@ -119,7 +119,7 @@ fn auth_requires_interactive_terminal(args: &AuthArgs) -> bool {
 }
 
 /// Preserves synchronous/service-free behavior if the one process runtime cannot be built.
-/// Local-only logout still deletes the keyring entry without constructing a runtime.
+/// Local-only logout still deletes selected local credential state without constructing a runtime.
 pub fn handle_runtime_initialization_failure<W, E>(
     cli: Cli,
     stdout: &mut W,
@@ -170,7 +170,12 @@ where
         Command::Auth(AuthArgs {
             operation: AuthOperation::Logout,
         }) => {
-            let store = NativeCredentialStore::new();
+            let store =
+                CredentialStore::production(CredentialAccessPurpose::Logout).map_err(|source| {
+                    AppError::CredentialStoreInitialization {
+                        source: Box::new(source),
+                    }
+                })?;
             auth::run_logout_local_with(&store, stdout, stderr)
         }
         _ => Err(failure),

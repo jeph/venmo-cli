@@ -66,7 +66,12 @@ pub(crate) fn write_auth_status<W: Write>(
     )?;
     writeln!(writer, "User ID: {}", status.account().user_id())?;
     writeln!(writer, "Saved at: {saved_at}")?;
-    writeln!(writer, "Credential format: {format}")
+    writeln!(writer, "Credential format: {format}")?;
+    writeln!(
+        writer,
+        "Credential store: {}",
+        status.credential_backend().as_str()
+    )
 }
 
 pub(crate) fn write_logout_report<W: Write, E: Write>(
