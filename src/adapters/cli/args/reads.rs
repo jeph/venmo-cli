@@ -1,6 +1,8 @@
 use clap::{Args, Subcommand};
 
-use crate::features::activity::{ActivityBeforeId, ActivityId};
+use crate::features::activity::{
+    ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityId,
+};
 use crate::features::people::UserSearchQuery;
 use crate::shared::{Limit, Offset, Username};
 
@@ -56,6 +58,15 @@ pub enum ActivityOperation {
 
     /// Show information about one activity record.
     Info(ActivityInfoArgs),
+
+    /// Like one activity record.
+    Like(ActivityLikeArgs),
+
+    /// Unlike one activity record.
+    Unlike(ActivityUnlikeArgs),
+
+    /// Add or remove activity comments.
+    Comments(ActivityCommentsArgs),
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -78,4 +89,95 @@ pub struct ActivityInfoArgs {
     /// Canonical activity ID.
     #[arg(value_name = "ACTIVITY_ID")]
     pub activity_id: ActivityId,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the like outcome must be verified independently."
+)]
+pub struct ActivityLikeArgs {
+    /// Canonical activity ID.
+    #[arg(value_name = "ACTIVITY_ID")]
+    pub activity_id: ActivityId,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long, conflicts_with = "dry_run")]
+    pub yes: bool,
+
+    /// Complete preflight and show details without liking the activity.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the unlike outcome must be verified independently."
+)]
+pub struct ActivityUnlikeArgs {
+    /// Canonical activity ID.
+    #[arg(value_name = "ACTIVITY_ID")]
+    pub activity_id: ActivityId,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long, conflicts_with = "dry_run")]
+    pub yes: bool,
+
+    /// Complete preflight and show details without unliking the activity.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+pub struct ActivityCommentsArgs {
+    #[command(subcommand)]
+    pub operation: ActivityCommentsOperation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
+pub enum ActivityCommentsOperation {
+    /// Add a comment to one activity record.
+    Add(ActivityCommentAddArgs),
+
+    /// Remove one comment by its canonical comment ID.
+    Remove(ActivityCommentRemoveArgs),
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "Comments must contain non-whitespace text and cannot exceed 2000 characters. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the comment outcome must be verified independently."
+)]
+pub struct ActivityCommentAddArgs {
+    /// Canonical activity ID.
+    #[arg(value_name = "ACTIVITY_ID")]
+    pub activity_id: ActivityId,
+
+    /// Comment text.
+    #[arg(value_name = "MESSAGE")]
+    pub message: ActivityCommentMessage,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long, conflicts_with = "dry_run")]
+    pub yes: bool,
+
+    /// Complete preflight and show details without adding the comment.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "Venmo authorizes removal from the comment ID alone. The CLI cannot preflight the parent activity, authorship, or comment text and cannot reconcile absence without an activity ID. The command never retries automatically. Exit code 3 means the removal outcome must be verified independently."
+)]
+pub struct ActivityCommentRemoveArgs {
+    /// Canonical comment ID shown by `activity info`.
+    #[arg(value_name = "COMMENT_ID")]
+    pub comment_id: ActivityCommentId,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long, conflicts_with = "dry_run")]
+    pub yes: bool,
+
+    /// Show the exact deletion intent without removing the comment.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }

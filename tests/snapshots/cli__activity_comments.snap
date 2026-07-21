@@ -1,0 +1,16 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Add or remove activity comments
+
+Usage: comments <COMMAND>
+
+Commands:
+  add     Add a comment to one activity record
+  remove  Remove one comment by its canonical comment ID
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help

@@ -3,6 +3,7 @@ use std::io;
 use crate::adapters::cli::error::{AppError, ErrorCategory};
 use crate::adapters::venmo::TransportBuildError;
 use crate::features::activity::ActivityError;
+use crate::features::activity::social::ActivitySocialMutationError;
 use crate::features::auth::{AuthStatusError, LoginError, PromptError};
 use crate::features::payments::PeerPreflightError;
 use crate::features::payments::pay::PayError;
@@ -49,6 +50,7 @@ enum AppErrorVariant {
     FriendshipMutation,
     Balance,
     Activity,
+    ActivitySocialMutation,
     Requests,
     RequestInfo,
     TransferOptions,
@@ -124,6 +126,7 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         AppError::from(ActivityError::ResponseContract {
             problem: "synthetic response failure",
         }),
+        AppError::from(ActivitySocialMutationError::ConfirmationRequired),
         AppError::from(RequestsError::ResponseContract {
             problem: "synthetic response failure",
         }),
@@ -191,6 +194,10 @@ fn every_app_error_variant_has_a_complete_deliberate_classification() {
         ),
         classification(AppErrorVariant::Balance, ErrorCategory::Credential),
         classification(AppErrorVariant::Activity, ErrorCategory::ApiContract),
+        classification(
+            AppErrorVariant::ActivitySocialMutation,
+            ErrorCategory::Usage,
+        ),
         classification(AppErrorVariant::Requests, ErrorCategory::ApiContract),
         classification(AppErrorVariant::RequestInfo, ErrorCategory::Usage),
         classification(AppErrorVariant::TransferOptions, ErrorCategory::Credential),
@@ -251,6 +258,7 @@ const fn variant(error: &AppError) -> AppErrorVariant {
         AppError::FriendshipMutation { .. } => AppErrorVariant::FriendshipMutation,
         AppError::Balance { .. } => AppErrorVariant::Balance,
         AppError::Activity { .. } => AppErrorVariant::Activity,
+        AppError::ActivitySocialMutation { .. } => AppErrorVariant::ActivitySocialMutation,
         AppError::Requests { .. } => AppErrorVariant::Requests,
         AppError::RequestInfo { .. } => AppErrorVariant::RequestInfo,
         AppError::TransferOptions { .. } => AppErrorVariant::TransferOptions,

@@ -3,8 +3,9 @@ use std::str::FromStr;
 
 use super::super::{write_activity_info, write_activity_list, write_request_info, write_requests};
 use crate::features::activity::{
-    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDetail,
-    ActivityDirection, ActivityFeedKind, ActivityId, ActivityInfoResult, ActivityListResult,
+    Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
+    ActivityCounterparty, ActivityDetail, ActivityDirection, ActivityFeedKind, ActivityId,
+    ActivityInfoResult, ActivityListResult, ActivitySocial, ActivitySocialCollection,
     ActivityStatus, ActivitySubject,
 };
 use crate::features::people::User;
@@ -146,6 +147,48 @@ fn external_activity_detail_omits_an_unavailable_amount() -> TestResult {
 
     assert!(!stdout.contains("Amount:"));
     insta::assert_snapshot!("external_activity_info_without_amount", stdout);
+    Ok(())
+}
+
+#[test]
+fn activity_info_renders_partial_embedded_social_data_and_sanitizes_it() -> TestResult {
+    let liker = User::new(
+        UserId::from_str("789")?,
+        Some(Username::from_bare("liker")?),
+        Some("Liker\nName".to_owned()),
+    );
+    let comment = ActivityComment::new(
+        ActivityCommentId::from_str("comment-1")?,
+        synthetic_user("123", "alice")?,
+        "message\n\u{1b}[31mline".to_owned(),
+        time::OffsetDateTime::UNIX_EPOCH,
+    );
+    let detail = ActivityDetail::payment(
+        ActivityId::from_str("story-1")?,
+        time::OffsetDateTime::UNIX_EPOCH,
+        ActivityAction::from_str("pay")?,
+        synthetic_user("123", "alice")?,
+        synthetic_user("456", "bob")?,
+        Some(Money::from_str("1.25")?),
+        ActivityStatus::from_str("settled")?,
+        Some("visible note".to_owned()),
+        Some("friends".to_owned()),
+    )
+    .with_social(ActivitySocial::new(
+        Some(ActivitySocialCollection::new(2, vec![liker], false)),
+        Some(ActivitySocialCollection::new(2, vec![comment], false)),
+    ));
+    let mut stdout = Vec::new();
+
+    write_activity_info(
+        &mut stdout,
+        &ActivityInfoResult::new(detail),
+        &super::local_timestamps(),
+    )?;
+    let stdout = String::from_utf8(stdout)?;
+
+    insta::assert_snapshot!("activity_info_partial_social", stdout);
+    assert!(!stdout.contains('\u{1b}'));
     Ok(())
 }
 

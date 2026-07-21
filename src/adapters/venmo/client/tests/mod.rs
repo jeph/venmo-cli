@@ -21,8 +21,9 @@ use super::response::sanitize_api_code;
 use super::support::parse_timestamp_value;
 use super::*;
 use crate::features::activity::{
-    ActivityBeforeId, ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope,
-    ActivityId, ActivityListApi, ActivityPageRequest,
+    ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityCommentRemovalApi,
+    ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId,
+    ActivityListApi, ActivityPageRequest, ActivitySocialMutationApi,
 };
 use crate::features::auth::{
     AccountPassword, CurrentAccountApi, LoginIdentifier, OtpCode, OtpSecret, PasswordLoginApi,
@@ -232,6 +233,9 @@ enum ApiErrorDetail {
     TemporaryPaymentRejected {
         rendered: String,
     },
+    ActivityCommentNotFound {
+        rendered: String,
+    },
     MalformedJson {
         operation: &'static str,
     },
@@ -298,6 +302,9 @@ impl ApiErrorSnapshot {
             }
             VenmoApiError::TemporaryPaymentRejected => {
                 ApiErrorDetail::TemporaryPaymentRejected { rendered }
+            }
+            VenmoApiError::ActivityCommentNotFound => {
+                ApiErrorDetail::ActivityCommentNotFound { rendered }
             }
             VenmoApiError::MalformedJson { operation } => {
                 ApiErrorDetail::MalformedJson { operation }

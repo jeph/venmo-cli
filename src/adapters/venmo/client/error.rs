@@ -55,6 +55,9 @@ pub(crate) enum VenmoApiError {
     )]
     TemporaryPaymentRejected,
 
+    #[error("Comment not found.")]
+    ActivityCommentNotFound,
+
     #[error(transparent)]
     ConfirmedFinancialRejection(ConfirmedFinancialRejection),
 
@@ -151,6 +154,7 @@ impl ApiFailure for VenmoApiError {
             | Self::DuplicatePaymentRejected
             | Self::DuplicateRequestAcceptanceRejected
             | Self::TemporaryPaymentRejected
+            | Self::ActivityCommentNotFound
             | Self::ConfirmedFinancialRejection(_)
             | Self::UnsupportedFinancialContinuation(_) => ApiFailureKind::Rejected,
         }

@@ -1,0 +1,22 @@
+---
+source: src/adapters/cli/output/tests/activity_requests.rs
+expression: stdout
+---
+Activity ID: story-1
+Time: 1969-12-31T16:00:00
+Action: pay
+Actor: @alice
+Target: @bob
+Amount: $1.25
+Status: settled
+Note: visible note
+Audience: friends
+Likes: 2
+Likers shown: 1 (partial)
+  Liker: @liker
+Comments: 2
+Comments shown: 1 (partial)
+  Comment ID: comment-1
+    Author: @alice
+    Time: 1969-12-31T16:00:00
+    Message: message\n\u{001B}[31mline

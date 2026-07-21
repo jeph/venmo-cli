@@ -131,7 +131,7 @@ pub(super) fn friends_args() -> TestResult<FriendsListArgs> {
     }
 }
 
-pub(super) fn activity_list_args() -> TestResult<ActivityArgs> {
+pub(super) fn activity_list_args() -> TestResult<ActivityListArgs> {
     match Cli::try_parse_from([
         "venmo",
         "activity",
@@ -143,14 +143,24 @@ pub(super) fn activity_list_args() -> TestResult<ActivityArgs> {
     ])?
     .command
     {
-        Command::Activity(args) => Ok(args),
+        Command::Activity(args) => match args.operation {
+            ActivityOperation::List(args) => Ok(args),
+            _ => {
+                Err(io::Error::other("activity-list arguments parsed as another operation").into())
+            }
+        },
         _ => Err(io::Error::other("activity-list arguments parsed as another command").into()),
     }
 }
 
-pub(super) fn activity_info_args() -> TestResult<ActivityArgs> {
+pub(super) fn activity_info_args() -> TestResult<ActivityInfoArgs> {
     match Cli::try_parse_from(["venmo", "activity", "info", "story-1"])?.command {
-        Command::Activity(args) => Ok(args),
+        Command::Activity(args) => match args.operation {
+            ActivityOperation::Info(args) => Ok(args),
+            _ => {
+                Err(io::Error::other("activity-info arguments parsed as another operation").into())
+            }
+        },
         _ => Err(io::Error::other("activity-info arguments parsed as another command").into()),
     }
 }
@@ -243,6 +253,8 @@ pub(super) const ACTIVITY_INFO_OUTPUT: &str = concat!(
     "Status: failed\n",
     "Note: note\\n\\u{001B}[31mline\n",
     "Audience: private\n",
+    "Likes: (not provided)\n",
+    "Comments: (not provided)\n",
 );
 
 pub(super) const REQUESTS_OUTPUT: &str = concat!(

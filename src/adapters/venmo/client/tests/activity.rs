@@ -508,3 +508,347 @@ async fn participant_activity_detail_requires_an_amount() -> TestResult {
     assert_eq!(observed, expected);
     Ok(())
 }
+
+fn social_activity_body(liked_by_owner: bool, include_comment: bool) -> Value {
+    let mut body = activity_body("story-1");
+    body["data"]["likes"] = if liked_by_owner {
+        serde_json::json!({
+            "count": 1,
+            "data": [{"id":"123","username":"alice"}],
+            "pagination": {"next": null}
+        })
+    } else {
+        serde_json::json!({"count":0,"data":[],"pagination":{"next":null}})
+    };
+    body["data"]["comments"] = if include_comment {
+        serde_json::json!({
+            "count": 1,
+            "data": [{
+                "id":"comment-1",
+                "user":{"id":"123","username":"alice"},
+                "message":"Synthetic comment",
+                "date_created":"2026-07-11T12:01:00Z"
+            }],
+            "pagination":{"next":null}
+        })
+    } else {
+        serde_json::json!({"count":0,"data":[],"pagination":{"next":null}})
+    };
+    body
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_detail_maps_embedded_likes_and_comments_with_completeness() -> TestResult {
+    let mut body = social_activity_body(true, true);
+    body["data"]["likes"]["pagination"] = Value::Null;
+    body["data"]["comments"]["pagination"] = Value::Null;
+    let response = scripted_json_response(200, body)?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+
+    let result = client
+        .activity_by_id(&token, &device_id, &current_user_id, &activity_id)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |detail| {
+            detail
+                .social()
+                .likes()
+                .zip(detail.social().comments())
+                .map(|(likes, comments)| {
+                    (
+                        likes.count(),
+                        likes.items()[0].user_id().as_str().to_owned(),
+                        likes.is_complete(),
+                        comments.count(),
+                        comments.items()[0].id().as_str().to_owned(),
+                        comments.items()[0].message().to_owned(),
+                        comments.is_complete(),
+                    )
+                })
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok(Some((
+            1,
+            "123".to_owned(),
+            true,
+            1,
+            "comment-1".to_owned(),
+            "Synthetic comment".to_owned(),
+            true,
+        ))),
+        vec![authenticated_read_request(
+            "/stories/{story-id}",
+            &["stories", "story-1"],
+            &[],
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_detail_rejects_inconsistent_or_duplicate_embedded_social_data() -> TestResult {
+    let duplicate_liker = serde_json::json!({
+        "count":2,
+        "data":[{"id":"123","username":"alice"},{"id":"123","username":"alice"}],
+        "pagination":{"next":null}
+    });
+    let duplicate_comment = serde_json::json!({
+        "count":2,
+        "data":[
+            {"id":"comment-1","user":{"id":"123"},"message":"one","date_created":"2026-07-11T12:01:00Z"},
+            {"id":"comment-1","user":{"id":"123"},"message":"two","date_created":"2026-07-11T12:02:00Z"}
+        ],
+        "pagination":{"next":null}
+    });
+    for (field, collection) in [
+        (
+            "likes",
+            serde_json::json!({
+                "count":0,"data":[{"id":"123","username":"alice"}],"pagination":{"next":null}
+            }),
+        ),
+        ("likes", duplicate_liker),
+        (
+            "comments",
+            serde_json::json!({
+                "count":0,
+                "data":[{"id":"comment-1","user":{"id":"123"},"message":"one","date_created":"2026-07-11T12:01:00Z"}],
+                "pagination":{"next":null}
+            }),
+        ),
+        ("comments", duplicate_comment),
+    ] {
+        let mut body = activity_body("story-1");
+        body["data"][field] = collection;
+        let response = scripted_json_response(200, body)?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let current_user_id = UserId::from_str("123")?;
+        let activity_id = ActivityId::from_str("story-1")?;
+
+        let result = client
+            .activity_by_id(&token, &device_id, &current_user_id, &activity_id)
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::contract(ACTIVITY_DETAIL_OPERATION)),
+            vec![authenticated_read_request(
+                "/stories/{story-id}",
+                &["stories", "story-1"],
+                &[],
+            )],
+        );
+
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_like_and_unlike_use_exact_bodyless_state_routes_then_reconcile() -> TestResult {
+    for (like, response_body, method, operation, expected_likes) in [
+        (
+            true,
+            social_activity_body(true, false),
+            Method::POST,
+            ACTIVITY_LIKE_OPERATION,
+            1,
+        ),
+        (
+            false,
+            social_activity_body(false, false),
+            Method::DELETE,
+            ACTIVITY_UNLIKE_OPERATION,
+            0,
+        ),
+    ] {
+        let mutation = scripted_response(204, Vec::new())?;
+        let refresh = scripted_json_response(200, response_body)?;
+        let (client, transport) = scripted_client([Ok(mutation), Ok(refresh)])?;
+        let (token, device_id) = test_session()?;
+        let current_user_id = UserId::from_str("123")?;
+        let activity_id = ActivityId::from_str("story-1")?;
+
+        let result = if like {
+            client
+                .like_activity(&token, &device_id, &current_user_id, &activity_id)
+                .await
+        } else {
+            client
+                .unlike_activity(&token, &device_id, &current_user_id, &activity_id)
+                .await
+        };
+        let observed = ScriptedObservation::observed(
+            project_result(result, |detail| {
+                detail.social().likes().map(|likes| likes.count())
+            }),
+            &transport,
+        );
+        let expected = ScriptedObservation::expected(
+            Ok(Some(expected_likes)),
+            vec![
+                authenticated_request(
+                    method,
+                    "/stories/{story-id}/likes",
+                    &["stories", "story-1", "likes"],
+                    &[],
+                    None,
+                    OperationClass::StateWrite,
+                ),
+                authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),
+            ],
+        );
+
+        assert_eq!(observed, expected, "{operation}");
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_comment_add_uses_exact_json_and_verifies_created_comment() -> TestResult {
+    let created = scripted_json_response(
+        200,
+        serde_json::json!({"data":{
+            "id":"comment-1",
+            "user":{"id":"123","username":"alice"},
+            "message":"Synthetic comment",
+            "date_created":"2026-07-11T12:01:00Z"
+        }}),
+    )?;
+    let refresh = scripted_json_response(200, social_activity_body(false, true))?;
+    let (client, transport) = scripted_client([Ok(created), Ok(refresh)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+    let message = ActivityCommentMessage::from_str("Synthetic comment")?;
+
+    let result = client
+        .add_activity_comment(&token, &device_id, &current_user_id, &activity_id, &message)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |detail| {
+            detail.social().comments().map(|comments| comments.count())
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok(Some(1)),
+        vec![
+            authenticated_request(
+                Method::POST,
+                "/stories/{story-id}/comments",
+                &["stories", "story-1", "comments"],
+                &[],
+                Some(br#"{"message":"Synthetic comment"}"#),
+                OperationClass::StateWrite,
+            ),
+            authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),
+        ],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_comment_remove_uses_only_the_comment_id_route() -> TestResult {
+    let mutation = scripted_response(204, Vec::new())?;
+    let (client, transport) = scripted_client([Ok(mutation)])?;
+    let (token, device_id) = test_session()?;
+    let comment_id = ActivityCommentId::from_str("comment-1")?;
+
+    let result = client
+        .remove_activity_comment(&token, &device_id, &comment_id)
+        .await;
+    let observed = ScriptedObservation::observed(result, &transport);
+    let expected = ScriptedObservation::expected(
+        Ok(()),
+        vec![authenticated_request(
+            Method::DELETE,
+            "/comments/{comment-id}",
+            &["comments", "comment-1"],
+            &[],
+            None,
+            OperationClass::StateWrite,
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_comment_remove_explains_that_the_comment_could_not_be_found() -> TestResult {
+    let response = scripted_response(404, Vec::new())?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let comment_id = ActivityCommentId::from_str("comment-1")?;
+
+    let result = client
+        .remove_activity_comment(&token, &device_id, &comment_id)
+        .await;
+    let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+    let expected = ScriptedObservation::expected(
+        Err(ApiErrorSnapshot {
+            kind: ApiFailureKind::Rejected,
+            detail: ApiErrorDetail::ActivityCommentNotFound {
+                rendered: "Comment not found.".to_owned(),
+            },
+        }),
+        vec![authenticated_request(
+            Method::DELETE,
+            "/comments/{comment-id}",
+            &["comments", "comment-1"],
+            &[],
+            None,
+            OperationClass::StateWrite,
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn social_mutation_reconciliation_mismatches_are_ambiguous() -> TestResult {
+    let mutation = scripted_response(204, Vec::new())?;
+    let refresh = scripted_json_response(200, social_activity_body(false, false))?;
+    let (client, transport) = scripted_client([Ok(mutation), Ok(refresh)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+
+    let result = client
+        .like_activity(&token, &device_id, &current_user_id, &activity_id)
+        .await;
+    let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+    let expected = ScriptedObservation::expected(
+        Err(ApiErrorSnapshot {
+            kind: ApiFailureKind::AmbiguousWrite,
+            detail: ApiErrorDetail::StateMutationOutcomeUnknown {
+                operation: ACTIVITY_LIKE_OPERATION,
+            },
+        }),
+        vec![
+            authenticated_request(
+                Method::POST,
+                "/stories/{story-id}/likes",
+                &["stories", "story-1", "likes"],
+                &[],
+                None,
+                OperationClass::StateWrite,
+            ),
+            authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),
+        ],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}

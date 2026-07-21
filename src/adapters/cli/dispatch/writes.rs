@@ -1,6 +1,12 @@
 use std::future::Future;
 use std::io::Write;
 
+use crate::features::activity::comment_remove as activity_comment_remove;
+use crate::features::activity::social::{self as activity_social, ActivitySocialIntent};
+use crate::features::activity::{
+    ActivityCommentId, ActivityCommentRemovalApi, ActivityDetailApi, ActivityId,
+    ActivitySocialMutationApi,
+};
 use crate::features::auth::CurrentAccountApi;
 use crate::features::payments::pay;
 use crate::features::payments::{
@@ -327,6 +333,90 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(super) async fn run_activity_social_with<R, A, P, W, E, M, S>(
+    activity_id: &ActivityId,
+    intent: ActivitySocialIntent,
+    assume_yes: bool,
+    dry_run: bool,
+    store: &R,
+    api: &A,
+    prompt: &P,
+    timestamps: &output::TimestampFormatter,
+    stdout: &mut W,
+    stderr: &mut E,
+    make_interruption: M,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: ActivityDetailApi + ActivitySocialMutationApi,
+    P: DefaultNoConfirmation,
+    W: Write,
+    E: Write,
+    M: FnOnce() -> Result<S, AppError>,
+    S: Future<Output = Result<(), AppError>>,
+{
+    let prepared = activity_social::prepare(store, api, activity_id, intent).await?;
+    write_and_flush(stderr, &prepared, |writer, prepared| {
+        output::write_activity_social_details(writer, prepared, timestamps)
+    })?;
+    if dry_run {
+        return write_dry_run_complete(stdout);
+    }
+    let authorized = activity_social::authorize(prompt, prepared, assume_yes)?;
+    let interruption = make_interruption()?;
+    let result =
+        protect_state_with_interruption(activity_social::execute(api, authorized), interruption)
+            .await??;
+    write_and_flush(stdout, &result, output::write_activity_social_result)
+        .map_err(|source| AppError::StateMutationResultOutput { source })?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_activity_comment_remove_with<R, A, P, W, E, M, S>(
+    comment_id: ActivityCommentId,
+    assume_yes: bool,
+    dry_run: bool,
+    store: &R,
+    api: &A,
+    prompt: &P,
+    stdout: &mut W,
+    stderr: &mut E,
+    make_interruption: M,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: ActivityCommentRemovalApi,
+    P: DefaultNoConfirmation,
+    W: Write,
+    E: Write,
+    M: FnOnce() -> Result<S, AppError>,
+    S: Future<Output = Result<(), AppError>>,
+{
+    let prepared = activity_comment_remove::prepare(store, comment_id)?;
+    write_and_flush(stderr, &prepared, |writer, prepared| {
+        output::write_activity_comment_removal_details(writer, prepared)
+    })?;
+    if dry_run {
+        return write_dry_run_complete(stdout);
+    }
+    let authorized = activity_comment_remove::authorize(prompt, prepared, assume_yes)?;
+    let interruption = make_interruption()?;
+    let result = protect_state_with_interruption(
+        activity_comment_remove::execute(api, authorized),
+        interruption,
+    )
+    .await??;
+    write_and_flush(
+        stdout,
+        &result,
+        output::write_activity_comment_removal_result,
+    )
+    .map_err(|source| AppError::StateMutationResultOutput { source })?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_friend_remove_with<R, A, P, W, E, M, S>(
     args: FriendRemoveArgs,
     store: &R,
@@ -524,3 +614,7 @@ mod cancel_handler_tests;
 #[cfg(test)]
 #[path = "writes_transfer_friend_tests.rs"]
 mod transfer_friend_handler_tests;
+
+#[cfg(test)]
+#[path = "writes_activity_tests.rs"]
+mod activity_handler_tests;

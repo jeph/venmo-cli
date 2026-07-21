@@ -2,8 +2,15 @@ use std::io::{self, Write};
 
 use tabled::builder::Builder;
 
+use crate::features::activity::comment_remove::{
+    ActivityCommentRemovalResult, PreparedActivityCommentRemoval,
+};
+use crate::features::activity::social::{
+    ActivitySocialAction, ActivitySocialMutationResult, PreparedActivitySocialMutation,
+};
 use crate::features::activity::{
-    ActivityBeforeId, ActivityCounterparty, ActivityInfoResult, ActivityListResult,
+    ActivityBeforeId, ActivityCounterparty, ActivityInfoResult, ActivityLikeState,
+    ActivityListResult,
 };
 
 use super::TimestampFormatter;
@@ -144,7 +151,181 @@ pub(crate) fn write_activity_info<W: Write>(
         writer,
         "Audience: {}",
         sanitize_terminal_text(activity.audience().unwrap_or("(not provided)"))
+    )?;
+    match activity.social().likes() {
+        Some(likes) => {
+            writeln!(writer, "Likes: {}", likes.count())?;
+            writeln!(
+                writer,
+                "Likers shown: {} ({})",
+                likes.items().len(),
+                if likes.is_complete() {
+                    "complete"
+                } else {
+                    "partial"
+                }
+            )?;
+            for liker in likes.items() {
+                writeln!(
+                    writer,
+                    "  Liker: {}",
+                    sanitize_terminal_text(&user_label(liker))
+                )?;
+            }
+        }
+        None => writeln!(writer, "Likes: (not provided)")?,
+    }
+    match activity.social().comments() {
+        Some(comments) => {
+            writeln!(writer, "Comments: {}", comments.count())?;
+            writeln!(
+                writer,
+                "Comments shown: {} ({})",
+                comments.items().len(),
+                if comments.is_complete() {
+                    "complete"
+                } else {
+                    "partial"
+                }
+            )?;
+            for comment in comments.items() {
+                writeln!(
+                    writer,
+                    "  Comment ID: {}",
+                    sanitize_terminal_text(comment.id().as_str())
+                )?;
+                writeln!(
+                    writer,
+                    "    Author: {}",
+                    sanitize_terminal_text(&user_label(comment.author()))
+                )?;
+                writeln!(
+                    writer,
+                    "    Time: {}",
+                    timestamps.format(comment.created_at())?
+                )?;
+                writeln!(
+                    writer,
+                    "    Message: {}",
+                    sanitize_terminal_text(comment.message())
+                )?;
+            }
+        }
+        None => writeln!(writer, "Comments: (not provided)")?,
+    }
+    Ok(())
+}
+
+pub(crate) fn write_activity_social_details(
+    writer: &mut impl Write,
+    prepared: &PreparedActivitySocialMutation,
+    timestamps: &TimestampFormatter,
+) -> io::Result<()> {
+    let plan = prepared.plan();
+    let activity = plan.activity();
+    writeln!(writer, "Activity social details:")?;
+    writeln!(writer, "  Action: {}", plan.action().label())?;
+    writeln!(
+        writer,
+        "  Activity ID: {}",
+        sanitize_terminal_text(activity.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "  Activity time: {}",
+        timestamps.format(activity.occurred_at())?
+    )?;
+    writeln!(
+        writer,
+        "  Activity note: {}",
+        sanitize_terminal_text(activity.note().unwrap_or(""))
+    )?;
+    writeln!(
+        writer,
+        "  Audience: {}",
+        sanitize_terminal_text(activity.audience().unwrap_or("(not provided)"))
+    )?;
+    writeln!(
+        writer,
+        "  Current like state: {}",
+        like_state_label(plan.previous_like_state())
+    )?;
+    match plan.action() {
+        ActivitySocialAction::AddComment(message) => writeln!(
+            writer,
+            "  Comment: {}",
+            sanitize_terminal_text(message.as_str())
+        )?,
+        ActivitySocialAction::Like | ActivitySocialAction::Unlike => {}
+    }
+    writeln!(writer, "  Automatic retries: disabled")
+}
+
+pub(crate) fn write_activity_comment_removal_details(
+    writer: &mut impl Write,
+    prepared: &PreparedActivityCommentRemoval,
+) -> io::Result<()> {
+    writeln!(writer, "Activity comment removal details:")?;
+    writeln!(writer, "  Action: remove activity comment")?;
+    writeln!(
+        writer,
+        "  Comment ID: {}",
+        sanitize_terminal_text(prepared.plan().comment_id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "  Preflight: parent activity, authorship, and comment text are not validated"
+    )?;
+    writeln!(
+        writer,
+        "  Reconciliation: verify independently with `activity info <ACTIVITY_ID>`"
+    )?;
+    writeln!(writer, "  Automatic retries: disabled")
+}
+
+pub(crate) fn write_activity_comment_removal_result(
+    writer: &mut impl Write,
+    result: &ActivityCommentRemovalResult,
+) -> io::Result<()> {
+    writeln!(writer, "Action: remove activity comment")?;
+    writeln!(
+        writer,
+        "Comment ID: {}",
+        sanitize_terminal_text(result.plan().comment_id().as_str())
+    )?;
+    writeln!(writer, "Result: Comment removal accepted by Venmo")?;
+    writeln!(
+        writer,
+        "Verification: check the parent activity independently before retrying"
     )
+}
+
+pub(crate) fn write_activity_social_result(
+    writer: &mut impl Write,
+    result: &ActivitySocialMutationResult,
+) -> io::Result<()> {
+    writeln!(writer, "Action: {}", result.plan().action().label())?;
+    writeln!(
+        writer,
+        "Activity ID: {}",
+        sanitize_terminal_text(result.activity().id().as_str())
+    )?;
+    writeln!(writer, "Result: {}", result.plan().action().result_label())?;
+    if let Some(likes) = result.activity().social().likes() {
+        writeln!(writer, "Likes: {}", likes.count())?;
+    }
+    if let Some(comments) = result.activity().social().comments() {
+        writeln!(writer, "Comments: {}", comments.count())?;
+    }
+    Ok(())
+}
+
+const fn like_state_label(state: ActivityLikeState) -> &'static str {
+    match state {
+        ActivityLikeState::Liked => "liked",
+        ActivityLikeState::NotLiked => "not liked",
+        ActivityLikeState::Unknown => "unknown (embedded liker data is incomplete or unavailable)",
+    }
 }
 
 fn activity_counterparty_label(counterparty: &ActivityCounterparty) -> String {

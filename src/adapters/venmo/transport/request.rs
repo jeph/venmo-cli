@@ -406,6 +406,40 @@ impl<'a> HttpRequest<'a> {
         )
     }
 
+    pub(in crate::adapters::venmo) fn state_json_post(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+        json_body: JsonBody,
+    ) -> Self {
+        Self::new(
+            Method::POST,
+            route_template,
+            path_segments,
+            query,
+            RequestBodies::json(json_body),
+            OperationClass::StateWrite,
+            ResponseCapture::None,
+        )
+    }
+
+    #[must_use]
+    pub(in crate::adapters::venmo) fn state_post(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+    ) -> Self {
+        Self::new(
+            Method::POST,
+            route_template,
+            path_segments,
+            query,
+            RequestBodies::NONE,
+            OperationClass::StateWrite,
+            ResponseCapture::None,
+        )
+    }
+
     #[must_use]
     pub(in crate::adapters::venmo) fn state_delete(
         route_template: &'static str,

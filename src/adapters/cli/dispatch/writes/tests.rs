@@ -762,7 +762,7 @@ async fn state_protection_covers_normal_interrupt_tie_and_signal_failure_outcome
         Err(failure_snapshot(
             ErrorVariant::StateWriteInterruptedUnknown,
             ErrorCategory::AmbiguousWrite,
-            "the friendship mutation was interrupted after transmission may have begun; do not retry until the relationship is verified independently",
+            "the state mutation was interrupted after transmission may have begun; do not retry until its result is verified independently",
         ))
     );
     assert_eq!(
@@ -770,7 +770,7 @@ async fn state_protection_covers_normal_interrupt_tie_and_signal_failure_outcome
         Err(failure_snapshot(
             ErrorVariant::StateWriteInterruptedUnknown,
             ErrorCategory::AmbiguousWrite,
-            "the friendship mutation was interrupted after transmission may have begun; do not retry until the relationship is verified independently",
+            "the state mutation was interrupted after transmission may have begun; do not retry until its result is verified independently",
         ))
     );
     assert_eq!(
@@ -778,7 +778,7 @@ async fn state_protection_covers_normal_interrupt_tie_and_signal_failure_outcome
         Err(failure_snapshot(
             ErrorVariant::StateSignalInitialization,
             ErrorCategory::Internal,
-            "failed to install friendship-write interrupt protection",
+            "failed to install state-write interrupt protection",
         ))
     );
 }

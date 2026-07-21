@@ -51,7 +51,8 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
     );
 
     // Execute once.
-    let result = run_activity(args, &reader, &api, &timestamps, &mut stdout, &mut stderr).await;
+    let result =
+        run_activity_list(args, &reader, &api, &timestamps, &mut stdout, &mut stderr).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {
@@ -85,7 +86,7 @@ async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
-    let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let stderr = writer(Stream::Stderr, Rc::clone(&transcript));
     let timestamps = timestamps();
     let expected = Observed::new(
         ResultSnapshot::Success,
@@ -110,7 +111,7 @@ async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
     );
 
     // Execute once.
-    let result = run_activity(args, &reader, &api, &timestamps, &mut stdout, &mut stderr).await;
+    let result = run_activity_info(args, &reader, &api, &timestamps, &mut stdout).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {

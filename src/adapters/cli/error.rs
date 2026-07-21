@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use crate::adapters::venmo::TransportBuildError;
 use crate::features::activity::ActivityError;
+use crate::features::activity::social::ActivitySocialMutationError;
 use crate::features::auth::{AuthStatusError, LoginError};
 use crate::features::payments::pay::PayError;
 use crate::features::people::friends::FriendsError;
@@ -74,7 +75,7 @@ pub enum AppError {
         source: io::Error,
     },
 
-    #[error("failed to install friendship-write interrupt protection")]
+    #[error("failed to install state-write interrupt protection")]
     StateSignalInitialization {
         #[source]
         source: io::Error,
@@ -86,7 +87,7 @@ pub enum AppError {
     FinancialWriteInterruptedUnknown,
 
     #[error(
-        "the friendship mutation was interrupted after transmission may have begun; do not retry until the relationship is verified independently"
+        "the state mutation was interrupted after transmission may have begun; do not retry until its result is verified independently"
     )]
     StateWriteInterruptedUnknown,
 
@@ -197,6 +198,12 @@ pub enum AppError {
     },
 
     #[error(transparent)]
+    ActivitySocialMutation {
+        #[from]
+        source: ActivitySocialMutationError,
+    },
+
+    #[error(transparent)]
     Requests {
         #[from]
         source: RequestsError,
@@ -235,7 +242,7 @@ pub enum AppError {
     },
 
     #[error(
-        "the friendship mutation succeeded, but its result could not be written; do not retry it and verify the relationship in the official Venmo app"
+        "the state mutation succeeded, but its result could not be written; do not retry it and verify the resulting state in the official Venmo app"
     )]
     StateMutationResultOutput {
         #[source]
@@ -270,6 +277,9 @@ impl AppError {
             }
             Self::Balance { source } => read_failure_category(source.failure_kind()),
             Self::Activity { source } => application_failure_category(source.failure_kind()),
+            Self::ActivitySocialMutation { source } => {
+                application_failure_category(source.failure_kind())
+            }
             Self::Requests { source } => read_failure_category(source.failure_kind()),
             Self::RequestInfo { source } => application_failure_category(source.failure_kind()),
             Self::TransferOptions { source } => read_failure_category(source.failure_kind()),

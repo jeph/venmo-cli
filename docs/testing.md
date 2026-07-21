@@ -123,6 +123,15 @@ positive money while authorized external social stories may carry a null amount.
 snapshots omit the Amount column entirely, and external detail output omits the Amount line rather
 than rendering a placeholder. Supplied malformed amounts remain contract failures.
 
+Activity social fixtures pin embedded liker/comment counts, completeness, duplicate-ID rejection,
+terminal sanitization, exact bodyless like/unlike and comment-remove routes, exact JSON comment-add
+body, created-comment validation, and the like/unlike/comment-add post-write story reconciliation.
+Feature tests pin evidence-sensitive like state. Direct comment-removal tests prove the CLI accepts
+only a comment ID, performs no story read, discloses its missing parent/authorship/text proof, sends
+one DELETE, and never retries. Dispatch transcripts prove dry-run stops before prompt/signal/write
+and `--yes` performs one mutation without prompting. A mismatched, missing, partial, or unreadable
+available post-write proof is ambiguous and never retried.
+
 Friendship mutation coverage follows the same zero/one-write rules as financial workflows while
 remaining a distinct state-write class. Exact tests pin form-urlencoded P4, bodyless P5, native
 relationship-state selection, default-No and `--yes`, interruption ties, post-transmission

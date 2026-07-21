@@ -12,7 +12,7 @@ use crate::features::wallet::{BalanceApi, PaymentMethodsApi, balance, payment_me
 use crate::shared::CredentialReader;
 
 use super::super::args::{
-    ActivityArgs, ActivityOperation, FriendsListArgs, RequestInfoArgs, RequestsListArgs,
+    ActivityInfoArgs, ActivityListArgs, FriendsListArgs, RequestInfoArgs, RequestsListArgs,
     UserInfoArgs, UserSearchArgs,
 };
 use super::super::{error::AppError, output};
@@ -51,8 +51,8 @@ where
     Ok(())
 }
 
-pub(super) async fn run_activity<R, A, W, E>(
-    args: ActivityArgs,
+pub(super) async fn run_activity_list<R, A, W, E>(
+    args: ActivityListArgs,
     store: &R,
     api: &A,
     timestamps: &output::TimestampFormatter,
@@ -61,32 +61,35 @@ pub(super) async fn run_activity<R, A, W, E>(
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
-    A: ActivityListApi + ActivityDetailApi + UserLookupApi + UserSearchApi,
+    A: ActivityListApi + UserLookupApi + UserSearchApi,
     W: Write,
     E: Write,
 {
-    match args.operation {
-        ActivityOperation::List(args) => {
-            let result = match args.user.as_ref() {
-                Some(username) => {
-                    activity::list_for_user(
-                        store,
-                        api,
-                        username,
-                        args.limit,
-                        args.before_id.as_ref(),
-                    )
-                    .await?
-                }
-                None => activity::list(store, api, args.limit, args.before_id.as_ref()).await?,
-            };
-            output::write_activity_list(stdout, stderr, &result, timestamps)?;
+    let result = match args.user.as_ref() {
+        Some(username) => {
+            activity::list_for_user(store, api, username, args.limit, args.before_id.as_ref())
+                .await?
         }
-        ActivityOperation::Info(args) => {
-            let result = activity::info(store, api, &args.activity_id).await?;
-            output::write_activity_info(stdout, &result, timestamps)?;
-        }
-    }
+        None => activity::list(store, api, args.limit, args.before_id.as_ref()).await?,
+    };
+    output::write_activity_list(stdout, stderr, &result, timestamps)?;
+    Ok(())
+}
+
+pub(super) async fn run_activity_info<R, A, W>(
+    args: ActivityInfoArgs,
+    store: &R,
+    api: &A,
+    timestamps: &output::TimestampFormatter,
+    stdout: &mut W,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: ActivityDetailApi,
+    W: Write,
+{
+    let result = activity::info(store, api, &args.activity_id).await?;
+    output::write_activity_info(stdout, &result, timestamps)?;
     Ok(())
 }
 

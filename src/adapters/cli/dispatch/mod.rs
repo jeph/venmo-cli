@@ -2,8 +2,8 @@ use std::future::Future;
 use std::io::{self, Write};
 
 use super::args::{
-    ActivityOperation, AuthArgs, AuthOperation, Cli, Command, FriendsOperation, PayOperation,
-    RequestsOperation, TransferOperation, UsersOperation,
+    ActivityCommentsOperation, ActivityOperation, AuthArgs, AuthOperation, Cli, Command,
+    FriendsOperation, PayOperation, RequestsOperation, TransferOperation, UsersOperation,
 };
 use super::error::AppError;
 use super::logging::InitializationError;
@@ -216,9 +216,15 @@ fn debug_command_name(command: &Command) -> &'static str {
             UsersOperation::Info(_) => "users.info",
         },
         Command::Balance => "balance",
-        Command::Activity(args) => match args.operation {
+        Command::Activity(args) => match &args.operation {
             ActivityOperation::List(_) => "activity.list",
             ActivityOperation::Info(_) => "activity.info",
+            ActivityOperation::Like(_) => "activity.like",
+            ActivityOperation::Unlike(_) => "activity.unlike",
+            ActivityOperation::Comments(args) => match args.operation {
+                ActivityCommentsOperation::Add(_) => "activity.comments.add",
+                ActivityCommentsOperation::Remove(_) => "activity.comments.remove",
+            },
         },
         Command::Requests(args) => match args.operation {
             RequestsOperation::List(_) => "requests.list",

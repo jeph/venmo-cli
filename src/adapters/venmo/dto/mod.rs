@@ -8,8 +8,9 @@ mod transfers;
 mod wallet;
 
 pub(super) use activity::{
-    ActivityPaymentRecordDto, AuthorizationDto, StoriesEnvelope, StoryDto, StoryEnvelope,
-    TransferDto,
+    ActivityCommentDto, ActivityCommentEnvelope, ActivityPaymentRecordDto,
+    AddActivityCommentRequest, AuthorizationDto, StoriesEnvelope, StoryDto, StoryEnvelope,
+    StorySocialCollectionDto, TransferDto,
 };
 pub(super) use auth::{AccountEnvelope, PasswordLoginRequest, SmsOtpRequest};
 pub(super) use payments::{

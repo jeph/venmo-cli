@@ -1,4 +1,7 @@
-use super::{Activity, ActivityBeforeId, ActivityDetail, ActivityFeedScope, ActivityId};
+use super::{
+    Activity, ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityDetail,
+    ActivityFeedScope, ActivityId,
+};
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, UserId};
 use std::future::Future;
 
@@ -71,4 +74,44 @@ pub trait ActivityDetailApi {
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
     ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
+}
+
+pub trait ActivitySocialMutationApi {
+    type Error: ApiFailure;
+
+    fn like_activity<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
+
+    fn unlike_activity<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
+
+    fn add_activity_comment<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+        message: &'a ActivityCommentMessage,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
+}
+
+pub trait ActivityCommentRemovalApi {
+    type Error: ApiFailure;
+
+    fn remove_activity_comment<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        comment_id: &'a ActivityCommentId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a;
 }

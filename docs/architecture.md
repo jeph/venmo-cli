@@ -185,6 +185,19 @@ validation as request acceptance and decline; only the Venmo adapter owns its fo
 both financial and externally visible relationship mutations. Do not conceal it behind
 abstractions that weaken bounds or make side-effect order harder to review.
 
+Activity like/unlike/comment-add mutations use that same feature-owned sequence through separate
+`ActivityDetailApi` and `ActivitySocialMutationApi` capabilities. The feature owns explicit intent,
+immutable preflight details, default-No authorization, and one execution. The Venmo adapter alone
+owns classic story routes, JSON comment encoding, successful-response parsing, and the mandatory
+post-write story read. Embedded counted collections carry explicit completeness; absence from
+partial data never proves unlike.
+
+Direct comment removal is intentionally isolated behind `ActivityCommentRemovalApi`. Its command
+accepts only a comment ID, validates the credential, discloses that parent membership/authorship/text
+cannot be preflighted, retains dry-run/default-No/`--yes`/interruption protection, and sends one
+non-retried DELETE. Venmo owns authorization. Because no activity ID is available, the CLI does not
+fabricate post-write reconciliation and directs users to verify independently before retrying.
+
 Protected peer payment remains a feature-level branch after deterministic source selection: the
 feature chooses ordinary versus protected eligibility and owns the immutable fee-bearing plan,
 while the Venmo adapter alone owns form encoding, fee DTO validation/serialization, protected

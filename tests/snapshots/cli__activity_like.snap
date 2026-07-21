@@ -1,0 +1,23 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Like one activity record
+
+Usage: like [OPTIONS] <ACTIVITY_ID>
+
+Arguments:
+  <ACTIVITY_ID>
+          Canonical activity ID
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+      --dry-run
+          Complete preflight and show details without liking the activity
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the like outcome must be verified independently.

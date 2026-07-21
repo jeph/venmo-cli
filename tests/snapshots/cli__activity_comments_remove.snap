@@ -1,0 +1,23 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Remove one comment by its canonical comment ID
+
+Usage: remove [OPTIONS] <COMMENT_ID>
+
+Arguments:
+  <COMMENT_ID>
+          Canonical comment ID shown by `activity info`
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+      --dry-run
+          Show the exact deletion intent without removing the comment
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Venmo authorizes removal from the comment ID alone. The CLI cannot preflight the parent activity, authorship, or comment text and cannot reconcile absence without an activity ID. The command never retries automatically. Exit code 3 means the removal outcome must be verified independently.

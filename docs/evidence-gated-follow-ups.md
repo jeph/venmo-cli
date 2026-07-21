@@ -136,6 +136,22 @@ add-then-revoke canary requires separate owner approval, a consenting target ini
 `not_friend`, and separate reconciliation/authorization before the revoke. Never remove an
 established friendship merely to broaden evidence.
 
+## Activity social-write authorization
+
+Signer-verified Android 26.13.0 establishes classic story detail, like/unlike, comment-add, and
+comment-remove routes plus their embedded response models. Exact service-free tests prove request
+construction and available fail-closed reconciliation. Current comment removal mirrors the native
+comment-ID-only route and deliberately delegates authorization to Venmo; without a parent activity
+argument it cannot preflight membership/authorship/text or automatically reconcile absence. One
+separately approved reversible client-1 canary on
+2026-07-21 validated like, unlike, self-authored comment add, and comment remove on one private
+settled activity; exact final reads proved zero likes/comments. Duplicate like/unlike attempts
+failed during authoritative preflight and sent no write. The first comment-add result was correctly
+reported ambiguous because its successful response used a previously unsupported fractional
+naive-UTC timestamp; after parser correction, read reconciliation found exactly one comment and the
+single removal succeeded. Do not repeat the canary speculatively or add an ignored live mutation
+test. Broader story-class authorization/durability remains unproven.
+
 ## Non-personal activity profiles
 
 `activity list --user` initially supports authoritative personal profiles only. Signer-verified
@@ -157,24 +173,25 @@ unknown, and missing profile types fail before P3; adding any non-personal profi
 separately established route, privacy, response, and pagination contract. No live probe is needed
 for the implemented personal-profile route.
 
-## Peer-payment list and detail reads
+## General transaction and payment reads
 
-`payments list` and `payments info <PAYMENT_ID>` remain unavailable. The only current list contract
-proves the request-specific query `GET /payments?action=charge&status=pending,held&limit=N`; it does
-not prove a general peer-payment collection, its continuation behavior, or a filter that includes
-direct payments and accepted-request payments while excluding open and declined requests.
+`transactions list/info` and `payments list/info` remain unavailable. Signer-verified Android
+26.13.0 establishes current `GET /v1/ledger/transaction-history` list/detail contracts for settled
+history. It separately uses `GET /v1/payments` only to merge incomplete pending/held pay/charge
+requests into the Me view. This proves that activity stories are not a complete transaction ledger,
+but naming and release scope remain undecided.
 
 Detail support is independently blocked. A pending RequestId has succeeded through
 `GET /payments/{id}`, but dated evidence records HTTP 500 for a settled PaymentId nested in an
 otherwise readable activity story. ActivityId and PaymentId are distinct, so the story-detail route
 cannot implement payment detail.
 
-Reopening payment reads requires a separately governed, bounded, read-only contract dossier that
-proves both incoming and outgoing direct payments, both observed accepted-request representations,
-declined/open-request exclusion, payer/payee money direction, source-page bounds and continuation,
-and exact-ID detail behavior for direct and accepted PaymentIds. Routine development must not use
-the production credential or extend ignored probes to gather this evidence. List and detail are
-approved independently; failure to prove detail must not block an otherwise proven list command.
+Reopening transaction reads requires a separately governed, bounded, read-only design for the
+ledger's `page_token`, `p_rb`, and `p_pbd` continuation tuple, actor/profile selection, transaction
+classification, and the distinction among ledger ID, activity/story ID, and nested PaymentId. A
+Venmo-app-parity view would also need a deliberate decision about merging incomplete requests.
+Routine development must not use the production credential or extend ignored probes to gather this
+evidence. List and detail are approved independently.
 
 ## Transfer creation
 

@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::common::{StringOrInteger, StringOrNumber};
 use super::payments::PaymentTargetDto;
@@ -46,6 +46,51 @@ pub(crate) struct StoryDto {
     pub transfer: Option<TransferDto>,
     #[serde(default)]
     pub authorization: Option<AuthorizationDto>,
+    #[serde(default)]
+    pub likes: Option<StorySocialCollectionDto<UserDto>>,
+    #[serde(default)]
+    pub comments: Option<StorySocialCollectionDto<ActivityCommentDto>>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct StorySocialCollectionDto<T> {
+    pub count: u64,
+    pub data: Vec<T>,
+    #[serde(default)]
+    pub pagination: Option<super::common::PaginationDto>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ActivityCommentDto {
+    pub id: StringOrInteger,
+    pub user: UserDto,
+    pub message: String,
+    pub date_created: String,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ActivityCommentEnvelope {
+    pub data: ActivityCommentData,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(crate) enum ActivityCommentData {
+    Wrapped { comment: ActivityCommentDto },
+    Direct(ActivityCommentDto),
+}
+
+impl ActivityCommentData {
+    pub(crate) fn into_comment(self) -> ActivityCommentDto {
+        match self {
+            Self::Wrapped { comment } | Self::Direct(comment) => comment,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub(crate) struct AddActivityCommentRequest<'a> {
+    pub message: &'a str,
 }
 
 #[derive(Deserialize)]

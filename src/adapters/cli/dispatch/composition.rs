@@ -6,7 +6,8 @@ use crate::adapters::system::SystemClientRequestIdGenerator;
 use crate::adapters::venmo::VenmoApiClient;
 
 use super::super::args::{
-    Command, FriendsOperation, PayOperation, RequestsOperation, TransferOperation, UsersOperation,
+    ActivityCommentsOperation, ActivityOperation, Command, FriendsOperation, PayOperation,
+    RequestsOperation, TransferOperation, UsersOperation,
 };
 use super::super::error::AppError;
 use super::super::output::TimestampFormatter;
@@ -110,11 +111,95 @@ where
             let (store, api) = provider.credential_store_and_api()?;
             reads::run_balance(&store, &api, stdout).await
         }
-        Command::Activity(args) => {
-            let (store, api) = provider.credential_store_and_api()?;
-            let timestamps = provider.timestamps();
-            reads::run_activity(args, &store, &api, &timestamps, stdout, stderr).await
-        }
+        Command::Activity(args) => match args.operation {
+            ActivityOperation::List(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let timestamps = provider.timestamps();
+                reads::run_activity_list(args, &store, &api, &timestamps, stdout, stderr).await
+            }
+            ActivityOperation::Info(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let timestamps = provider.timestamps();
+                reads::run_activity_info(args, &store, &api, &timestamps, stdout).await
+            }
+            ActivityOperation::Like(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                let timestamps = provider.timestamps();
+                writes::run_activity_social_with(
+                    &args.activity_id,
+                    crate::features::activity::social::ActivitySocialIntent::Like,
+                    args.yes,
+                    args.dry_run,
+                    &store,
+                    &api,
+                    &prompt,
+                    &timestamps,
+                    stdout,
+                    stderr,
+                    writes::production_state_interruption,
+                )
+                .await
+            }
+            ActivityOperation::Unlike(args) => {
+                let (store, api) = provider.credential_store_and_api()?;
+                let prompt = provider.prompt();
+                let timestamps = provider.timestamps();
+                writes::run_activity_social_with(
+                    &args.activity_id,
+                    crate::features::activity::social::ActivitySocialIntent::Unlike,
+                    args.yes,
+                    args.dry_run,
+                    &store,
+                    &api,
+                    &prompt,
+                    &timestamps,
+                    stdout,
+                    stderr,
+                    writes::production_state_interruption,
+                )
+                .await
+            }
+            ActivityOperation::Comments(args) => match args.operation {
+                ActivityCommentsOperation::Add(args) => {
+                    let (store, api) = provider.credential_store_and_api()?;
+                    let prompt = provider.prompt();
+                    let timestamps = provider.timestamps();
+                    writes::run_activity_social_with(
+                        &args.activity_id,
+                        crate::features::activity::social::ActivitySocialIntent::AddComment(
+                            args.message,
+                        ),
+                        args.yes,
+                        args.dry_run,
+                        &store,
+                        &api,
+                        &prompt,
+                        &timestamps,
+                        stdout,
+                        stderr,
+                        writes::production_state_interruption,
+                    )
+                    .await
+                }
+                ActivityCommentsOperation::Remove(args) => {
+                    let (store, api) = provider.credential_store_and_api()?;
+                    let prompt = provider.prompt();
+                    writes::run_activity_comment_remove_with(
+                        args.comment_id,
+                        args.yes,
+                        args.dry_run,
+                        &store,
+                        &api,
+                        &prompt,
+                        stdout,
+                        stderr,
+                        writes::production_state_interruption,
+                    )
+                    .await
+                }
+            },
+        },
         Command::Requests(args) => match args.operation {
             RequestsOperation::List(args) => {
                 let (store, api) = provider.credential_store_and_api()?;

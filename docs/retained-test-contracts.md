@@ -110,6 +110,16 @@ ambiguity rules. They do not prove that the CLI's client-1 session is authorized
 Any separately approved add/revoke canary is an owner procedure outside this suite and must never
 become routine development or CI.
 
+There is likewise no ignored live activity social-mutation test. Signer-verified Android 26.13.0
+and service-free tests retain embedded liker/comment mapping, exact like/unlike/comment routes,
+default-No/dry-run sequencing, no retry, and available post-write reconciliation. Current direct
+comment removal accepts only a comment ID; tests prove it performs no parent read, discloses the
+missing membership/authorship/text proof, and sends one DELETE. The contracts are supplemented by
+one owner-approved reversible client-1 canary on 2026-07-21, performed while the CLI still accepted
+the parent activity ID and reconciled exact absence; the activity was restored to zero
+likes/comments. That procedure remains outside this suite and must not become routine development
+or CI.
+
 ## No retained live financial test
 
 There is deliberately no ignored test or contributor runbook for a live payment or request

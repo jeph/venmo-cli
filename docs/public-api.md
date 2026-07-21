@@ -19,7 +19,9 @@ and black-box tests.
 - Friends: `FriendsArgs`, `FriendsOperation`, `FriendsListArgs`, `FriendAddArgs`,
   `FriendRemoveArgs`.
 - Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`, `UserInfoArgs`.
-- Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`.
+- Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`,
+  `ActivityLikeArgs`, `ActivityUnlikeArgs`, `ActivityCommentsArgs`, `ActivityCommentsOperation`,
+  `ActivityCommentAddArgs`, `ActivityCommentRemoveArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
   `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `CancelArgs`, `RequestDirectionArg`.
 - Transfers: `TransferArgs`, `TransferOperation`, `TransferOutArgs`, `TransferAmountArg`,
@@ -78,6 +80,10 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 - `Activity`, `ActivityId`, `ActivityAction`, `ActivityCounterparty`, `ActivityDirection`,
   `ActivityStatus`, `ActivityLabelParseError`.
 - `ActivityDetail`, `ActivityDetailParties`, `ActivityFeedKind`, `ActivitySubject`.
+- `ActivityCommentId`, `ActivityComment`, `ActivityCommentMessage`,
+  `ActivityCommentMessageParseError`, `ActivitySocial`, `ActivitySocialCollection`,
+  `ActivityLikeState`. Social collections expose server count, embedded items, and explicit
+  completeness; comment messages are redacted and enforce the 2,000-character command boundary.
 - `ActivityBeforeId`, `ActivityListResult`, `ActivityInfoResult`. Other-user list results expose the
   resolved subject; current-user results retain the existing unscoped presentation. Activity and
   detail amounts are optional because server-visible external social stories can omit them;
@@ -172,11 +178,14 @@ Both argument structs also expose an independent public `protect: bool` field. `
 ordinary unprotected behavior. `true` opts into the operation-specific Purchase Protection flow;
 callers constructing either struct directly must choose explicitly.
 
-All eight mutation argument structs that expose `yes: bool` also expose `dry_run: bool`:
+All twelve mutation argument structs that expose `yes: bool` also expose `dry_run: bool`:
 `PayUserArgs`, `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `CancelArgs`, `FriendAddArgs`,
-`FriendRemoveArgs`, and `TransferOutArgs`. The CLI rejects both flags together. Direct callers must
-likewise treat them as mutually exclusive; dry-run performs authoritative preflight and detail
-output but stops before authorization or mutation.
+`FriendRemoveArgs`, `ActivityLikeArgs`, `ActivityUnlikeArgs`, `ActivityCommentAddArgs`,
+`ActivityCommentRemoveArgs`, and `TransferOutArgs`. The CLI rejects both flags together. Direct
+callers must likewise treat them as mutually exclusive; dry-run performs authoritative preflight
+and detail output where the command has sufficient inputs, then stops before authorization or
+mutation. Comment removal intentionally has only a comment ID, so its dry-run validates the
+credential and renders the limited deletion intent without claiming parent/authorship preflight.
 
 ## Initial 0.0.1 surface
 

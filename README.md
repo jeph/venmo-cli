@@ -242,18 +242,47 @@ Activity IDs are globally unique, so `activity info` has no `--user` flag. Payme
 the absolute actor and target and can therefore represent a server-visible story involving two
 other users; private external stories are rejected, and an unavailable or external-only amount is
 not rendered. Transfer and authorization details retain
-their current-account ownership checks.
+their current-account ownership checks. Story detail also renders embedded liker and comment
+records. Each section prints the server count, the number embedded in the response, and
+`complete` or `partial`; the CLI never treats a truncated embedding as a complete participant list.
 
-Peer-payment reads are intentionally not exposed yet. The request-specific `/payments` contracts do
-not establish a safe general payment list, and a dated settled-PaymentId detail probe returned HTTP
-500 even though the corresponding activity story was readable. `payments list` and `payments info`
-remain evidence-gated rather than guessing from activity IDs or payment-shaped request data.
+Classic activity social actions use story IDs except for comment removal, whose native route uses
+the comment ID alone:
+
+```sh
+venmo activity like <ACTIVITY_ID> [--yes | --dry-run]
+venmo activity unlike <ACTIVITY_ID> [--yes | --dry-run]
+venmo activity comments add <ACTIVITY_ID> <MESSAGE> [--yes | --dry-run]
+venmo activity comments remove <COMMENT_ID> [--yes | --dry-run]
+```
+
+Comment text must be nonblank and at most 2,000 characters. Like, unlike, and comment add read the
+story before confirmation and re-read it after one non-retried write to prove the result.
+Comment removal deliberately accepts only the comment ID: Venmo enforces authorization, while the
+CLI cannot preflight the parent story, authorship, or text and cannot reconcile absence without the
+activity ID. Its `--dry-run` therefore shows the exact intent rather than claiming authoritative
+validation. Every action defaults to No; `--yes` skips only confirmation. An uncertain transmitted
+write or unprovable reconciled result is exit `3`; verify with `activity info` or the official app
+before retrying. A comment-removal HTTP 404 reports `Comment not found.` Arbitrary emoji reactions
+and comment editing are not exposed.
+
+One owner-approved reversible client-1 canary on 2026-07-21 validated like, duplicate-like
+preflight rejection, unlike, duplicate-unlike preflight rejection, self-authored comment addition,
+and comment removal on a private settled activity. The activity was restored to zero likes and
+comments. This establishes one controlled success, not broad durability across every story class.
+
+General transaction reads are intentionally not exposed yet. Current Android uses
+`/v1/ledger/transaction-history` for settled transaction history and uses `/v1/payments` only to
+augment that view with incomplete requests. The ledger has a distinct ID namespace and composite
+continuation state, so naming and scope (`transactions`, `payments`, or neither) remain undecided.
+The CLI does not mislabel its social activity feed as a complete ledger or substitute story IDs for
+ledger/payment IDs.
 
 When the validated source response has another page, the CLI writes only the endpoint-native copyable continuation to stderr, after record output succeeds: `Next offset: <N>`, `Next before-id: <TOKEN>`, or `Next before: <TOKEN>`. Friends use the offset from the validated server next link. User search provisionally synthesizes the next offset when the source page is full, so one final empty page can be required to observe exhaustion. Raw next URLs are never printed or followed.
 
 Pending-request direction remains a local filter over that one source page. A filtered invocation can therefore emit fewer than `--limit` records, including none, while still reporting the source page's `before` continuation. Continuation tokens are bounded, reject whitespace and control characters, and are redacted from parsing errors and diagnostic formatting. The transport still validates every server next link against the fixed origin, route, and endpoint query allowlist and reconstructs subsequent requests locally. Internal exact-recipient resolution remains a separate exhaustive user-search traversal with its existing 200-record/four-page fail-closed bounds and no user-supplied continuation.
 
-User-facing timestamps are converted to the system-configured time zone and rendered to whole seconds as `YYYY-MM-DDTHH:MM:SS`. Local output has no zone suffix; when the configured zone is UTC, or when system-zone discovery fails and the CLI falls back to UTC, output uses `YYYY-MM-DDTHH:MM:SSZ`. Conversion uses the rules for each timestamp, including historical daylight-saving transitions. API parsing, comparisons, and credential persistence continue to preserve exact UTC instants independently of this display formatting.
+User-facing timestamps are converted to the system-configured time zone and rendered to whole seconds as `YYYY-MM-DDTHH:MM:SS`. Local output has no zone suffix; when the configured zone is UTC, or when system-zone discovery fails and the CLI falls back to UTC, output uses `YYYY-MM-DDTHH:MM:SSZ`. Conversion uses the rules for each timestamp, including historical daylight-saving transitions. API parsing accepts RFC 3339 and Venmo's naive-UTC whole-second or fractional-second forms; comparisons and credential persistence continue to preserve exact UTC instants independently of this display formatting.
 
 ### Trusted-device mobile login
 

@@ -89,13 +89,23 @@ pub(super) fn parse_timestamp_value(value: &str) -> Result<OffsetDateTime, ()> {
     if let Ok(timestamp) = OffsetDateTime::parse(value, &Rfc3339) {
         return Ok(timestamp);
     }
-    let format = time::format_description::parse_borrowed::<3>(
+    for description in [
         "[year]-[month]-[day]T[hour]:[minute]:[second]",
-    )
-    .map_err(|_| ())?;
-    PrimitiveDateTime::parse(value, &format)
-        .map(PrimitiveDateTime::assume_utc)
-        .map_err(|_| ())
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]",
+    ] {
+        let format = time::format_description::parse_borrowed::<3>(description).map_err(|_| ())?;
+        if let Ok(timestamp) = PrimitiveDateTime::parse(value, &format) {
+            return Ok(timestamp.assume_utc());
+        }
+    }
+    tracing::debug!(
+        api.timestamp_length = value.len(),
+        api.timestamp_has_fraction = value.contains('.'),
+        api.timestamp_ends_in_z = value.ends_with('Z'),
+        api.timestamp_has_space = value.contains(' '),
+        "API timestamp did not match a supported format"
+    );
+    Err(())
 }
 
 pub(super) fn bounded_optional_text(
@@ -224,4 +234,27 @@ pub(super) fn require_query_value_case_insensitive(
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timestamp_parser_accepts_rfc3339_and_whole_or_fractional_naive_utc() {
+        let rfc3339 = parse_timestamp_value("2026-07-11T12:00:00Z");
+        let whole = parse_timestamp_value("2026-07-11T12:00:00");
+        let fractional = parse_timestamp_value("2026-07-11T12:00:00.123456");
+
+        assert_eq!(
+            rfc3339.map(|value| value.unix_timestamp()),
+            Ok(1_783_771_200)
+        );
+        assert_eq!(whole.map(|value| value.unix_timestamp()), Ok(1_783_771_200));
+        assert_eq!(
+            fractional.map(|value| (value.unix_timestamp(), value.nanosecond())),
+            Ok((1_783_771_200, 123_456_000))
+        );
+        assert_eq!(parse_timestamp_value("invalid"), Err(()));
+    }
 }

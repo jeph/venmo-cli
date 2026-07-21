@@ -9,7 +9,11 @@ mod transfers;
 mod wallet;
 mod writes;
 
-pub(super) use activity::{write_activity_info, write_activity_list};
+pub(super) use activity::{
+    write_activity_comment_removal_details, write_activity_comment_removal_result,
+    write_activity_info, write_activity_list, write_activity_social_details,
+    write_activity_social_result,
+};
 pub(super) use auth::{write_auth_status, write_logout_report, write_password_login_report};
 pub use error::write_error;
 pub(super) use people::{

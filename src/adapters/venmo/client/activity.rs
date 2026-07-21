@@ -1,27 +1,36 @@
+use std::collections::HashSet;
 use std::future::Future;
 use std::str::FromStr;
 
 use crate::features::activity::{
-    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDetail,
+    Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
+    ActivityCommentMessage, ActivityCommentRemovalApi, ActivityCounterparty, ActivityDetail,
     ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId,
-    ActivityListApi, ActivityPage, ActivityPageRequest, ActivityStatus,
+    ActivityLikeState, ActivityListApi, ActivityPage, ActivityPageRequest, ActivitySocial,
+    ActivitySocialCollection, ActivitySocialMutationApi, ActivityStatus,
 };
 use crate::features::people::User;
 use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
 
 use super::super::dto::{
-    ActivityPaymentRecordDto, AuthorizationDto, StoriesEnvelope, StoryDto, StoryEnvelope,
-    TransferDto,
+    ActivityCommentDto, ActivityCommentEnvelope, ActivityPaymentRecordDto,
+    AddActivityCommentRequest, AuthorizationDto, StoriesEnvelope, StoryDto, StoryEnvelope,
+    StorySocialCollectionDto, TransferDto, UserDto,
 };
-use super::super::transport::{ApiSession, ApiTransport, HttpRequest};
+use super::super::transport::{ApiSession, ApiTransport, HttpRequest, JsonBody};
 use super::error::VenmoApiError;
-use super::response::decode_success;
+use super::response::{
+    decode_success, require_state_write_success, require_state_write_success_json,
+};
 use super::support::{
     bounded_optional_label, bounded_optional_text, bounded_required_label, bounded_required_text,
     map_user, parse_required_timestamp, require_query_value, require_query_value_case_insensitive,
     validate_page_count, validate_query_keys,
 };
-use super::{ACTIVITY_DETAIL_OPERATION, ACTIVITY_LIST_OPERATION, VenmoApiClient};
+use super::{
+    ACTIVITY_COMMENT_ADD_OPERATION, ACTIVITY_COMMENT_REMOVE_OPERATION, ACTIVITY_DETAIL_OPERATION,
+    ACTIVITY_LIKE_OPERATION, ACTIVITY_LIST_OPERATION, ACTIVITY_UNLIKE_OPERATION, VenmoApiClient,
+};
 
 impl<T: ApiTransport> VenmoApiClient<T> {
     pub(super) async fn fetch_activity_page(
@@ -194,6 +203,223 @@ impl<T: ApiTransport> ActivityDetailApi for VenmoApiClient<T> {
     }
 }
 
+impl<T: ApiTransport> VenmoApiClient<T> {
+    async fn reconcile_activity_social(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        current_user_id: &UserId,
+        activity_id: &ActivityId,
+        operation: &'static str,
+    ) -> Result<ActivityDetail, VenmoApiError> {
+        self.fetch_activity_by_id(access_token, device_id, current_user_id, activity_id)
+            .await
+            .map_err(|_| VenmoApiError::StateMutationOutcomeUnknown {
+                operation,
+                problem: "the activity could not be re-read after the state mutation",
+            })
+    }
+
+    async fn set_activity_like(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        current_user_id: &UserId,
+        activity_id: &ActivityId,
+        like: bool,
+    ) -> Result<ActivityDetail, VenmoApiError> {
+        let operation = if like {
+            ACTIVITY_LIKE_OPERATION
+        } else {
+            ACTIVITY_UNLIKE_OPERATION
+        };
+        let path_segments = ["stories", activity_id.as_str(), "likes"];
+        let request = if like {
+            HttpRequest::state_post("/stories/{story-id}/likes", &path_segments, &[])
+        } else {
+            HttpRequest::state_delete("/stories/{story-id}/likes", &path_segments, &[])
+        };
+        let response = self
+            .transport
+            .send_authenticated(ApiSession::new(access_token, device_id), request)
+            .await?;
+        require_state_write_success(operation, response)?;
+        let activity = self
+            .reconcile_activity_social(
+                access_token,
+                device_id,
+                current_user_id,
+                activity_id,
+                operation,
+            )
+            .await?;
+        let expected = if like {
+            ActivityLikeState::Liked
+        } else {
+            ActivityLikeState::NotLiked
+        };
+        if activity.social().like_state(current_user_id) != expected {
+            return Err(VenmoApiError::StateMutationOutcomeUnknown {
+                operation,
+                problem: "the refreshed activity did not prove the requested like state",
+            });
+        }
+        Ok(activity)
+    }
+
+    async fn create_activity_comment(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        current_user_id: &UserId,
+        activity_id: &ActivityId,
+        message: &ActivityCommentMessage,
+    ) -> Result<ActivityDetail, VenmoApiError> {
+        let body = JsonBody::encode(&AddActivityCommentRequest {
+            message: message.as_str(),
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding {
+            operation: ACTIVITY_COMMENT_ADD_OPERATION,
+        })?;
+        let path_segments = ["stories", activity_id.as_str(), "comments"];
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::state_json_post(
+                    "/stories/{story-id}/comments",
+                    &path_segments,
+                    &[],
+                    body,
+                ),
+            )
+            .await?;
+        let value = require_state_write_success_json(ACTIVITY_COMMENT_ADD_OPERATION, response)?;
+        let envelope: ActivityCommentEnvelope = serde_json::from_value(value).map_err(|_| {
+            VenmoApiError::StateMutationOutcomeUnknown {
+                operation: ACTIVITY_COMMENT_ADD_OPERATION,
+                problem: "the successful response did not contain a valid created comment",
+            }
+        })?;
+        let created =
+            map_activity_comment(envelope.data.into_comment(), ACTIVITY_COMMENT_ADD_OPERATION)
+                .map_err(|_| VenmoApiError::StateMutationOutcomeUnknown {
+                    operation: ACTIVITY_COMMENT_ADD_OPERATION,
+                    problem: "the successful response contained an invalid created comment",
+                })?;
+        if created.author().user_id() != current_user_id || created.message() != message.as_str() {
+            return Err(VenmoApiError::StateMutationOutcomeUnknown {
+                operation: ACTIVITY_COMMENT_ADD_OPERATION,
+                problem: "the created comment did not match the authenticated author and message",
+            });
+        }
+        let activity = self
+            .reconcile_activity_social(
+                access_token,
+                device_id,
+                current_user_id,
+                activity_id,
+                ACTIVITY_COMMENT_ADD_OPERATION,
+            )
+            .await?;
+        let comments =
+            activity
+                .social()
+                .comments()
+                .ok_or(VenmoApiError::StateMutationOutcomeUnknown {
+                    operation: ACTIVITY_COMMENT_ADD_OPERATION,
+                    problem: "the refreshed activity omitted its comments",
+                })?;
+        let matches = comments.items().iter().filter(|comment| {
+            comment.id() == created.id()
+                && comment.author().user_id() == current_user_id
+                && comment.message() == message.as_str()
+        });
+        if matches.count() != 1 {
+            return Err(VenmoApiError::StateMutationOutcomeUnknown {
+                operation: ACTIVITY_COMMENT_ADD_OPERATION,
+                problem: "the refreshed activity did not prove the created comment",
+            });
+        }
+        Ok(activity)
+    }
+
+    async fn delete_activity_comment(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        comment_id: &ActivityCommentId,
+    ) -> Result<(), VenmoApiError> {
+        let path_segments = ["comments", comment_id.as_str()];
+        let response = self
+            .transport
+            .send_authenticated(
+                ApiSession::new(access_token, device_id),
+                HttpRequest::state_delete("/comments/{comment-id}", &path_segments, &[]),
+            )
+            .await?;
+        if response.status().as_u16() == 404 {
+            return Err(VenmoApiError::ActivityCommentNotFound);
+        }
+        require_state_write_success(ACTIVITY_COMMENT_REMOVE_OPERATION, response)?;
+        Ok(())
+    }
+}
+
+impl<T: ApiTransport> ActivitySocialMutationApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn like_activity<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
+        self.set_activity_like(access_token, device_id, current_user_id, activity_id, true)
+    }
+
+    fn unlike_activity<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
+        self.set_activity_like(access_token, device_id, current_user_id, activity_id, false)
+    }
+
+    fn add_activity_comment<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+        message: &'a ActivityCommentMessage,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
+        self.create_activity_comment(
+            access_token,
+            device_id,
+            current_user_id,
+            activity_id,
+            message,
+        )
+    }
+}
+
+impl<T: ApiTransport> ActivityCommentRemovalApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    fn remove_activity_comment<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        comment_id: &'a ActivityCommentId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a {
+        self.delete_activity_comment(access_token, device_id, comment_id)
+    }
+}
+
 pub(super) fn map_activity(
     story: StoryDto,
     current_user_id: &UserId,
@@ -207,6 +433,8 @@ pub(super) fn map_activity(
         payment,
         transfer,
         authorization,
+        likes: _,
+        comments: _,
     } = story;
     let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
         operation,
@@ -246,6 +474,8 @@ fn map_other_user_activity(
         payment,
         transfer,
         authorization,
+        likes: _,
+        comments: _,
     } = story;
     let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
         operation: ACTIVITY_LIST_OPERATION,
@@ -283,6 +513,8 @@ fn map_activity_detail(
         payment,
         transfer,
         authorization,
+        likes,
+        comments,
     } = story;
     let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
         operation: ACTIVITY_DETAIL_OPERATION,
@@ -294,7 +526,8 @@ fn map_activity_detail(
         note,
         audience,
     };
-    match (payment, transfer, authorization) {
+    let social = map_activity_social(likes, comments, ACTIVITY_DETAIL_OPERATION)?;
+    let detail = match (payment, transfer, authorization) {
         (Some(payment), None, None) => map_payment_detail(
             metadata,
             payment,
@@ -316,7 +549,126 @@ fn map_activity_detail(
             operation: ACTIVITY_DETAIL_OPERATION,
             problem: "the activity response contained an unsupported or ambiguous record type",
         }),
+    }?;
+    Ok(detail.with_social(social))
+}
+
+fn map_activity_social(
+    likes: Option<StorySocialCollectionDto<UserDto>>,
+    comments: Option<StorySocialCollectionDto<ActivityCommentDto>>,
+    operation: &'static str,
+) -> Result<ActivitySocial, VenmoApiError> {
+    let likes = likes
+        .map(|collection| {
+            let StorySocialCollectionDto {
+                count,
+                data,
+                pagination,
+            } = collection;
+            validate_embedded_count(count, data.len(), operation, "like")?;
+            let actual = data.len();
+            let users = data
+                .into_iter()
+                .map(|user| map_user(user, operation))
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut ids = HashSet::with_capacity(users.len());
+            if users
+                .iter()
+                .any(|user| !ids.insert(user.user_id().as_str()))
+            {
+                return Err(VenmoApiError::Contract {
+                    operation,
+                    problem: "the activity response contained duplicate liker IDs",
+                });
+            }
+            Ok(ActivitySocialCollection::new(
+                count,
+                users,
+                pagination
+                    .as_ref()
+                    .and_then(|page| page.next.as_ref())
+                    .is_none()
+                    && count == u64::try_from(actual).unwrap_or(u64::MAX),
+            ))
+        })
+        .transpose()?;
+    let comments = comments
+        .map(|collection| {
+            let StorySocialCollectionDto {
+                count,
+                data,
+                pagination,
+            } = collection;
+            validate_embedded_count(count, data.len(), operation, "comment")?;
+            let actual = data.len();
+            let comments = data
+                .into_iter()
+                .map(|comment| map_activity_comment(comment, operation))
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut ids = HashSet::with_capacity(comments.len());
+            if comments
+                .iter()
+                .any(|comment| !ids.insert(comment.id().as_str()))
+            {
+                return Err(VenmoApiError::Contract {
+                    operation,
+                    problem: "the activity response contained duplicate comment IDs",
+                });
+            }
+            Ok(ActivitySocialCollection::new(
+                count,
+                comments,
+                pagination
+                    .as_ref()
+                    .and_then(|page| page.next.as_ref())
+                    .is_none()
+                    && count == u64::try_from(actual).unwrap_or(u64::MAX),
+            ))
+        })
+        .transpose()?;
+    Ok(ActivitySocial::new(likes, comments))
+}
+
+fn validate_embedded_count(
+    count: u64,
+    actual: usize,
+    operation: &'static str,
+    kind: &'static str,
+) -> Result<(), VenmoApiError> {
+    if count < u64::try_from(actual).unwrap_or(u64::MAX) {
+        return Err(VenmoApiError::Contract {
+            operation,
+            problem: match kind {
+                "like" => "the activity response's like count was smaller than its liker data",
+                _ => "the activity response's comment count was smaller than its comment data",
+            },
+        });
     }
+    Ok(())
+}
+
+pub(super) fn map_activity_comment(
+    comment: ActivityCommentDto,
+    operation: &'static str,
+) -> Result<ActivityComment, VenmoApiError> {
+    let id = ActivityCommentId::from_str(&comment.id.into_string()).map_err(|_| {
+        VenmoApiError::Contract {
+            operation,
+            problem: "the activity response contained an invalid comment ID",
+        }
+    })?;
+    let author = map_user(comment.user, operation)?;
+    let message = bounded_required_text(
+        comment.message,
+        operation,
+        "the activity response contained an invalid comment message",
+    )?;
+    let created_at = parse_required_timestamp(
+        Some(comment.date_created.as_str()),
+        operation,
+        "the activity response contained an invalid comment timestamp",
+    )?;
+    Ok(ActivityComment::new(id, author, message, created_at))
 }
 
 struct StoryMetadata {

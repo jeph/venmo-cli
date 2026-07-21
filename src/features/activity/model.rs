@@ -9,8 +9,11 @@ use crate::shared::opaque_id::opaque_id;
 use crate::shared::{Money, UserId, Username};
 
 opaque_id!(ActivityId, "activity ID");
+opaque_id!(ActivityCommentId, "activity comment ID");
 
 const MAX_ACTIVITY_LABEL_BYTES: usize = 64;
+const MAX_COMMENT_CHARACTERS: usize = 2_000;
+const MAX_COMMENT_BYTES: usize = MAX_COMMENT_CHARACTERS * 4;
 
 macro_rules! activity_label {
     ($name:ident, $kind:literal) => {
@@ -73,6 +76,202 @@ pub enum ActivityLabelParseError {
 
     #[error("{kind} must not contain control characters")]
     ControlCharacter { kind: &'static str },
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ActivityCommentMessage(String);
+
+impl ActivityCommentMessage {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for ActivityCommentMessage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ActivityCommentMessage([REDACTED])")
+    }
+}
+
+impl FromStr for ActivityCommentMessage {
+    type Err = ActivityCommentMessageParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if !value.chars().any(|character| !character.is_whitespace()) {
+            return Err(ActivityCommentMessageParseError::Empty);
+        }
+        if value.len() > MAX_COMMENT_BYTES || value.chars().count() > MAX_COMMENT_CHARACTERS {
+            return Err(ActivityCommentMessageParseError::TooLong {
+                maximum_characters: MAX_COMMENT_CHARACTERS,
+            });
+        }
+        Ok(Self(value.to_owned()))
+    }
+}
+
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+pub enum ActivityCommentMessageParseError {
+    #[error("comment must contain non-whitespace text")]
+    Empty,
+
+    #[error("comment must not exceed {maximum_characters} characters")]
+    TooLong { maximum_characters: usize },
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ActivityComment {
+    id: ActivityCommentId,
+    author: User,
+    message: String,
+    created_at: OffsetDateTime,
+}
+
+impl ActivityComment {
+    #[must_use]
+    pub fn new(
+        id: ActivityCommentId,
+        author: User,
+        message: String,
+        created_at: OffsetDateTime,
+    ) -> Self {
+        Self {
+            id,
+            author,
+            message,
+            created_at,
+        }
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> &ActivityCommentId {
+        &self.id
+    }
+
+    #[must_use]
+    pub const fn author(&self) -> &User {
+        &self.author
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    #[must_use]
+    pub const fn created_at(&self) -> OffsetDateTime {
+        self.created_at
+    }
+}
+
+impl fmt::Debug for ActivityComment {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ActivityComment")
+            .field("id", &"[REDACTED]")
+            .field("author", &"[REDACTED]")
+            .field("message", &"[REDACTED]")
+            .field("created_at", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ActivitySocialCollection<T> {
+    count: u64,
+    items: Vec<T>,
+    complete: bool,
+}
+
+impl<T> ActivitySocialCollection<T> {
+    #[must_use]
+    pub fn new(count: u64, items: Vec<T>, complete: bool) -> Self {
+        Self {
+            count,
+            items,
+            complete,
+        }
+    }
+
+    #[must_use]
+    pub const fn count(&self) -> u64 {
+        self.count
+    }
+
+    #[must_use]
+    pub fn items(&self) -> &[T] {
+        &self.items
+    }
+
+    #[must_use]
+    pub const fn is_complete(&self) -> bool {
+        self.complete
+    }
+}
+
+impl<T> fmt::Debug for ActivitySocialCollection<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ActivitySocialCollection")
+            .field("count", &self.count)
+            .field(
+                "items",
+                &format_args!("{} redacted item(s)", self.items.len()),
+            )
+            .field("complete", &self.complete)
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityLikeState {
+    Liked,
+    NotLiked,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ActivitySocial {
+    likes: Option<ActivitySocialCollection<User>>,
+    comments: Option<ActivitySocialCollection<ActivityComment>>,
+}
+
+impl ActivitySocial {
+    #[must_use]
+    pub fn new(
+        likes: Option<ActivitySocialCollection<User>>,
+        comments: Option<ActivitySocialCollection<ActivityComment>>,
+    ) -> Self {
+        Self { likes, comments }
+    }
+
+    #[must_use]
+    pub const fn likes(&self) -> Option<&ActivitySocialCollection<User>> {
+        self.likes.as_ref()
+    }
+
+    #[must_use]
+    pub const fn comments(&self) -> Option<&ActivitySocialCollection<ActivityComment>> {
+        self.comments.as_ref()
+    }
+
+    #[must_use]
+    pub fn like_state(&self, current_user_id: &UserId) -> ActivityLikeState {
+        let Some(likes) = &self.likes else {
+            return ActivityLikeState::Unknown;
+        };
+        if likes
+            .items()
+            .iter()
+            .any(|user| user.user_id() == current_user_id)
+        {
+            ActivityLikeState::Liked
+        } else if likes.is_complete() {
+            ActivityLikeState::NotLiked
+        } else {
+            ActivityLikeState::Unknown
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -376,6 +575,7 @@ pub struct ActivityDetail {
     status: ActivityStatus,
     note: Option<String>,
     audience: Option<String>,
+    social: ActivitySocial,
 }
 
 impl ActivityDetail {
@@ -401,6 +601,7 @@ impl ActivityDetail {
             status,
             note,
             audience,
+            social: ActivitySocial::default(),
         }
     }
 
@@ -418,7 +619,13 @@ impl ActivityDetail {
             status: activity.status,
             note: activity.note,
             audience: activity.audience,
+            social: ActivitySocial::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_social(self, social: ActivitySocial) -> Self {
+        Self { social, ..self }
     }
 
     #[must_use]
@@ -460,6 +667,11 @@ impl ActivityDetail {
     pub fn audience(&self) -> Option<&str> {
         self.audience.as_deref()
     }
+
+    #[must_use]
+    pub const fn social(&self) -> &ActivitySocial {
+        &self.social
+    }
 }
 
 impl fmt::Debug for ActivityDetail {
@@ -474,6 +686,7 @@ impl fmt::Debug for ActivityDetail {
             .field("status", &self.status)
             .field("note", &"[REDACTED]")
             .field("audience", &"[REDACTED]")
+            .field("social", &self.social)
             .finish()
     }
 }
@@ -565,6 +778,63 @@ mod tests {
         );
         assert!(external.as_user().is_none());
         assert!(!format!("{external:?}").contains("Synthetic bank"));
+        Ok(())
+    }
+
+    #[test]
+    fn comment_messages_enforce_native_nonblank_two_thousand_character_limit() {
+        for value in ["", " \t\n"] {
+            assert_eq!(
+                ActivityCommentMessage::from_str(value),
+                Err(ActivityCommentMessageParseError::Empty)
+            );
+        }
+        for value in ["hello".to_owned(), "🍜".repeat(MAX_COMMENT_CHARACTERS)] {
+            assert_eq!(
+                ActivityCommentMessage::from_str(&value).map(|message| message.as_str().to_owned()),
+                Ok(value)
+            );
+        }
+        assert!(matches!(
+            ActivityCommentMessage::from_str(&"x".repeat(MAX_COMMENT_CHARACTERS + 1)),
+            Err(ActivityCommentMessageParseError::TooLong {
+                maximum_characters: MAX_COMMENT_CHARACTERS
+            })
+        ));
+    }
+
+    #[test]
+    fn like_state_is_evidence_sensitive() -> Result<(), Box<dyn Error>> {
+        let current_user_id = UserId::from_str("123")?;
+        let owner = User::new(current_user_id.clone(), None, None);
+        let other = User::new(UserId::from_str("456")?, None, None);
+        let unavailable = ActivitySocial::default();
+        let partial = ActivitySocial::new(
+            Some(ActivitySocialCollection::new(2, vec![other.clone()], false)),
+            None,
+        );
+        let complete = ActivitySocial::new(
+            Some(ActivitySocialCollection::new(1, vec![other], true)),
+            None,
+        );
+        let liked = ActivitySocial::new(
+            Some(ActivitySocialCollection::new(1, vec![owner], true)),
+            None,
+        );
+
+        assert_eq!(
+            unavailable.like_state(&current_user_id),
+            ActivityLikeState::Unknown
+        );
+        assert_eq!(
+            partial.like_state(&current_user_id),
+            ActivityLikeState::Unknown
+        );
+        assert_eq!(
+            complete.like_state(&current_user_id),
+            ActivityLikeState::NotLiked
+        );
+        assert_eq!(liked.like_state(&current_user_id), ActivityLikeState::Liked);
         Ok(())
     }
 }

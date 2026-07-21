@@ -10,7 +10,8 @@ use clap::Parser;
 
 use super::*;
 use crate::adapters::cli::args::{
-    Cli, Command, FriendsListArgs, FriendsOperation, RequestsOperation, UsersOperation,
+    ActivityOperation, Cli, Command, FriendsListArgs, FriendsOperation, RequestsOperation,
+    UsersOperation,
 };
 use crate::adapters::cli::error::ErrorCategory;
 use crate::adapters::cli::output::TimestampFormatter;

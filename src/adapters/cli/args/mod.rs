@@ -13,8 +13,9 @@ pub use friends::{
     FriendAddArgs, FriendRemoveArgs, FriendsArgs, FriendsListArgs, FriendsOperation,
 };
 pub use reads::{
-    ActivityArgs, ActivityInfoArgs, ActivityListArgs, ActivityOperation, UserInfoArgs,
-    UserSearchArgs, UsersArgs, UsersOperation,
+    ActivityArgs, ActivityCommentAddArgs, ActivityCommentRemoveArgs, ActivityCommentsArgs,
+    ActivityCommentsOperation, ActivityInfoArgs, ActivityLikeArgs, ActivityListArgs,
+    ActivityOperation, ActivityUnlikeArgs, UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
 };
 pub use requests::{
     AcceptArgs, CancelArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs,

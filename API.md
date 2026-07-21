@@ -109,22 +109,29 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 15 | `balance` | **W2** once. | One read. |
 | 16 | `activity list [--user USERNAME] [--limit N] [--before-id TOKEN]` | Self: **AC1** once. Other: 1–4 × **P1**, then **P2 → AC1** (maximum 6). | One page; direction relative to selected personal subject. |
 | 17 | `activity info <ACTIVITY_ID>` | **AC2** once. | One detail read. |
-| 18 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
-| 19 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
-| 20 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
-| 21 | `transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes \| --dry-run]` | **A5 → W2 → T1 → T2** (4). | Financial; exact lowercase `all` resolves from W2 available cents; exactly one **T2** after default-No confirmation. |
+| 18 | `activity like <ACTIVITY_ID> [--yes \| --dry-run]` | **AC2 → AC3 → AC2** (3). | One bodyless state write, then exact liker reconciliation. |
+| 19 | `activity unlike <ACTIVITY_ID> [--yes \| --dry-run]` | **AC2 → AC4 → AC2** (3). | One bodyless state write, then complete-absence reconciliation. |
+| 20 | `activity comments add <ACTIVITY_ID> <MESSAGE> [--yes \| --dry-run]` | **AC2 → AC5 → AC2** (3). | One JSON state write, then exact created-comment reconciliation. |
+| 21 | `activity comments remove <COMMENT_ID> [--yes \| --dry-run]` | **AC6** once. | Direct comment-ID state write; Venmo authorizes it. No parent-story preflight or automatic reconciliation is possible. |
+| 22 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
+| 23 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
+| 24 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
+| 25 | `transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes \| --dry-run]` | **A5 → W2 → T1 → T2** (4). | Financial; exact lowercase `all` resolves from W2 available cents; exactly one **T2** after default-No confirmation. |
 
 Help and version output are also service-free but are not leaf actions. There is no
-implemented generic payment list/detail, outgoing-request remind, explicit
+implemented generic transaction/payment list/detail, outgoing-request remind, explicit
 funding-source selection, token refresh, incoming-friend-request decline, payment-method mutation,
 remote token revocation, transfer-in command, instant transfer write, or manual
 transfer-destination selection.
 
-For each of the eight mutation leaves, `--dry-run` performs the same calls shown before the final
-mutation (F2, F3, F4S, F5, F6, P4, P5, or T2), renders and flushes the validated details, then exits
-0 without confirmation, interruption installation, mutation, OTP, or post-write reconciliation.
-These preflights can read authenticated service state and can use POST-based F1/F1P/F4E eligibility;
-dry-run means no final state change, not no network traffic. `--dry-run` and `--yes` conflict.
+For eleven mutation leaves, `--dry-run` performs the same calls shown before the final mutation
+(F2, F3, F4S, F5, F6, P4, P5, AC3, AC4, AC5, or T2), renders and flushes the validated details,
+then exits 0 without confirmation, interruption installation, mutation, OTP, or post-write
+reconciliation. Comment removal has no service preflight because its public input intentionally
+contains only a comment ID; its dry-run performs credential validation and renders the exact intent
+plus that limitation without sending AC6. Other preflights can read authenticated service state and
+can use POST-based F1/F1P/F4E eligibility; dry-run means no final state change, not necessarily no
+network traffic. `--dry-run` and `--yes` conflict.
 
 ## 4. Shared implemented mobile boundary
 ### 4.1 Transport and headers
@@ -308,7 +315,11 @@ required. Existing-credential callers require exact equality with the stored use
 | **P5** | `DELETE /v1/users/<SELF_USER_ID>/friends/<TARGET_USER_ID>`, no body | Any complete 2xx status is provisionally accepted because signer-verified current implementations disagree on response body; then P2 must prove `not_friend`. |
 | **W2** | `GET /v1/account` | Requires direct string fields `data.balance` and `data.balance_on_hold`, each an exact signed USD decimal with ≤2 fractional digits. It never infers external balances. |
 | **AC1** | Self: `GET /v1/stories/target-or-actor/<SELF_USER_ID>?limit=<LIMIT>&social_only=false[&before_id=<TOKEN>]`. Other personal user: same path with `<SUBJECT_USER_ID>`, `limit`, and optional `before_id`, without a public-only filter. | `data` story array and optional `pagination.next`; count ≤ limit. Self accepts the three supported classes below. Other-user pages accept only payment stories with exactly one subject party and strict audience checks; their amounts are not exposed by the CLI. |
-| **AC2** | `GET /v1/stories/<ACTIVITY_ID>` | `data` story or `data.story`; top-level story ID must exactly equal the path ID. |
+| **AC2** | `GET /v1/stories/<ACTIVITY_ID>` | `data` story or `data.story`; top-level story ID must exactly equal the path ID. Optional `likes` and `comments` are counted embedded collections; count may exceed embedded rows, and a next link or unequal count marks the collection partial. |
+| **AC3** | `POST /v1/stories/<ACTIVITY_ID>/likes`, no body | Preflight AC2 requires complete liker data proving the authenticated user absent. Any complete 2xx status is followed by AC2 proving the user embedded. |
+| **AC4** | `DELETE /v1/stories/<ACTIVITY_ID>/likes`, no body | Preflight AC2 requires the authenticated user embedded. Any complete 2xx status is followed by AC2 with complete liker data proving the user absent. |
+| **AC5** | `POST /v1/stories/<ACTIVITY_ID>/comments`, JSON `{"message":"<TEXT>"}` | 2xx JSON returns one created comment; ID, authenticated author, and exact message must match, then AC2 must embed that exact comment once. |
+| **AC6** | `DELETE /v1/comments/<COMMENT_ID>`, no body | The route has no parent activity input. The CLI sends exactly one request after default-No confirmation (or `--yes`) and accepts a complete 2xx response. Venmo enforces authorization. Without an activity ID the CLI cannot preflight membership/authorship/text or automatically prove absence; users must verify independently before retrying an uncertain outcome. HTTP 404 is the confirmed rejection `Comment not found.` |
 | **R1** | `GET /v1/payments?action=charge&status=pending,held&limit=<LIMIT>[&before=<TOKEN>]` | `data` records and optional `pagination.next`; every record is exact `charge`, status `pending` or `held`, positive, involves self exactly once, and count ≤ limit. Direction is derived and filtered locally. |
 | **R2** | `GET /v1/payments/<REQUEST_ID>` | `data` record or `data.payment`; exact path ID. Mapper permits `charge`/`pay` and bounded status, but public `requests info` narrows to open `charge`; mutation preflight is stricter below. |
 
@@ -318,6 +329,12 @@ signer-verified Android 10.31.1 and 26.13.0 independently retain that route for 
 profile feeds. Android uses a separate `only_public_stories=true` call path for business/public
 profiles, which is why the CLI fails those profile types closed rather than reusing the personal
 contract.
+
+AC2–AC6 are pinned by signer-verified Android 26.13.0 classic story detail and mutation callers.
+The current app reads liker/comment rows from the story's embedded counted collections; no dedicated
+comments-list or likers-list route is claimed. It locally rejects blank comments and caps them at
+2,000 characters. The CLI preserves distinct activity, comment, user, nested payment, and ledger ID
+namespaces. Arbitrary Feed V2 emoji reactions and comment editing are not implemented.
 
 Current signer-verified Android 26.13.0 also routes another personal profile's external user ID
 through its friends-list data source to `GET /v1/users/{id}/friends` with `limit` and `offset`.
@@ -391,6 +408,12 @@ payment where exactly one actor/target is not the subject. Public/friends record
 visibility; private records additionally require the authenticated viewer to be the other party.
 Other-user amounts are never retained or rendered, including when the private response supplies
 one. Current-user activity retains its required exact amount.
+AC2 maps optional classic `likes` and `comments`. Each collection requires `count >= data.len()`,
+unique user/comment IDs, valid users, and valid comment ID/message/timestamp. Completeness requires
+both no `pagination.next` and exact count/data equality. Output always labels embedded rows as
+complete or partial; mutation preflight never infers absence from partial data.
+Timestamp parsing accepts RFC 3339 and Venmo's naive-UTC whole-second or fractional-second forms;
+fractional precision is retained internally while terminal rendering remains whole-second.
 The continuation remains bound to the exact subject path, limit, effective false filters, and one
 opaque progressing `before_id`.
 
@@ -839,7 +862,7 @@ After preflight/authorization and installation of interruption protection, a rea
 interrupt wins conservatively and exits 3—including before the write future is first
 polled and in a same-poll tie with a ready result. Failure to install protection is an
 ordinary pre-write internal failure. Financial exit 3 also covers failure to flush a
-successful result to the operator; relationship exit 3 has the same result-output boundary. Usage exits 2, ordinary failure/cancellation 1,
+successful result to the operator; nonfinancial state writes have the same result-output boundary. Usage exits 2, ordinary failure/cancellation 1,
 and success 0. Token issuance ambiguity is authentication failure, not financial exit
 3, and is likewise never retried.
 
@@ -865,6 +888,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-19 | P4/P5 friendship mutations | Direct observation of signer-verified Android 9.26.0, 10.31.1, and 26.13.0 + exact synthetic; residual auth gap | Current native route/body/state semantics are consistent across artifacts. No public mutation implementation was found. The CLI's client-1 session has not received a controlled live mutation validation; no canary has run. |
 | 2026-07-19 | AC1 other-user personal feed | Historical public client-1 documentation/wrapper + signer-verified Android 10.31.1 and 26.13.0 + exact synthetic | The single-user `target-or-actor` route is long-lived and current. Normal personal feeds use the unfiltered route; business/public-only feeds are a distinct branch and remain unsupported. |
 | 2026-07-19 | AC1 other-user response shape | Separately approved bounded structure-only probe using the active credential | Exact username resolution and one single-record personal-profile request returned the direct `data` story-array shape with a peer-payment record. Only paths and JSON types/nullness were emitted; no values, raw body, identifiers, names, note, amount, token, or continuation was retained. The probe made no mutation. |
+| 2026-07-21 | AC2–AC6 activity social state | Signer-verified Android 26.13.0 classic and Feed V2 callers/models + exact service-free synthetic tests + one owner-approved reversible client-1 canary | On one private settled activity, bodyless like added the authenticated user, duplicate like failed in preflight, bodyless unlike removed it, and duplicate unlike failed in preflight. JSON comment add created exactly one self-authored comment; its fractional naive-UTC timestamp exposed and fixed a parser gap. Bodyless removal then reconciled exact absence, and the activity returned to zero likes/comments. No operation retried. Arbitrary emoji reactions, comment editing, non-author moderation, and broader durability remain unavailable/unproven. |
 | 2026-07-20 | P3 other-user visible friends | Signer-verified Android 26.13.0 + current official privacy guidance + exact synthetic | Current native profile navigation passes another user's external ID through the friends data source to `GET /v1/users/{id}/friends` with limit/offset. The CLI uses bounded exact P1/P2 resolution, personal-profile gating, exact subject-path continuation binding, and privacy-aware visible-result wording. No live probe was needed or performed. |
 | 2026-07-20 | Mobile compatibility headers | Android 26.13.0 + maintained current client + controlled live differential | Current version/session conventions are established and the profile reaches the recognized payment challenge; individual header necessity remains unknown. |
 | 2026-07-20 | Financial error guidance | Signer-verified Android 26.13.0 + prior reconciled F2/F4S observations + exact synthetic cross-operation matrices | Error meaning is bound to operation, HTTP result, root code, and exact root title where required. Confirmed rejection and unsupported-continuation messages are distinct from APK-context hints that preserve exit 3. Wrong-operation, wrong-status, nested, malformed, and unknown values remain generic outcome-unknown. No additional live mutation was performed. |
@@ -1282,9 +1306,10 @@ of §13 rather than duplicated here.
 | F4S funding and step-up | W2 plus signer-verified F4N/F4E/F4S action ID, selected peer source, token, and server-UUID SMS continuation; exact automatic/explicit balance/bank/card selection and OTP tests; client-1 structure-only F4N read; one owner-run corrected unprotected F4S success; fee records omitted by default and normalized only for explicit `--protect`. | Actual debited source or final fee beyond eligibility evidence; live explicit-source, protected, or SMS-continuation validation. |
 | Non-private decline | Audience-generic code, common supported-audience validation, and representative response-preservation tests. | An exact friends/public success fixture, independent current live proof, or every accepted envelope alternative being individually pinned. |
 | F6 outgoing request cancellation | Android 26.13.0 form route/action and pending/held native scope; independent public endpoint/action corroboration; exact synthetic preflight/wire/response tests. | Current client-1 live success, confirmed rejection codes, or cancellation of anything other than an outgoing open charge request. |
-| General mobile payment reads | Pending requests and activity. | `payments list`, settled PaymentId detail, or ActivityId substitution. |
+| General transaction/payment reads | Android ledger list/detail and separate incomplete-request merge are statically established; pending requests and social activity are implemented. | Final command naming/scope, composite ledger continuation policy, merged app-parity view, or ID-namespace substitution. |
 | Model limits | Existing leading-zero IDs, username matching, nonblank note, read-only role compatibility, 200-record resolution bound. | Normalization, stricter grammar/note limit, exact read-only role set, or global username uniqueness without evidence. |
 | Friendship mutations | Signer-verified current P4/P5 route/body/state semantics, exact synthetic transport/client/orchestration tests, and mandatory P2 reconciliation. | Current client-1 authorization, controlled live success, incoming decline, notification timing, or retry/idempotency. |
+| Activity social mutations | Signer-verified Android 26.13.0 classic AC2–AC6 contracts; exact embedded-data, wire, dry-run, one-write, and available reconciliation tests; direct comment removal explicitly delegates authorization and independent verification; one reversible client-1 like/unlike/comment-add/remove canary on a private activity. | Broad authorization/durability across story classes, complete social pagination, arbitrary emoji reactions, comment editing, or non-author moderation. |
 | Transfers | Outbound-only T1 options view; enabled fail-closed T2 standard-bank write; exact HTTP-201 pending response; matching-ID activity reconciliation. Transfer-in is intentionally unsupported. | Settlement completion, confirmed rejection codes, instant/debit cash-out, T1 fee units, step-up, cancellation, or expedition. |
 | Web BFF/GraphQL | Captured-build emitted calls. | Current success, mobile equivalence, full schema, or retry safety. |
 | SSR reads | Consumed props/shapes. | Hidden method/path/document/variables/auth or complete response. |
