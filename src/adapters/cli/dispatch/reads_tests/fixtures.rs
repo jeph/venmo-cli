@@ -165,6 +165,53 @@ pub(super) fn activity_info_args() -> TestResult<ActivityInfoArgs> {
     }
 }
 
+pub(super) fn activity_comment_list_args() -> TestResult<ActivityCommentListArgs> {
+    match Cli::try_parse_from([
+        "venmo", "activity", "comments", "list", "story-1", "--limit", "1", "--offset", "1",
+    ])?
+    .command
+    {
+        Command::Activity(args) => match args.operation {
+            ActivityOperation::Comments(args) => match args.operation {
+                ActivityCommentsOperation::List(args) => Ok(args),
+                _ => Err(
+                    io::Error::other("activity-comment-list arguments parsed as a mutation").into(),
+                ),
+            },
+            _ => Err(io::Error::other(
+                "activity-comment-list arguments parsed as another activity operation",
+            )
+            .into()),
+        },
+        _ => Err(
+            io::Error::other("activity-comment-list arguments parsed as another command").into(),
+        ),
+    }
+}
+
+pub(super) fn synthetic_activity_with_comments() -> TestResult<ActivityDetail> {
+    let comments = (0_u32..3)
+        .map(|index| {
+            Ok(ActivityComment::new(
+                ActivityCommentId::from_str(&format!("comment-{index}"))?,
+                User::new(
+                    UserId::from_str("1000")?,
+                    Some(Username::from_bare("owner")?),
+                    Some("Synthetic owner".to_owned()),
+                ),
+                format!("message {index}"),
+                time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(i64::from(index)),
+            ))
+        })
+        .collect::<TestResult<Vec<_>>>()?;
+    Ok(
+        ActivityDetail::relative(synthetic_activity()?).with_social(ActivitySocial::new(
+            None,
+            Some(ActivitySocialCollection::new(3, comments, true)),
+        )),
+    )
+}
+
 pub(super) fn requests_args() -> TestResult<RequestsListArgs> {
     match Cli::try_parse_from([
         "venmo",

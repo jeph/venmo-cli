@@ -1,3 +1,4 @@
+pub(crate) mod comment_list;
 pub(crate) mod comment_remove;
 pub(crate) mod continuation;
 mod error;
@@ -9,6 +10,7 @@ pub(crate) mod social;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use comment_list::ActivityCommentListResult;
 pub(crate) use continuation::ActivityBeforeId;
 pub(crate) use error::ActivityError;
 pub(crate) use info::{ActivityInfoResult, info};

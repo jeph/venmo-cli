@@ -4,6 +4,7 @@
 //! implementation details intentionally remain crate-private. Frontends should
 //! expose their own protocol-specific facades rather than widening this one.
 
+pub use crate::features::activity::comment_list::ActivityCommentListResult;
 pub use crate::features::activity::continuation::ActivityBeforeId;
 pub use crate::features::activity::info::ActivityInfoResult;
 pub use crate::features::activity::list::ActivityListResult;

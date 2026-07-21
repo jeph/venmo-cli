@@ -10,15 +10,16 @@ use clap::Parser;
 
 use super::*;
 use crate::adapters::cli::args::{
-    ActivityOperation, Cli, Command, FriendsListArgs, FriendsOperation, RequestsOperation,
-    UsersOperation,
+    ActivityCommentListArgs, ActivityCommentsOperation, ActivityOperation, Cli, Command,
+    FriendsListArgs, FriendsOperation, RequestsOperation, UsersOperation,
 };
 use crate::adapters::cli::error::ErrorCategory;
 use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::activity::{
-    Activity, ActivityAction, ActivityBeforeId, ActivityCounterparty, ActivityDetail,
-    ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId, ActivityPage,
-    ActivityPageRequest, ActivityStatus,
+    Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
+    ActivityCounterparty, ActivityDetail, ActivityDirection, ActivityFeedKind, ActivityFeedScope,
+    ActivityId, ActivityPage, ActivityPageRequest, ActivitySocial, ActivitySocialCollection,
+    ActivityStatus,
 };
 use crate::features::people::{
     FriendsPage, FriendsPageRequest, FriendshipStatus, User, UserProfileKind, UserSearchPage,

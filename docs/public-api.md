@@ -21,7 +21,7 @@ and black-box tests.
 - Users: `UsersArgs`, `UsersOperation`, `UserSearchArgs`, `UserInfoArgs`.
 - Activity: `ActivityArgs`, `ActivityOperation`, `ActivityListArgs`, `ActivityInfoArgs`,
   `ActivityLikeArgs`, `ActivityUnlikeArgs`, `ActivityCommentsArgs`, `ActivityCommentsOperation`,
-  `ActivityCommentAddArgs`, `ActivityCommentRemoveArgs`.
+  `ActivityCommentListArgs`, `ActivityCommentAddArgs`, `ActivityCommentRemoveArgs`.
 - Requests: `RequestsArgs`, `RequestsOperation`, `RequestsListArgs`, `RequestInfoArgs`,
   `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `CancelArgs`, `RequestDirectionArg`.
 - Transfers: `TransferArgs`, `TransferOperation`, `TransferOutArgs`, `TransferAmountArg`,
@@ -84,10 +84,11 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
   `ActivityCommentMessageParseError`, `ActivitySocial`, `ActivitySocialCollection`,
   `ActivityLikeState`. Social collections expose server count, embedded items, and explicit
   completeness; comment messages are redacted and enforce the 2,000-character command boundary.
-- `ActivityBeforeId`, `ActivityListResult`, `ActivityInfoResult`. Other-user list results expose the
-  resolved subject; current-user results retain the existing unscoped presentation. Activity and
-  detail amounts are optional because server-visible external social stories can omit them;
-  participant-owned records retain the required exact-money contract.
+- `ActivityBeforeId`, `ActivityListResult`, `ActivityInfoResult`, `ActivityCommentListResult`.
+  Comment-list results expose one local limit/offset projection of a complete embedded collection.
+  Other-user list results expose the resolved subject; current-user results retain the existing
+  unscoped presentation. Activity and detail amounts are optional because server-visible external
+  social stories can omit them; participant-owned records retain the required exact-money contract.
 
 ### Payments
 
@@ -151,6 +152,9 @@ Clap schema:
   `ActivityOperation::Info`, `ActivityInfoArgs`, and `ActivityInfoResult`.
 - Handle the new `UsersOperation::Info(UserInfoArgs)` and
   `RequestsOperation::Info(RequestInfoArgs)` variants in exhaustive matches.
+- Handle `ActivityCommentsOperation::List(ActivityCommentListArgs)` in exhaustive matches.
+  `ActivityCommentListArgs` exposes typed `Limit` and `Offset` fields with the normal list defaults,
+  and `ActivityCommentListResult` is available from `venmo_cli::model`.
 - Request actions are consolidated under `Command::Requests`: exhaustive `RequestsOperation`
   matches must also handle `Create(RequestArgs)`, `Accept(AcceptArgs)`, and
   `Decline(DeclineArgs)`, plus outgoing `Cancel(CancelArgs)`. The former top-level

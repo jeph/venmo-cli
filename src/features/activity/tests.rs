@@ -124,7 +124,9 @@ impl From<ActivityError> for ErrorSnapshot {
             ActivityError::ResponseContract { problem } => Self::ResponseContract(problem),
             ActivityError::UserLookup { .. }
             | ActivityError::MissingProfileType
-            | ActivityError::UnsupportedProfileType => {
+            | ActivityError::UnsupportedProfileType
+            | ActivityError::CommentsUnavailable
+            | ActivityError::CommentsIncomplete => {
                 Self::ResponseContract("unexpected activity-subject failure in self-feed test")
             }
         }
@@ -939,6 +941,110 @@ async fn info_api_failure_kind_and_exact_id_matrix_is_preserved() -> TestResult 
     Ok(())
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn comment_list_uses_standard_limit_and_offset_over_one_complete_detail_read() -> TestResult {
+    let requested = ActivityId::from_str("story-42")?;
+    let comments = (0_u32..12)
+        .map(activity_comment)
+        .collect::<Result<Vec<_>, _>>()?;
+    let detail = activity_detail_with_comments(42, comments, true)?;
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderOutcome::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(
+        Vec::new(),
+        vec![detail_response(ResponseId::Primary, Ok(detail))],
+        Rc::clone(&transcript),
+    );
+
+    let result = comment_list::list(
+        &reader,
+        &api,
+        &requested,
+        Limit::try_from(10)?,
+        Offset::default(),
+    )
+    .await?;
+
+    assert_eq!(result.activity_id(), &requested);
+    assert_eq!(result.total_count(), 12);
+    assert_eq!(result.offset(), Offset::default());
+    assert_eq!(result.comments().len(), 10);
+    assert_eq!(result.comments()[0].id().as_str(), "comment-0");
+    assert_eq!(result.comments()[9].id().as_str(), "comment-9");
+    assert_eq!(result.next_offset(), Some(Offset::new(10)));
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [Call::ReadCredential, expected_detail_call(&requested)?]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn comment_list_preserves_source_order_and_signals_the_final_local_page() -> TestResult {
+    let requested = ActivityId::from_str("story-42")?;
+    let comments = (0_u32..12)
+        .map(activity_comment)
+        .collect::<Result<Vec<_>, _>>()?;
+    let detail = activity_detail_with_comments(42, comments, true)?;
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::new(ReaderOutcome::Present, Rc::clone(&transcript));
+    let api = FakeApi::new(
+        Vec::new(),
+        vec![detail_response(ResponseId::Primary, Ok(detail))],
+        Rc::clone(&transcript),
+    );
+
+    let result = comment_list::list(
+        &reader,
+        &api,
+        &requested,
+        Limit::try_from(10)?,
+        Offset::new(10),
+    )
+    .await?;
+
+    assert_eq!(result.comments().len(), 2);
+    assert_eq!(result.comments()[0].id().as_str(), "comment-10");
+    assert_eq!(result.comments()[1].id().as_str(), "comment-11");
+    assert_eq!(result.next_offset(), None);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn comment_list_fails_closed_for_missing_or_partial_embedded_data() -> TestResult {
+    for (detail, expected) in [
+        (activity_detail(42, "note")?, "missing"),
+        (
+            activity_detail_with_comments(42, vec![activity_comment(0)?], false)?,
+            "partial",
+        ),
+    ] {
+        let transcript = Rc::new(RefCell::new(Vec::new()));
+        let reader = FakeReader::new(ReaderOutcome::Present, Rc::clone(&transcript));
+        let api = FakeApi::new(
+            Vec::new(),
+            vec![detail_response(ResponseId::Primary, Ok(detail))],
+            transcript,
+        );
+        let error = comment_list::list(
+            &reader,
+            &api,
+            &ActivityId::from_str("story-42")?,
+            Limit::MIN,
+            Offset::default(),
+        )
+        .await
+        .err()
+        .ok_or_else(|| std::io::Error::other("comment listing unexpectedly succeeded"))?;
+        assert!(matches!(
+            (expected, error),
+            ("missing", ActivityError::CommentsUnavailable)
+                | ("partial", ActivityError::CommentsIncomplete)
+        ));
+    }
+    Ok(())
+}
+
 fn credential() -> Result<LoadedCredential, FakeCredentialError> {
     let internal = || FakeCredentialError(CredentialFailureKind::Internal);
     Ok(LoadedCredential {
@@ -974,4 +1080,31 @@ fn activity(id: u32, note: &str) -> Result<Activity, Box<dyn Error>> {
 
 fn activity_detail(id: u32, note: &str) -> Result<ActivityDetail, Box<dyn Error>> {
     Ok(ActivityDetail::relative(activity(id, note)?))
+}
+
+fn activity_detail_with_comments(
+    id: u32,
+    comments: Vec<ActivityComment>,
+    complete: bool,
+) -> Result<ActivityDetail, Box<dyn Error>> {
+    let count = u64::try_from(comments.len())?;
+    Ok(
+        activity_detail(id, "note")?.with_social(ActivitySocial::new(
+            None,
+            Some(ActivitySocialCollection::new(count, comments, complete)),
+        )),
+    )
+}
+
+fn activity_comment(index: u32) -> Result<ActivityComment, Box<dyn Error>> {
+    Ok(ActivityComment::new(
+        ActivityCommentId::from_str(&format!("comment-{index}"))?,
+        User::new(
+            UserId::from_str("1000")?,
+            Some(Username::from_bare("tester")?),
+            Some("Test User".to_owned()),
+        ),
+        format!("comment message {index}"),
+        OffsetDateTime::UNIX_EPOCH + Duration::seconds(i64::from(index)),
+    ))
 }

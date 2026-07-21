@@ -133,6 +133,62 @@ async fn live_activity_continuation_probe() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "manually locates a partial embedded comment collection without emitting record values"]
+async fn live_activity_comment_continuation_probe() -> TestResult {
+    let loaded = NativeCredentialStore::new()
+        .read_credential()?
+        .ok_or_else(|| {
+            io::Error::other("the comment continuation probe requires a stored credential")
+        })?;
+    let client = VenmoApiClient::production()?;
+    let page_size = Limit::try_from(50)?;
+    let mut token: Option<ActivityBeforeId> = None;
+    for page_index in 0_u8..5 {
+        let mut query = vec![("limit", "50"), ("social_only", "false")];
+        if let Some(before_id) = token.as_ref() {
+            query.push(("before_id", before_id.as_str()));
+        }
+        let path_segments = [
+            "stories",
+            "target-or-actor",
+            loaded.envelope.user_id().as_str(),
+        ];
+        let response = client
+            .transport
+            .send_authenticated(
+                ApiSession::from(&loaded.envelope),
+                HttpRequest::read("/stories/target-or-actor/{user-id}", &path_segments, &query),
+            )
+            .await?;
+        if !response.status().is_success() {
+            return Err(io::Error::other("the comment continuation probe did not succeed").into());
+        }
+        let value: Value = serde_json::from_slice(response.body())?;
+        let records = value
+            .get("data")
+            .and_then(Value::as_array)
+            .ok_or_else(|| io::Error::other("activity probe did not return an array"))?;
+        if summarize_partial_comment_collection(records, page_index + 1) {
+            return Ok(());
+        }
+        token = client.parse_activity_next_link(
+            value.pointer("/pagination/next").and_then(Value::as_str),
+            &path_segments,
+            page_size,
+            ActivityFeedKind::CurrentUser,
+        )?;
+        if token.is_none() {
+            eprintln!(
+                "schema-probe activity comments: no partial collection before natural exhaustion"
+            );
+            return Ok(());
+        }
+    }
+    eprintln!("schema-probe activity comments: no partial collection in five bounded pages");
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "manually probes one other-user activity record without emitting response values"]
 async fn live_other_user_activity_shape_probe() -> TestResult {
     let username = std::env::var("VENMO_ACTIVITY_PROBE_USERNAME")
@@ -411,6 +467,56 @@ fn summarize_next_link(label: &str, value: Option<&Value>) {
     eprintln!(
         "schema-probe {label} pagination: trusted-origin={trusted_origin} query-keys={query_keys:?} safe-values={safe_values:?}"
     );
+}
+
+fn summarize_comment_next_link(next: Option<&str>, story_id: Option<&Value>) {
+    let Some(next) = next else {
+        eprintln!("schema-probe activity comments pagination: no-next-link");
+        return;
+    };
+    let Ok(url) = reqwest::Url::parse(next) else {
+        eprintln!("schema-probe activity comments pagination: unparseable-next-link");
+        return;
+    };
+    let trusted_origin = url.scheme() == "https"
+        && url.host_str() == Some("api.venmo.com")
+        && url.port_or_known_default() == Some(443);
+    let expected_path = story_id
+        .and_then(Value::as_str)
+        .map(|story_id| format!("/v1/stories/{story_id}/comments"));
+    let activity_bound_path = expected_path
+        .as_deref()
+        .is_some_and(|expected| url.path() == expected);
+    let query_keys = url
+        .query_pairs()
+        .map(|(key, _)| key.into_owned())
+        .collect::<BTreeSet<_>>();
+    eprintln!(
+        "schema-probe activity comments pagination: trusted-origin={trusted_origin} activity-bound-comments-path={activity_bound_path} query-keys={query_keys:?}"
+    );
+}
+
+fn summarize_partial_comment_collection(records: &[Value], page_number: u8) -> bool {
+    for record in records {
+        let Some(comments) = record.get("comments") else {
+            continue;
+        };
+        let count = comments.get("count").and_then(Value::as_u64);
+        let shown = comments.get("data").and_then(Value::as_array).map(Vec::len);
+        let next = comments.pointer("/pagination/next").and_then(Value::as_str);
+        let partial = count
+            .zip(shown.and_then(|value| u64::try_from(value).ok()))
+            .is_some_and(|(count, shown)| count > shown);
+        if partial || next.is_some() {
+            eprintln!(
+                "schema-probe activity comments: bounded-page={page_number} count={count:?} shown={shown:?} next-present={}",
+                next.is_some()
+            );
+            summarize_comment_next_link(next, record.get("id"));
+            return true;
+        }
+    }
+    false
 }
 
 fn summarize_request_directions(value: Option<&Value>, user_id: &str) {

@@ -152,6 +152,13 @@ naive-UTC timestamp; after parser correction, read reconciliation found exactly 
 single removal succeeded. Do not repeat the canary speculatively or add an ignored live mutation
 test. Broader story-class authorization/durability remains unproven.
 
+A separately approved bounded pagination canary on 2026-07-21 added 51 temporary comments to a
+consenting private activity. One AC2 response embedded all 51 in source order with exact count/data
+equality and no continuation; all 51 were then removed exactly once and final state was zero. The
+CLI therefore pages complete embedded comments locally and makes no dedicated comments-list route
+claim. If a future AC2 response is partial, listing fails closed until a separate authenticated
+route, response, ordering, and continuation contract is established.
+
 ## Non-personal activity profiles
 
 `activity list --user` initially supports authoritative personal profiles only. Signer-verified

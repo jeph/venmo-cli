@@ -120,6 +120,15 @@ the parent activity ID and reconciled exact absence; the activity was restored t
 likes/comments. That procedure remains outside this suite and must not become routine development
 or CI.
 
+With separate owner approval on 2026-07-21, a consenting private activity received 51 uniquely
+numbered temporary comments to test the next plausible page boundary. AC2 returned exact
+`count=51`, all 51 rows in source order, and no continuation. Every temporary comment was removed
+exactly once and a final AC2 read proved zero comments. Service-free tests retain the resulting
+policy: `activity info` displays five rows, `activity comments list` locally pages one complete AC2
+collection with standard limit/offset defaults, and any missing/partial source fails closed. The
+ignored `live_activity_comment_continuation_probe` is read-only and structural; neither it nor the
+mutation procedure belongs in routine verification or CI.
+
 ## No retained live financial test
 
 There is deliberately no ignored test or contributor runbook for a live payment or request

@@ -1,12 +1,15 @@
 use std::error::Error;
 use std::str::FromStr;
 
-use super::super::{write_activity_info, write_activity_list, write_request_info, write_requests};
+use super::super::{
+    write_activity_comments, write_activity_info, write_activity_list, write_request_info,
+    write_requests,
+};
 use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
-    ActivityCounterparty, ActivityDetail, ActivityDirection, ActivityFeedKind, ActivityId,
-    ActivityInfoResult, ActivityListResult, ActivitySocial, ActivitySocialCollection,
-    ActivityStatus, ActivitySubject,
+    ActivityCommentListResult, ActivityCounterparty, ActivityDetail, ActivityDirection,
+    ActivityFeedKind, ActivityId, ActivityInfoResult, ActivityListResult, ActivitySocial,
+    ActivitySocialCollection, ActivityStatus, ActivitySubject,
 };
 use crate::features::people::User;
 use crate::features::requests::list::RequestsResult;
@@ -14,7 +17,7 @@ use crate::features::requests::{
     RequestAction, RequestDirection, RequestDirectionFilter, RequestId, RequestInfoResult,
     RequestRecord, RequestStatus, RequestsBefore,
 };
-use crate::shared::{Money, UserId, Username};
+use crate::shared::{Money, Offset, UserId, Username};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -189,6 +192,82 @@ fn activity_info_renders_partial_embedded_social_data_and_sanitizes_it() -> Test
 
     insta::assert_snapshot!("activity_info_partial_social", stdout);
     assert!(!stdout.contains('\u{1b}'));
+    Ok(())
+}
+
+#[test]
+fn activity_info_limits_comments_to_five_and_points_to_the_remaining_list() -> TestResult {
+    let comments = (0_u32..7)
+        .map(|index| {
+            Ok(ActivityComment::new(
+                ActivityCommentId::from_str(&format!("comment-{index}"))?,
+                synthetic_user("123", "alice")?,
+                format!("message {index}"),
+                time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(i64::from(index)),
+            ))
+        })
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+    let detail = ActivityDetail::payment(
+        ActivityId::from_str("story-1")?,
+        time::OffsetDateTime::UNIX_EPOCH,
+        ActivityAction::from_str("pay")?,
+        synthetic_user("123", "alice")?,
+        synthetic_user("456", "bob")?,
+        Some(Money::from_str("1.25")?),
+        ActivityStatus::from_str("settled")?,
+        Some("visible note".to_owned()),
+        Some("friends".to_owned()),
+    )
+    .with_social(ActivitySocial::new(
+        None,
+        Some(ActivitySocialCollection::new(7, comments, true)),
+    ));
+    let mut stdout = Vec::new();
+
+    write_activity_info(
+        &mut stdout,
+        &ActivityInfoResult::new(detail),
+        &super::local_timestamps(),
+    )?;
+    let stdout = String::from_utf8(stdout)?;
+
+    insta::assert_snapshot!("activity_info_limited_comments", stdout);
+    assert!(!stdout.contains("comment-5"));
+    assert!(!stdout.contains("comment-6"));
+    Ok(())
+}
+
+#[test]
+fn activity_comment_list_renders_one_local_page_and_next_offset() -> TestResult {
+    let comments = (0_u32..2)
+        .map(|index| {
+            Ok(ActivityComment::new(
+                ActivityCommentId::from_str(&format!("comment-{index}"))?,
+                synthetic_user("123", "alice")?,
+                format!("message\n{index}"),
+                time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(i64::from(index)),
+            ))
+        })
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+    let result = ActivityCommentListResult::new(
+        ActivityId::from_str("story-1")?,
+        comments,
+        7,
+        Offset::default(),
+        Some(Offset::new(2)),
+    );
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    write_activity_comments(
+        &mut stdout,
+        &mut stderr,
+        &result,
+        &super::local_timestamps(),
+    )?;
+
+    insta::assert_snapshot!("activity_comment_list", String::from_utf8(stdout)?);
+    assert_eq!(String::from_utf8(stderr)?, "Next offset: 2\n");
     Ok(())
 }
 

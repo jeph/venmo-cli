@@ -131,6 +131,71 @@ async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> Tes
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn activity_comment_list_handler_reads_one_detail_and_writes_one_local_page() -> TestResult {
+    let args = activity_comment_list_args()?;
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::standard(Rc::clone(&transcript));
+    let api = ActivityFake {
+        list_responses: ResponseQueue::successful(ActivityPage::new(Vec::new(), None)),
+        info_responses: ResponseQueue::successful(synthetic_activity_with_comments()?),
+        transcript: Rc::clone(&transcript),
+    };
+    let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
+    let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let timestamps = timestamps();
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        ReadState {
+            calls: vec![
+                ReadCall::ReadCredential,
+                ReadCall::ActivityInfo {
+                    session: fixture_session(),
+                    current_user_id: UserId::from_str("1000")?,
+                    activity_id: ActivityId::from_str("story-1")?,
+                },
+                ReadCall::StdoutWrite,
+                ReadCall::StderrWrite,
+            ],
+            remaining_credentials: vec![ResponseId::UnexpectedSecond],
+            api: ActivityApiState {
+                list: vec![ResponseId::Primary, ResponseId::UnexpectedSecond],
+                info: vec![ResponseId::UnexpectedSecond],
+            },
+            stdout: writer_state(concat!(
+                "Comments for activity story-1\n",
+                "Comments available: 3\n",
+                "Offset: 1\n",
+                "Comments shown: 1\n",
+                "  Comment ID: comment-1\n",
+                "    Author: @owner\n",
+                "    Time: 1970-01-01T00:00:01Z\n",
+                "    Message: message 1\n",
+            )),
+            stderr: writer_state("Next offset: 2\n"),
+        },
+    );
+
+    let result =
+        run_activity_comment_list(args, &reader, &api, &timestamps, &mut stdout, &mut stderr).await;
+    let observed = Observed::new(
+        snapshot_result(result),
+        ReadState {
+            calls: transcript.borrow().clone(),
+            remaining_credentials: reader.remaining(),
+            api: ActivityApiState {
+                list: api.list_responses.remaining(),
+                info: api.info_responses.remaining(),
+            },
+            stdout: stdout.state,
+            stderr: stderr.state,
+        },
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn requests_handler_has_exact_filter_page_output_and_continuation_streams() -> TestResult {
     // Setup.
     let args = requests_args()?;

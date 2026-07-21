@@ -9,12 +9,14 @@ use crate::features::activity::social::{
     ActivitySocialAction, ActivitySocialMutationResult, PreparedActivitySocialMutation,
 };
 use crate::features::activity::{
-    ActivityBeforeId, ActivityCounterparty, ActivityInfoResult, ActivityLikeState,
-    ActivityListResult,
+    ActivityBeforeId, ActivityComment, ActivityCommentListResult, ActivityCounterparty,
+    ActivityInfoResult, ActivityLikeState, ActivityListResult,
 };
 
 use super::TimestampFormatter;
 use super::shared::{sanitize_terminal_text, user_label, write_table};
+
+const ACTIVITY_INFO_COMMENT_LIMIT: usize = 5;
 
 pub(crate) fn write_activity_list<W: Write, E: Write>(
     stdout: &mut W,
@@ -177,43 +179,96 @@ pub(crate) fn write_activity_info<W: Write>(
     }
     match activity.social().comments() {
         Some(comments) => {
+            let displayed_count = comments.items().len().min(ACTIVITY_INFO_COMMENT_LIMIT);
             writeln!(writer, "Comments: {}", comments.count())?;
             writeln!(
                 writer,
                 "Comments shown: {} ({})",
-                comments.items().len(),
-                if comments.is_complete() {
-                    "complete"
+                displayed_count,
+                if !comments.is_complete() {
+                    "partial source"
+                } else if comments.items().len() > displayed_count {
+                    "display limited"
                 } else {
-                    "partial"
+                    "complete"
                 }
             )?;
-            for comment in comments.items() {
+            for comment in comments.items().iter().take(displayed_count) {
+                write_activity_comment(writer, comment, timestamps)?;
+            }
+            if comments.is_complete() && comments.items().len() > ACTIVITY_INFO_COMMENT_LIMIT {
                 writeln!(
                     writer,
-                    "  Comment ID: {}",
-                    sanitize_terminal_text(comment.id().as_str())
+                    "More comments: venmo activity comments list {} --offset {}",
+                    sanitize_terminal_text(activity.id().as_str()),
+                    ACTIVITY_INFO_COMMENT_LIMIT
                 )?;
+            } else if !comments.is_complete()
+                && comments.count() > u64::try_from(comments.items().len()).unwrap_or(u64::MAX)
+            {
                 writeln!(
                     writer,
-                    "    Author: {}",
-                    sanitize_terminal_text(&user_label(comment.author()))
-                )?;
-                writeln!(
-                    writer,
-                    "    Time: {}",
-                    timestamps.format(comment.created_at())?
-                )?;
-                writeln!(
-                    writer,
-                    "    Message: {}",
-                    sanitize_terminal_text(comment.message())
+                    "Additional comments were not included in Venmo's activity response."
                 )?;
             }
         }
         None => writeln!(writer, "Comments: (not provided)")?,
     }
     Ok(())
+}
+
+pub(crate) fn write_activity_comments<W: Write, E: Write>(
+    stdout: &mut W,
+    stderr: &mut E,
+    result: &ActivityCommentListResult,
+    timestamps: &TimestampFormatter,
+) -> io::Result<()> {
+    writeln!(
+        stdout,
+        "Comments for activity {}",
+        sanitize_terminal_text(result.activity_id().as_str())
+    )?;
+    writeln!(stdout, "Comments available: {}", result.total_count())?;
+    writeln!(stdout, "Offset: {}", result.offset())?;
+    writeln!(stdout, "Comments shown: {}", result.comments().len())?;
+    if result.comments().is_empty() {
+        writeln!(stdout, "No comments found at this offset.")?;
+    } else {
+        for comment in result.comments() {
+            write_activity_comment(stdout, comment, timestamps)?;
+        }
+    }
+    if let Some(next_offset) = result.next_offset() {
+        writeln!(stderr, "Next offset: {next_offset}")?;
+    }
+    Ok(())
+}
+
+fn write_activity_comment(
+    writer: &mut impl Write,
+    comment: &ActivityComment,
+    timestamps: &TimestampFormatter,
+) -> io::Result<()> {
+    writeln!(
+        writer,
+        "  Comment ID: {}",
+        sanitize_terminal_text(comment.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "    Author: {}",
+        sanitize_terminal_text(&user_label(comment.author()))
+    )?;
+    writeln!(
+        writer,
+        "    Time: {}",
+        timestamps.format(comment.created_at())?
+    )?;
+    writeln!(
+        writer,
+        "    Message: {}",
+        sanitize_terminal_text(comment.message())
+    )
 }
 
 pub(crate) fn write_activity_social_details(

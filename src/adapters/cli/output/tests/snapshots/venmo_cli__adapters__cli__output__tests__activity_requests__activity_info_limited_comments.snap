@@ -1,0 +1,37 @@
+---
+source: src/adapters/cli/output/tests/activity_requests.rs
+expression: stdout
+---
+Activity ID: story-1
+Time: 1969-12-31T16:00:00
+Action: pay
+Actor: @alice
+Target: @bob
+Amount: $1.25
+Status: settled
+Note: visible note
+Audience: friends
+Likes: (not provided)
+Comments: 7
+Comments shown: 5 (display limited)
+  Comment ID: comment-0
+    Author: @alice
+    Time: 1969-12-31T16:00:00
+    Message: message 0
+  Comment ID: comment-1
+    Author: @alice
+    Time: 1969-12-31T16:00:01
+    Message: message 1
+  Comment ID: comment-2
+    Author: @alice
+    Time: 1969-12-31T16:00:02
+    Message: message 2
+  Comment ID: comment-3
+    Author: @alice
+    Time: 1969-12-31T16:00:03
+    Message: message 3
+  Comment ID: comment-4
+    Author: @alice
+    Time: 1969-12-31T16:00:04
+    Message: message 4
+More comments: venmo activity comments list story-1 --offset 5

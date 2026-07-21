@@ -1,7 +1,7 @@
 # venmo-cli Rust Product Plan
 
 **Status:** Active; root Rust-only repository cutover completed; local read-only MCP server planned
-**Last updated:** 2026-07-20
+**Last updated:** 2026-07-21
 **Package:** `venmo-cli`
 **Binaries:** `venmo`; planned `venmo-mcp`
 
@@ -125,6 +125,7 @@ venmo balance
 
 venmo activity list [--user <USERNAME>] [--limit <N>] [--before-id <TOKEN>]
 venmo activity info <ACTIVITY_ID>
+venmo activity comments list <ACTIVITY_ID> [--limit <N>] [--offset <N>]
 venmo activity like <ACTIVITY_ID> [--yes | --dry-run]
 venmo activity unlike <ACTIVITY_ID> [--yes | --dry-run]
 venmo activity comments add <ACTIVITY_ID> <MESSAGE> [--yes | --dry-run]
@@ -526,15 +527,22 @@ All command-level username resolution is shared and fail-closed around the live-
 
 #### `venmo activity info <ACTIVITY_ID>`
 
-- Shows all understood fields for one activity record, including embedded likes and comments.
+- Shows all understood fields for one activity record, including embedded likes and at most the
+  first five embedded comments.
 - Reports each social collection's authoritative count, embedded row count, and complete/partial
   status; it never claims completeness when count exceeds data length or a next link is present.
+- When a complete collection has more than five comments, prints the exact
+  `activity comments list <ACTIVITY_ID> --offset 5` continuation command.
 - Uses the globally unique story ID without `--user`. Payment details render absolute actor and target identities; transfer and authorization details retain current-account ownership validation.
 - Is the primary recovery tool after an ambiguous payment, request creation, request-acceptance, or transfer outcome; request reads and the official app are also required for ambiguous decline state.
 - Clearly distinguishes absent, inaccessible, malformed, pending, failed, and completed records.
 
 #### Activity likes and comments
 
+- `activity comments list` performs one AC2 detail read, requires a complete embedded comment
+  collection, and applies standard local list defaults (`--limit 10`, `--offset 0`, maximum limit
+  50) in source order. It reports a next offset only while validated rows remain and fails closed
+  rather than inventing a remote comments endpoint for a partial collection.
 - `activity like` and `activity unlike` use the activity/story ID. `activity comments add` accepts
   one nonblank message of at most 2,000 characters. `activity comments remove` intentionally
   accepts only the comment ID used by Venmo's native delete route.
@@ -549,7 +557,8 @@ All command-level username resolution is shared and fail-closed around the live-
   Venmo authorizes the direct comment-ID request. Its dry-run renders this exact limited intent;
   `--yes` skips only default-No confirmation. It sends one non-retried write and tells users to
   verify independently before retrying any uncertain outcome.
-- Arbitrary emoji reactions, comment editing, and dedicated comments/likers pagination are deferred.
+- Arbitrary emoji reactions, comment editing, and dedicated remote comments/likers pagination are
+  deferred; complete embedded comments have bounded local pagination.
 
 ### 3.8 Pending requests
 
@@ -1287,12 +1296,21 @@ The implementation targets the [MCP specification dated 2025-11-25](https://mode
 
 ### 10.1 Pagination policy
 
-Pagination applies to `friends list`, `users search`, `activity list`, and `requests list`. Single-resource commands and `pay options` are not paginated unless Phase 0 proves that their verified endpoint requires it.
+Endpoint-native pagination applies to `friends list`, `users search`, `activity list`, and
+`requests list`. `activity comments list` separately applies local limit/offset paging to one
+complete embedded comment collection from a single activity-detail read. Other single-resource
+commands and `pay options` are not paginated unless Phase 0 proves that their verified endpoint
+requires it.
 
 User-visible contract:
 
-- Every public invocation fetches exactly one source API page. `--limit <N>` is that server request's page size, defaults to 10, and has a hard maximum of 50.
-- Friends and user search accept only a typed nonnegative `u32` `--offset`, defaulting to 0. Activity accepts only its endpoint-native `--before-id <TOKEN>`; pending requests accept only their endpoint-native `--before <TOKEN>`.
+- Every endpoint-paginated invocation fetches exactly one source API page. `--limit <N>` is that
+  server request's page size, defaults to 10, and has a hard maximum of 50. Comment listing makes
+  one activity-detail request and uses the same limit bounds only for its local output page.
+- Friends, user search, and activity comments accept a typed nonnegative `u32` `--offset`,
+  defaulting to 0; the comment offset is local rather than a server query. Activity accepts only
+  its endpoint-native `--before-id <TOKEN>`; pending requests accept only their endpoint-native
+  `--before <TOKEN>`.
 - When a validated continuation remains, successful records stay on stdout and exactly one copyable native value is written to stderr after record rendering succeeds: `Next offset: <N>`, `Next before-id: <TOKEN>`, or `Next before: <TOKEN>`. Raw next URLs are never output.
 - There is no universal continuation input, page number, page-size alias, or public multi-page collector. Payment methods and single-resource reads remain unchanged.
 - `ActivityBeforeId` and `RequestsBefore` are nonempty, bounded to 1,024 bytes, reject whitespace, control, and invisible format-control characters, and redact `Debug`, `Display`, and parse errors. The CLI output adapter has narrow crate-private access solely to print a successful copyable next value.
@@ -2031,7 +2049,7 @@ Exit criteria:
 
 The CLI grammar and initial read-only MCP tool set are settled. Remaining implementation/release decisions are:
 
-1. Natural final-page release observation for user search, activity, and pending requests, plus best-effort native continuation behavior as each private endpoint's dataset changes. First-to-second endpoint continuation is live-verified for all four paginated commands, and friends exhaustion is live-verified.
+1. Natural final-page release observation for user search, activity, and pending requests, plus best-effort native continuation behavior as each private endpoint's dataset changes. First-to-second endpoint continuation is live-verified for all four endpoint-paginated commands, and friends exhaustion is live-verified.
 2. Whether transparent legacy keychain migration is possible on every supported platform.
 3. Whether the first release adds Linux arm64, musl, or Windows.
 4. GitHub-only initial distribution versus Homebrew and crates.io at launch.
@@ -2054,8 +2072,9 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
     whether they expose the Android ledger directly or merge incomplete requests; and how the
     `page_token`/`p_rb`/`p_pbd` continuation tuple is represented safely.
 15. Whether future normal use reveals any story-class-specific social authorization or embedding
-    differences. One reversible private-story AC3–AC6 canary is complete and must not be repeated
-    speculatively; no ignored live mutation test is permitted.
+    differences. Reversible private-story AC3–AC6 and 51-comment embedding canaries are complete,
+    all temporary state was removed, and neither may be repeated speculatively; no ignored live
+    mutation test is permitted. A dedicated remote comments pagination route remains unproved.
 
 ## 21. Immediate next steps
 
@@ -2076,3 +2095,6 @@ The CLI grammar and initial read-only MCP tool set are settled. Remaining implem
 12. Keep friendship mutation validation service-free unless the owner separately approves the
     consenting-target add/revoke protocol. Never use an established friendship or infer permission
     from the implementation request alone.
+13. Retain the 51-comment AC2 evidence through local-pagination tests only: info displays five,
+    comments list defaults to limit 10/offset 0, and partial future embeddings fail closed. Do not
+    recreate the temporary comments or infer a dedicated comments endpoint.

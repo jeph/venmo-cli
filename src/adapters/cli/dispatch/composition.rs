@@ -161,6 +161,19 @@ where
                 .await
             }
             ActivityOperation::Comments(args) => match args.operation {
+                ActivityCommentsOperation::List(args) => {
+                    let (store, api) = provider.credential_store_and_api()?;
+                    let timestamps = provider.timestamps();
+                    reads::run_activity_comment_list(
+                        args,
+                        &store,
+                        &api,
+                        &timestamps,
+                        stdout,
+                        stderr,
+                    )
+                    .await
+                }
                 ActivityCommentsOperation::Add(args) => {
                     let (store, api) = provider.credential_store_and_api()?;
                     let prompt = provider.prompt();

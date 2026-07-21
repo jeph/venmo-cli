@@ -2,9 +2,9 @@ use std::str::FromStr;
 
 use proptest::prelude::*;
 use venmo_cli::model::{
-    ActivityBeforeId, FriendsSubject, Limit, Money, Note, Offset, PeerFundingFee, RecipientInput,
-    RequestAction, RequestDirection, RequestId, RequestInfoResult, RequestRecord, RequestStatus,
-    User, UserId, UserInfoResult, UserSearchQuery, Username,
+    ActivityBeforeId, ActivityCommentListResult, FriendsSubject, Limit, Money, Note, Offset,
+    PeerFundingFee, RecipientInput, RequestAction, RequestDirection, RequestId, RequestInfoResult,
+    RequestRecord, RequestStatus, User, UserId, UserInfoResult, UserSearchQuery, Username,
 };
 
 #[test]
@@ -103,12 +103,19 @@ fn request_records_and_peer_fees_preserve_whole_value_invariants()
 fn public_info_result_facades_expose_only_their_completed_records() {
     let user_result: Option<UserInfoResult> = None;
     let request_result: Option<RequestInfoResult> = None;
+    let comment_result: Option<ActivityCommentListResult> = None;
 
     assert!(user_result.as_ref().map(UserInfoResult::user).is_none());
     assert!(
         request_result
             .as_ref()
             .map(RequestInfoResult::request)
+            .is_none()
+    );
+    assert!(
+        comment_result
+            .as_ref()
+            .map(ActivityCommentListResult::comments)
             .is_none()
     );
 }

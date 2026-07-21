@@ -192,6 +192,12 @@ owns classic story routes, JSON comment encoding, successful-response parsing, a
 post-write story read. Embedded counted collections carry explicit completeness; absence from
 partial data never proves unlike.
 
+Activity comment reads reuse `ActivityDetailApi`; there is no second comments HTTP port or invented
+GET route. The feature-owned comment-list use case requires the AC2 embedded collection to be
+complete, preserves source order, and applies shared `Limit`/`Offset` values locally. The CLI limits
+`activity info` presentation to five comments and directs users into that list use case. A partial
+source fails closed instead of being presented as exhaustively pageable.
+
 Direct comment removal is intentionally isolated behind `ActivityCommentRemovalApi`. Its command
 accepts only a comment ID, validates the credential, discloses that parent membership/authorship/text
 cannot be preflighted, retains dry-run/default-No/`--yes`/interruption protection, and sends one

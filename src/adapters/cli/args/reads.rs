@@ -65,7 +65,7 @@ pub enum ActivityOperation {
     /// Unlike one activity record.
     Unlike(ActivityUnlikeArgs),
 
-    /// Add or remove activity comments.
+    /// List, add, or remove activity comments.
     Comments(ActivityCommentsArgs),
 }
 
@@ -135,11 +135,29 @@ pub struct ActivityCommentsArgs {
 
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum ActivityCommentsOperation {
+    /// List activity comments.
+    List(ActivityCommentListArgs),
+
     /// Add a comment to one activity record.
     Add(ActivityCommentAddArgs),
 
     /// Remove one comment by its canonical comment ID.
     Remove(ActivityCommentRemoveArgs),
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+pub struct ActivityCommentListArgs {
+    /// Canonical activity ID.
+    #[arg(value_name = "ACTIVITY_ID")]
+    pub activity_id: ActivityId,
+
+    /// Number of comments to display.
+    #[arg(long, value_name = "N", default_value = "10")]
+    pub limit: Limit,
+
+    /// Zero-based offset into the complete embedded comment collection.
+    #[arg(long, value_name = "N", default_value = "0")]
+    pub offset: Offset,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]

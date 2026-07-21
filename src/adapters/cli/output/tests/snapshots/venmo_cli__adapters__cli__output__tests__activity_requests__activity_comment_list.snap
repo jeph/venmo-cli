@@ -1,0 +1,16 @@
+---
+source: src/adapters/cli/output/tests/activity_requests.rs
+expression: "String::from_utf8(stdout)?"
+---
+Comments for activity story-1
+Comments available: 7
+Offset: 0
+Comments shown: 2
+  Comment ID: comment-0
+    Author: @alice
+    Time: 1969-12-31T16:00:00
+    Message: message\n0
+  Comment ID: comment-1
+    Author: @alice
+    Time: 1969-12-31T16:00:01
+    Message: message\n1

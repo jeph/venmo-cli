@@ -240,7 +240,9 @@ Use **exact assertions** for contracts where any changed byte, field, order, or 
   continuation, and no automatic retry;
 - HTTP method, fixed origin, route, query, required headers, content type, body, credential mode,
   operation class, and response-capture mode;
-- response-envelope mapping, pagination continuation behavior, and bounded failure outcomes; and
+- response-envelope mapping, pagination continuation behavior, and bounded failure outcomes;
+- activity-comment local slicing, default limit/offset, source order, next-offset signaling,
+  five-comment info rendering, and fail-closed missing/partial collection handling; and
 - credential compatibility envelopes and redacted debug/display output.
 
 Use **property assertions** for broad mathematical or parser invariants, such as exact-money

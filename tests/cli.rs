@@ -561,6 +561,9 @@ fn invalid_limits_are_rejected() {
     assert_rejected(&["venmo", "users", "search", "alice", "--limit", "51"]);
     assert_rejected(&["venmo", "friends", "list", "--limit", "51"]);
     assert_rejected(&["venmo", "activity", "list", "--limit", "51"]);
+    assert_rejected(&[
+        "venmo", "activity", "comments", "list", "story-1", "--limit", "51",
+    ]);
     assert_rejected(&["venmo", "requests", "list", "--limit", "51"]);
     assert_rejected(&["venmo", "activity", "list", "--limit", "4294967296"]);
     assert!(Cli::try_parse_from(["venmo", "users", "search", "alice", "--limit", "50"]).is_ok());
@@ -573,6 +576,9 @@ fn each_paginated_command_accepts_only_its_endpoint_native_inputs() {
         &["venmo", "friends", "list", "--offset", "12"][..],
         &["venmo", "users", "search", "@alice", "--offset", "12"][..],
         &["venmo", "activity", "list", "--before-id", "story-12"][..],
+        &[
+            "venmo", "activity", "comments", "list", "story-1", "--offset", "12",
+        ][..],
         &["venmo", "requests", "list", "--before", "request-12"][..],
     ] {
         assert!(
@@ -592,6 +598,15 @@ fn each_paginated_command_accepts_only_its_endpoint_native_inputs() {
             "story-12",
         ][..],
         &["venmo", "activity", "list", "--offset", "12"][..],
+        &[
+            "venmo",
+            "activity",
+            "comments",
+            "list",
+            "story-1",
+            "--before-id",
+            "comment-12",
+        ][..],
         &["venmo", "requests", "list", "--offset", "12"][..],
         &["venmo", "pay", "methods", "--offset", "12"][..],
         &[
@@ -723,6 +738,20 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
     };
     assert_eq!(values, Some((None, 10, 0)));
 
+    let comments = Cli::try_parse_from(["venmo", "activity", "comments", "list", "story-1"]);
+    assert!(comments.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Activity(args)
+            if matches!(
+                &args.operation,
+                ActivityOperation::Comments(comments)
+                    if matches!(&comments.operation, ActivityCommentsOperation::List(list)
+                        if list.activity_id.as_str() == "story-1"
+                            && list.limit.get() == 10
+                            && list.offset.get() == 0)
+            )
+    )));
+
     assert_rejected(&["venmo", "friends", "list", "--offset", "-1"]);
     assert_rejected(&[
         "venmo",
@@ -807,6 +836,19 @@ fn activity_social_commands_have_exact_grouped_grammar_and_redacted_inputs() {
         Command::Activity(args)
             if matches!(&args.operation, ActivityOperation::Unlike(args)
                 if args.activity_id.as_str() == "story-1" && !args.yes)
+    )));
+
+    let list = Cli::try_parse_from([
+        "venmo", "activity", "comments", "list", "story-1", "--limit", "3", "--offset", "4",
+    ]);
+    assert!(list.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Activity(args)
+            if matches!(&args.operation, ActivityOperation::Comments(comments)
+                if matches!(&comments.operation, ActivityCommentsOperation::List(args)
+                    if args.activity_id.as_str() == "story-1"
+                        && args.limit.get() == 3
+                        && args.offset.get() == 4))
     )));
 
     let add = Cli::try_parse_from([
@@ -961,6 +1003,7 @@ fn every_command_has_a_help_snapshot() {
         ("activity_like", &["activity", "like"]),
         ("activity_unlike", &["activity", "unlike"]),
         ("activity_comments", &["activity", "comments"]),
+        ("activity_comments_list", &["activity", "comments", "list"]),
         ("activity_comments_add", &["activity", "comments", "add"]),
         (
             "activity_comments_remove",
@@ -1045,6 +1088,7 @@ fn mutation_flags(cli: Cli) -> Option<(bool, bool)> {
             ActivityOperation::Like(args) => Some((args.yes, args.dry_run)),
             ActivityOperation::Unlike(args) => Some((args.yes, args.dry_run)),
             ActivityOperation::Comments(args) => match args.operation {
+                ActivityCommentsOperation::List(_) => None,
                 ActivityCommentsOperation::Add(args) => Some((args.yes, args.dry_run)),
                 ActivityCommentsOperation::Remove(args) => Some((args.yes, args.dry_run)),
             },

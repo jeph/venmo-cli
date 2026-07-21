@@ -222,6 +222,7 @@ fn debug_command_name(command: &Command) -> &'static str {
             ActivityOperation::Like(_) => "activity.like",
             ActivityOperation::Unlike(_) => "activity.unlike",
             ActivityOperation::Comments(args) => match args.operation {
+                ActivityCommentsOperation::List(_) => "activity.comments.list",
                 ActivityCommentsOperation::Add(_) => "activity.comments.add",
                 ActivityCommentsOperation::Remove(_) => "activity.comments.remove",
             },

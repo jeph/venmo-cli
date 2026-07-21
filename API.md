@@ -87,7 +87,7 @@ All web findings below are **direct observation (static client artifact)** dated
 | **third-party call** | Plaid, Braintree, PayPal, or presigned object URL—not Venmo API. |
 
 ## 3. Complete implemented CLI action inventory
-The CLI has 21 enabled leaf actions. Operation labels resolve to the mobile wire catalog in §5.
+The CLI has 26 enabled leaf actions. Operation labels resolve to the mobile wire catalog in §5.
 Counts begin after local credential loading; failed local gates can stop earlier.
 
 | # | CLI leaf | Calls and maximum orchestration | Classification |
@@ -109,14 +109,15 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 15 | `balance` | **W2** once. | One read. |
 | 16 | `activity list [--user USERNAME] [--limit N] [--before-id TOKEN]` | Self: **AC1** once. Other: 1–4 × **P1**, then **P2 → AC1** (maximum 6). | One page; direction relative to selected personal subject. |
 | 17 | `activity info <ACTIVITY_ID>` | **AC2** once. | One detail read. |
-| 18 | `activity like <ACTIVITY_ID> [--yes \| --dry-run]` | **AC2 → AC3 → AC2** (3). | One bodyless state write, then exact liker reconciliation. |
-| 19 | `activity unlike <ACTIVITY_ID> [--yes \| --dry-run]` | **AC2 → AC4 → AC2** (3). | One bodyless state write, then complete-absence reconciliation. |
-| 20 | `activity comments add <ACTIVITY_ID> <MESSAGE> [--yes \| --dry-run]` | **AC2 → AC5 → AC2** (3). | One JSON state write, then exact created-comment reconciliation. |
-| 21 | `activity comments remove <COMMENT_ID> [--yes \| --dry-run]` | **AC6** once. | Direct comment-ID state write; Venmo authorizes it. No parent-story preflight or automatic reconciliation is possible. |
-| 22 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
-| 23 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
-| 24 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
-| 25 | `transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes \| --dry-run]` | **A5 → W2 → T1 → T2** (4). | Financial; exact lowercase `all` resolves from W2 available cents; exactly one **T2** after default-No confirmation. |
+| 18 | `activity comments list <ACTIVITY_ID> [--limit N] [--offset N]` | **AC2** once. | One complete embedded collection, paged locally in source order; default 10/0, maximum limit 50. |
+| 19 | `activity like <ACTIVITY_ID> [--yes \| --dry-run]` | **AC2 → AC3 → AC2** (3). | One bodyless state write, then exact liker reconciliation. |
+| 20 | `activity unlike <ACTIVITY_ID> [--yes \| --dry-run]` | **AC2 → AC4 → AC2** (3). | One bodyless state write, then complete-absence reconciliation. |
+| 21 | `activity comments add <ACTIVITY_ID> <MESSAGE> [--yes \| --dry-run]` | **AC2 → AC5 → AC2** (3). | One JSON state write, then exact created-comment reconciliation. |
+| 22 | `activity comments remove <COMMENT_ID> [--yes \| --dry-run]` | **AC6** once. | Direct comment-ID state write; Venmo authorizes it. No parent-story preflight or automatic reconciliation is possible. |
+| 23 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
+| 24 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
+| 25 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
+| 26 | `transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes \| --dry-run]` | **A5 → W2 → T1 → T2** (4). | Financial; exact lowercase `all` resolves from W2 available cents; exactly one **T2** after default-No confirmation. |
 
 Help and version output are also service-free but are not leaf actions. There is no
 implemented generic transaction/payment list/detail, outgoing-request remind, explicit
@@ -124,7 +125,7 @@ funding-source selection, token refresh, incoming-friend-request decline, paymen
 remote token revocation, transfer-in command, instant transfer write, or manual
 transfer-destination selection.
 
-For eleven mutation leaves, `--dry-run` performs the same calls shown before the final mutation
+For twelve mutation leaves, `--dry-run` performs the same calls shown before the final mutation
 (F2, F3, F4S, F5, F6, P4, P5, AC3, AC4, AC5, or T2), renders and flushes the validated details,
 then exits 0 without confirmation, interruption installation, mutation, OTP, or post-write
 reconciliation. Comment removal has no service preflight because its public input intentionally
@@ -411,7 +412,10 @@ one. Current-user activity retains its required exact amount.
 AC2 maps optional classic `likes` and `comments`. Each collection requires `count >= data.len()`,
 unique user/comment IDs, valid users, and valid comment ID/message/timestamp. Completeness requires
 both no `pagination.next` and exact count/data equality. Output always labels embedded rows as
-complete or partial; mutation preflight never infers absence from partial data.
+complete or partial; mutation preflight never infers absence from partial data. `activity info`
+renders at most the first five comments. `activity comments list` requires a complete AC2 comment
+collection, preserves source order, and applies standard `--limit`/`--offset` paging locally; it
+performs no second API call and fails closed for missing or partial comments.
 Timestamp parsing accepts RFC 3339 and Venmo's naive-UTC whole-second or fractional-second forms;
 fractional precision is retained internally while terminal rendering remains whole-second.
 The continuation remains bound to the exact subject path, limit, effective false filters, and one
@@ -818,6 +822,7 @@ fragment, duplicate/disallowed query keys, and invalid values are rejected.
 | Friends | Only `limit`, `offset`; same limit; offset valid `u32` and strictly increases. Empty page plus next is rejected. |
 | Activity | Only `before_id`, `limit`, `only_public_stories`, `social_only`; exact subject path and same limit. Self requires `social_only=false`; other-user continuations may omit it, but any supplied visibility/social flag must remain false. `only_public_stories=true` is always rejected. A new valid token is required, and empty page plus next is rejected. |
 | Requests | Only `action`, `before`, `limit`, `status`; exact `action=charge`, `status=pending,held`, same limit, required new valid token. Empty source page plus progressing next is allowed. |
+| Activity comments | No server continuation is followed. One complete AC2 collection is sliced locally with default `limit=10`, `offset=0`, maximum limit 50, and a next offset only while validated embedded rows remain. |
 
 P1 ignores server pagination. A nonempty page exactly equal to limit synthesizes
 `offset + returned_count` with checked `u32` arithmetic; short/empty pages end. A full
@@ -888,7 +893,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-19 | P4/P5 friendship mutations | Direct observation of signer-verified Android 9.26.0, 10.31.1, and 26.13.0 + exact synthetic; residual auth gap | Current native route/body/state semantics are consistent across artifacts. No public mutation implementation was found. The CLI's client-1 session has not received a controlled live mutation validation; no canary has run. |
 | 2026-07-19 | AC1 other-user personal feed | Historical public client-1 documentation/wrapper + signer-verified Android 10.31.1 and 26.13.0 + exact synthetic | The single-user `target-or-actor` route is long-lived and current. Normal personal feeds use the unfiltered route; business/public-only feeds are a distinct branch and remain unsupported. |
 | 2026-07-19 | AC1 other-user response shape | Separately approved bounded structure-only probe using the active credential | Exact username resolution and one single-record personal-profile request returned the direct `data` story-array shape with a peer-payment record. Only paths and JSON types/nullness were emitted; no values, raw body, identifiers, names, note, amount, token, or continuation was retained. The probe made no mutation. |
-| 2026-07-21 | AC2–AC6 activity social state | Signer-verified Android 26.13.0 classic and Feed V2 callers/models + exact service-free synthetic tests + one owner-approved reversible client-1 canary | On one private settled activity, bodyless like added the authenticated user, duplicate like failed in preflight, bodyless unlike removed it, and duplicate unlike failed in preflight. JSON comment add created exactly one self-authored comment; its fractional naive-UTC timestamp exposed and fixed a parser gap. Bodyless removal then reconciled exact absence, and the activity returned to zero likes/comments. No operation retried. Arbitrary emoji reactions, comment editing, non-author moderation, and broader durability remain unavailable/unproven. |
+| 2026-07-21 | AC2–AC6 activity social state | Signer-verified Android 26.13.0 classic and Feed V2 callers/models + exact service-free synthetic tests + owner-approved reversible client-1 canaries | On private settled activities, bodyless like/unlike and JSON comment add/direct removal succeeded with the expected preflight/reconciliation behavior. A separate pagination canary created 51 uniquely numbered temporary comments; one AC2 response returned exact count 51, all 51 rows in source order, and no continuation. Every temporary comment was removed exactly once and final AC2 state was zero. This supports complete-collection local limit/offset paging, not a dedicated comments endpoint. No operation retried. Arbitrary emoji reactions, comment editing, non-author moderation, and broader durability remain unavailable/unproven. |
 | 2026-07-20 | P3 other-user visible friends | Signer-verified Android 26.13.0 + current official privacy guidance + exact synthetic | Current native profile navigation passes another user's external ID through the friends data source to `GET /v1/users/{id}/friends` with limit/offset. The CLI uses bounded exact P1/P2 resolution, personal-profile gating, exact subject-path continuation binding, and privacy-aware visible-result wording. No live probe was needed or performed. |
 | 2026-07-20 | Mobile compatibility headers | Android 26.13.0 + maintained current client + controlled live differential | Current version/session conventions are established and the profile reaches the recognized payment challenge; individual header necessity remains unknown. |
 | 2026-07-20 | Financial error guidance | Signer-verified Android 26.13.0 + prior reconciled F2/F4S observations + exact synthetic cross-operation matrices | Error meaning is bound to operation, HTTP result, root code, and exact root title where required. Confirmed rejection and unsupported-continuation messages are distinct from APK-context hints that preserve exit 3. Wrong-operation, wrong-status, nested, malformed, and unknown values remain generic outcome-unknown. No additional live mutation was performed. |
@@ -1309,7 +1314,7 @@ of §13 rather than duplicated here.
 | General transaction/payment reads | Android ledger list/detail and separate incomplete-request merge are statically established; pending requests and social activity are implemented. | Final command naming/scope, composite ledger continuation policy, merged app-parity view, or ID-namespace substitution. |
 | Model limits | Existing leading-zero IDs, username matching, nonblank note, read-only role compatibility, 200-record resolution bound. | Normalization, stricter grammar/note limit, exact read-only role set, or global username uniqueness without evidence. |
 | Friendship mutations | Signer-verified current P4/P5 route/body/state semantics, exact synthetic transport/client/orchestration tests, and mandatory P2 reconciliation. | Current client-1 authorization, controlled live success, incoming decline, notification timing, or retry/idempotency. |
-| Activity social mutations | Signer-verified Android 26.13.0 classic AC2–AC6 contracts; exact embedded-data, wire, dry-run, one-write, and available reconciliation tests; direct comment removal explicitly delegates authorization and independent verification; one reversible client-1 like/unlike/comment-add/remove canary on a private activity. | Broad authorization/durability across story classes, complete social pagination, arbitrary emoji reactions, comment editing, or non-author moderation. |
+| Activity social state | Signer-verified Android 26.13.0 classic AC2–AC6 contracts; exact embedded-data, local comment-page, wire, dry-run, one-write, and available reconciliation tests; direct comment removal explicitly delegates authorization and independent verification; reversible client-1 mutation canaries plus one private 51-comment AC2 observation restored to zero. | A dedicated remote comments/likers pagination route, broad authorization/durability across story classes, arbitrary emoji reactions, comment editing, or non-author moderation. |
 | Transfers | Outbound-only T1 options view; enabled fail-closed T2 standard-bank write; exact HTTP-201 pending response; matching-ID activity reconciliation. Transfer-in is intentionally unsupported. | Settlement completion, confirmed rejection codes, instant/debit cash-out, T1 fee units, step-up, cancellation, or expedition. |
 | Web BFF/GraphQL | Captured-build emitted calls. | Current success, mobile equivalence, full schema, or retry safety. |
 | SSR reads | Consumed props/shapes. | Hidden method/path/document/variables/auth or complete response. |

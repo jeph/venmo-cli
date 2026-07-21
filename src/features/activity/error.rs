@@ -28,6 +28,14 @@ pub enum ActivityError {
 
     #[error("the Venmo activity response violates its contract because {problem}")]
     ResponseContract { problem: &'static str },
+
+    #[error("Venmo did not provide a comment collection for this activity")]
+    CommentsUnavailable,
+
+    #[error(
+        "Venmo provided only a partial comment collection, so the CLI cannot safely paginate it"
+    )]
+    CommentsIncomplete,
 }
 
 impl ActivityError {
@@ -40,7 +48,9 @@ impl ActivityError {
                 ApplicationFailureKind::Usage
             }
             Self::Api { source } => ApplicationFailureKind::Api(source.kind()),
-            Self::ResponseContract { .. } => ApplicationFailureKind::ApiContract,
+            Self::ResponseContract { .. }
+            | Self::CommentsUnavailable
+            | Self::CommentsIncomplete => ApplicationFailureKind::ApiContract,
         }
     }
 }

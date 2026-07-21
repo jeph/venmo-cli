@@ -1,0 +1,25 @@
+---
+source: tests/cli.rs
+expression: help
+---
+List activity comments
+
+Usage: list [OPTIONS] <ACTIVITY_ID>
+
+Arguments:
+  <ACTIVITY_ID>
+          Canonical activity ID
+
+Options:
+      --limit <N>
+          Number of comments to display
+
+          [default: 10]
+
+      --offset <N>
+          Zero-based offset into the complete embedded comment collection
+
+          [default: 0]
+
+  -h, --help
+          Print help

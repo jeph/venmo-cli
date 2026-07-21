@@ -153,6 +153,10 @@ fn debug_command_names_are_static_and_argument_free() -> TestResult {
             &["venmo", "activity", "info", "private-activity"][..],
             "activity.info",
         ),
+        (
+            &["venmo", "activity", "comments", "list", "private-activity"][..],
+            "activity.comments.list",
+        ),
         (&["venmo", "requests", "list"][..], "requests.list"),
         (
             &[
