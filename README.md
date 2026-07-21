@@ -118,6 +118,8 @@ For `pay user`, automatic funding uses the peer-eligible Venmo balance source wh
 
 Venmo may reject the first `pay user`, `requests create`, or `requests accept` submission with its exact P2P SMS-OTP step-up response: HTTP 403 with root `error.title` exactly `OTP_STEP_UP_REQUIRED`. The CLI supports that continuation only on an interactive terminal. All three commands request one SMS, show the same hidden `Venmo SMS verification code` prompt, verify once, and perform at most one operation-specific continuation. Payment and request creation retain the same client UUID; acceptance uses the server challenge UUID from root `error.metadata.uuid` and fails closed if it is missing or invalid. Verified metadata is merged into the otherwise unchanged financial request, and the OTP itself is never included. There is no loop, code-only `1396` trigger, or automatic legacy fallback. `--yes` skips confirmation but cannot bypass OTP. The code is never accepted as an argument, printed, logged, or stored. Payment's complete flow is additionally owner-validated live; request creation and acceptance continuations are statically pinned by signer-verified Venmo Android 26.13.0 and exact service-free tests. Exact payment-creation HTTP 403/root code `1360` is reported as Venmo's 10-minute same-recipient/amount/note duplicate rejection; exact code `10100` reports that Venmo's server-side checks blocked the payment and tells the operator to try again later or use the official app.
 
+Financial error guidance is operation-specific: a numeric code is never interpreted without the API operation, HTTP result, root location, and—where required—exact root title. Confirmed peer declines, acceptance risk rejection, pending teen-account restrictions, scam-warning review, and Plaid relinking receive direct recovery instructions. APK-known risk/decline and standard cash-out codes that do not independently prove a non-write remain exit `3`, but explain the likely cause and still require activity/request reconciliation before retrying. Codes under the wrong operation, wrong status, a nested location, or an unknown shape inherit no special meaning. Raw server messages are never used as command errors.
+
 Creation visibility is explicit and typed on both applicable commands:
 
 ```sh
@@ -183,8 +185,12 @@ confirmation follows.
 
 The command sends one non-retried `POST /v1/transfers` with identical positive integer-cent `amount` and `final_amount`, the selected destination ID, and `transfer_type: standard`. Success requires HTTP 201 and the controlled-live direct `data` envelope: valid transfer ID/timestamp, exact `pending` status, standard type, exact requested cents, arithmetically consistent net/fee cents, matching dollar amount, and matching destination ID/type/suffix. Output distinguishes requested amount, net amount, and fee. A separately approved one-cent canary on 2026-07-17 returned HTTP 201 with ID/time, pending/standard, exact `$0.01`, numeric requested/net/fee-cent fields, and destination data; exactly one matching pending outgoing activity record had the same transfer ID. Runtime arithmetic and destination equality are additionally enforced fail-closed. This proves accepted/pending submission, not bank settlement.
 
-Every unverified response, non-201 result, interruption, challenge, or output failure is ambiguous:
-**do not retry** before checking activity and the official app. Adding money to the Venmo balance
+Every unverified response, non-201 result, interruption, or output failure is ambiguous: **do not
+retry** before checking activity and the official app. Known standard cash-out codes add bounded
+guidance for insufficient funds, amount/limits, unavailable bank methods, account restrictions, and
+risk declines without changing that ambiguous classification. Exact HTTP 403 plus root title
+`OTP_STEP_UP_REQUIRED` instead reports that the official app requires an unsupported SMS
+continuation and confirms that the CLI did not retry. Adding money to the Venmo balance
 (`transfer in`) is intentionally unsupported. Instant cash-out, debit-card cash-out, manual
 destination selection, OTP/challenge continuation, cancellation, and expedition also remain
 unavailable. Fee/minimum/maximum units outside the validated standard success fields remain

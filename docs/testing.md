@@ -177,11 +177,15 @@ title `OTP_STEP_UP_REQUIRED`; code-only, wrong-status, wrong-title, and nested-t
 enter step-up. Acceptance tests fail closed on missing or invalid server UUIDs and prove preservation
 of source, eligibility token, fees, quasi-cash metadata, and request-action ID.
 
-Payment rejection tests map only exact HTTP/status/root-code dossiers. HTTP 403/root `1360` must
-render the 10-minute duplicate explanation, and HTTP 403/root `10100` must say that Venmo's
-server-side checks blocked the payment and that the operator should try again later or use the
-official app. Different statuses, nested/non-root locations, and unknown codes remain
-outcome-unknown rather than inheriting those messages.
+Financial error tests map only operation-aware HTTP/status/root-code/root-title dossiers. HTTP
+403/root `1360` on peer creation must render the 10-minute duplicate explanation, HTTP 400/root
+`1360` on acceptance must warn that a matching payment may already exist, and payment HTTP
+403/root `10100` must say that Venmo's server-side checks blocked the payment. Exact terminal APK
+responses and unsupported continuations have actionable exit-1 messages. Broader APK-known
+peer-risk and standard-cash-out code groups add fixed guidance while preserving ambiguous exit 3.
+Cross-product tests must prove that the same number under another operation, a wrong status, a
+nested/non-root location, a wrong-case title, or an unknown shape inherits no special meaning.
+No error renderer may use a raw server title/message/body.
 
 ## Secret and error snapshots
 

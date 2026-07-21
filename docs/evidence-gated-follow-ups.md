@@ -178,11 +178,14 @@ contract. It therefore requires synthetic regression coverage, not another live 
 One separately approved $0.01 canary on 2026-07-17 returned HTTP 201 direct pending transfer data
 and reconciled to exactly one outgoing activity record with the same transfer ID. Production
 success therefore requires the pinned ID/timestamp/status/type/dollar-amount/destination shape and
-additionally enforces requested/net/fee arithmetic; empty, status-only, non-201, challenge, mismatch, and transport
-uncertainty remain ambiguous. Retain no live mutation test or raw response, and do not repeat the
-canary merely to broaden evidence.
+additionally enforces requested/net/fee arithmetic; empty, status-only, non-201, mismatch, and
+transport uncertainty remain ambiguous. Signer-verified Android 26.13.0 supplies operation-bound
+descriptions for selected standard-cash-out error codes and the exact SMS-continuation title. The
+CLI may use fixed descriptions to improve recovery guidance, but code-only mappings remain
+ambiguous without an independently proven rejection dossier. Retain no live mutation test or raw
+response, and do not repeat the canary merely to broaden evidence.
 
 Transfer-in/add-funds is intentionally unsupported and is not an evidence-gated implementation
-task. Settlement completion, confirmed rejection codes, instant cash-out, debit cash-out, T1 fee
+task. Settlement completion, independently confirmed rejection codes, instant cash-out, debit cash-out, T1 fee
 units, step-up, cancellation, and expedition remain independent evidence gates. Routine work must
 not probe or mutate production to resolve them.

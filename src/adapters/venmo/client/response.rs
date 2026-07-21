@@ -6,8 +6,14 @@ use serde_json::Value;
 use crate::shared::ClientRequestId;
 
 use super::super::transport::HttpResponse;
-use super::error::{ApiCodeSuffix, VenmoApiError};
-use super::{PAYMENT_CREATION_OPERATION, REQUEST_ACCEPTANCE_OPERATION, REQUEST_CREATION_OPERATION};
+use super::error::{
+    ApiCodeSuffix, ConfirmedFinancialRejection, FinancialErrorContext, FinancialErrorContextSuffix,
+    UnsupportedFinancialContinuation, VenmoApiError,
+};
+use super::{
+    PAYMENT_CREATION_OPERATION, REQUEST_ACCEPTANCE_OPERATION, REQUEST_CANCELLATION_OPERATION,
+    REQUEST_CREATION_OPERATION, REQUEST_DECLINE_OPERATION, TRANSFER_OUT_CREATION_OPERATION,
+};
 
 pub(super) fn decode_success<T: DeserializeOwned>(
     operation: &'static str,
@@ -41,11 +47,13 @@ pub(super) fn require_financial_success_json(
     })?;
     let error_code = extract_error_code(&value);
     let confirmed_error_code = extract_root_error_code(&value);
+    let root_title = extract_root_error_title(&value);
     if !status.is_success() {
         if let Some(error) = confirmed_financial_rejection(
             operation,
             status.as_u16(),
             confirmed_error_code.as_deref(),
+            root_title,
             error_code.as_deref(),
         ) {
             return Err(error);
@@ -54,6 +62,10 @@ pub(super) fn require_financial_success_json(
             operation,
             status: status.as_u16(),
             code_suffix: ApiCodeSuffix::from_remote(error_code.as_deref()),
+            context_suffix: FinancialErrorContextSuffix::new(financial_error_context(
+                operation,
+                confirmed_error_code.as_deref(),
+            )),
         });
     }
     if error_code.as_deref().is_some_and(is_failure_error_code) {
@@ -161,25 +173,172 @@ fn confirmed_financial_rejection(
     operation: &'static str,
     status: u16,
     root_code: Option<&str>,
+    root_title: Option<&str>,
     displayed_code: Option<&str>,
 ) -> Option<VenmoApiError> {
-    match (operation, status, root_code) {
-        (PAYMENT_CREATION_OPERATION | REQUEST_CREATION_OPERATION, 403, Some("1360")) => {
-            Some(VenmoApiError::DuplicatePaymentRejected)
-        }
-        (REQUEST_ACCEPTANCE_OPERATION, 400, Some("1360")) => {
+    let operation_kind = FinancialOperation::from_label(operation)?;
+    match (operation_kind, status, root_code, root_title) {
+        (
+            FinancialOperation::PaymentCreation | FinancialOperation::RequestCreation,
+            403,
+            Some("1360"),
+            _,
+        ) => Some(VenmoApiError::DuplicatePaymentRejected),
+        (FinancialOperation::RequestAcceptance, 400, Some("1360"), _) => {
             Some(VenmoApiError::DuplicateRequestAcceptanceRejected)
         }
-        (PAYMENT_CREATION_OPERATION, 403, Some("10100")) => {
+        (FinancialOperation::PaymentCreation, 403, Some("10100"), _) => {
             Some(VenmoApiError::TemporaryPaymentRejected)
         }
-        (PAYMENT_CREATION_OPERATION, 400 | 403, Some("1396"))
-        | (PAYMENT_CREATION_OPERATION, 400, Some("13006")) => Some(VenmoApiError::Http {
-            operation,
-            status,
-            code_suffix: ApiCodeSuffix::from_remote(displayed_code),
-        }),
+        (FinancialOperation::PaymentCreation, 400 | 403, Some("1396"), _)
+        | (FinancialOperation::PaymentCreation, 400, Some("13006"), _) => {
+            Some(VenmoApiError::Http {
+                operation,
+                status,
+                code_suffix: ApiCodeSuffix::from_remote(displayed_code),
+            })
+        }
+        (
+            FinancialOperation::PaymentCreation | FinancialOperation::RequestCreation,
+            _,
+            Some("1393"),
+            _,
+        ) => Some(VenmoApiError::ConfirmedFinancialRejection(
+            ConfirmedFinancialRejection::PeerDeclined {
+                operation: operation_kind.user_action(),
+            },
+        )),
+        (
+            FinancialOperation::PaymentCreation | FinancialOperation::RequestCreation,
+            _,
+            Some("10104"),
+            _,
+        ) => Some(VenmoApiError::ConfirmedFinancialRejection(
+            ConfirmedFinancialRejection::PeerRiskDeclined {
+                operation: operation_kind.user_action(),
+            },
+        )),
+        (
+            FinancialOperation::PaymentCreation | FinancialOperation::RequestCreation,
+            _,
+            Some("230500"),
+            _,
+        ) => Some(VenmoApiError::ConfirmedFinancialRejection(
+            ConfirmedFinancialRejection::PendingTeenAccount {
+                operation: operation_kind.user_action(),
+            },
+        )),
+        (
+            FinancialOperation::PaymentCreation | FinancialOperation::RequestCreation,
+            _,
+            Some("10200"),
+            _,
+        ) => Some(VenmoApiError::UnsupportedFinancialContinuation(
+            UnsupportedFinancialContinuation::ScamWarning {
+                operation: operation_kind.user_action(),
+                code: "10200",
+            },
+        )),
+        (
+            FinancialOperation::PaymentCreation | FinancialOperation::RequestCreation,
+            _,
+            Some("10201"),
+            _,
+        ) => Some(VenmoApiError::UnsupportedFinancialContinuation(
+            UnsupportedFinancialContinuation::ScamWarning {
+                operation: operation_kind.user_action(),
+                code: "10201",
+            },
+        )),
+        (
+            FinancialOperation::PaymentCreation | FinancialOperation::RequestAcceptance,
+            _,
+            Some("17461"),
+            _,
+        ) => Some(VenmoApiError::UnsupportedFinancialContinuation(
+            UnsupportedFinancialContinuation::PlaidRelink {
+                operation: operation_kind.user_action(),
+            },
+        )),
+        (FinancialOperation::RequestAcceptance, 403, _, Some("RISK_DECLINED")) => {
+            Some(VenmoApiError::ConfirmedFinancialRejection(
+                ConfirmedFinancialRejection::RequestAcceptanceRiskDeclined,
+            ))
+        }
+        (FinancialOperation::RequestAcceptance, 403, _, Some("RISK_INELIGIBLE")) => {
+            Some(VenmoApiError::ConfirmedFinancialRejection(
+                ConfirmedFinancialRejection::RequestAcceptanceRiskIneligible,
+            ))
+        }
+        (FinancialOperation::TransferOutCreation, 403, _, Some("OTP_STEP_UP_REQUIRED")) => {
+            Some(VenmoApiError::UnsupportedFinancialContinuation(
+                UnsupportedFinancialContinuation::TransferSmsVerification,
+            ))
+        }
         _ => None,
+    }
+}
+
+fn financial_error_context(
+    operation: &'static str,
+    root_code: Option<&str>,
+) -> Option<FinancialErrorContext> {
+    let operation = FinancialOperation::from_label(operation)?;
+    let code = root_code?.parse::<u32>().ok()?;
+    match operation {
+        FinancialOperation::PaymentCreation | FinancialOperation::RequestCreation => match code {
+            10101..=10103 | 10105..=10199 => Some(FinancialErrorContext::PeerRiskDecline),
+            60000..=60099 => Some(FinancialErrorContext::PeerDecline),
+            _ => None,
+        },
+        FinancialOperation::TransferOutCreation => match code {
+            1319 | 9903 => Some(FinancialErrorContext::TransferInsufficientFunds),
+            1358 | 1346 | 1757 | 1758 | 1766 | 13010 | 80907 => {
+                Some(FinancialErrorContext::TransferAmountOrLimit)
+            }
+            5204 | 5207 | 9902 | 1734 => Some(FinancialErrorContext::TransferMethodUnavailable),
+            1361 | 1362 | 1364 | 81005 => Some(FinancialErrorContext::TransferAccountRestriction),
+            1760 | 1763 | 99027 => Some(FinancialErrorContext::TransferRiskDecline),
+            _ => None,
+        },
+        FinancialOperation::RequestAcceptance
+        | FinancialOperation::RequestDecline
+        | FinancialOperation::RequestCancellation => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FinancialOperation {
+    PaymentCreation,
+    RequestCreation,
+    RequestAcceptance,
+    RequestDecline,
+    RequestCancellation,
+    TransferOutCreation,
+}
+
+impl FinancialOperation {
+    fn from_label(operation: &'static str) -> Option<Self> {
+        match operation {
+            PAYMENT_CREATION_OPERATION => Some(Self::PaymentCreation),
+            REQUEST_CREATION_OPERATION => Some(Self::RequestCreation),
+            REQUEST_ACCEPTANCE_OPERATION => Some(Self::RequestAcceptance),
+            REQUEST_DECLINE_OPERATION => Some(Self::RequestDecline),
+            REQUEST_CANCELLATION_OPERATION => Some(Self::RequestCancellation),
+            TRANSFER_OUT_CREATION_OPERATION => Some(Self::TransferOutCreation),
+            _ => None,
+        }
+    }
+
+    const fn user_action(self) -> &'static str {
+        match self {
+            Self::PaymentCreation => "payment",
+            Self::RequestCreation => "request",
+            Self::RequestAcceptance => "request acceptance",
+            Self::RequestDecline => "request decline",
+            Self::RequestCancellation => "request cancellation",
+            Self::TransferOutCreation => "outbound transfer",
+        }
     }
 }
 
@@ -294,6 +453,10 @@ pub(super) fn extract_error_code(value: &Value) -> Option<String> {
 
 fn extract_root_error_code(value: &Value) -> Option<String> {
     value_at_path(value, &["error", "code"]).and_then(json_code)
+}
+
+fn extract_root_error_title(value: &Value) -> Option<&str> {
+    value_at_path(value, &["error", "title"]).and_then(Value::as_str)
 }
 
 fn value_at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {

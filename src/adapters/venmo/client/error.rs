@@ -55,6 +55,12 @@ pub(crate) enum VenmoApiError {
     )]
     TemporaryPaymentRejected,
 
+    #[error(transparent)]
+    ConfirmedFinancialRejection(ConfirmedFinancialRejection),
+
+    #[error(transparent)]
+    UnsupportedFinancialContinuation(UnsupportedFinancialContinuation),
+
     #[error("the successful {operation} response was not valid JSON")]
     MalformedJson { operation: &'static str },
 
@@ -78,12 +84,13 @@ pub(crate) enum VenmoApiError {
     },
 
     #[error(
-        "the {operation} outcome is unknown and must be reconciled before retrying because Venmo returned HTTP {status}{code_suffix} without proving that no write occurred"
+        "the {operation} outcome is unknown and must be reconciled before retrying because Venmo returned HTTP {status}{code_suffix} without proving that no write occurred{context_suffix}"
     )]
     FinancialHttpOutcomeUnknown {
         operation: &'static str,
         status: u16,
         code_suffix: ApiCodeSuffix,
+        context_suffix: FinancialErrorContextSuffix,
     },
 
     #[error(
@@ -143,8 +150,111 @@ impl ApiFailure for VenmoApiError {
             | Self::RequestApprovalEligibilityDenied
             | Self::DuplicatePaymentRejected
             | Self::DuplicateRequestAcceptanceRejected
-            | Self::TemporaryPaymentRejected => ApiFailureKind::Rejected,
+            | Self::TemporaryPaymentRejected
+            | Self::ConfirmedFinancialRejection(_)
+            | Self::UnsupportedFinancialContinuation(_) => ApiFailureKind::Rejected,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+pub(crate) enum ConfirmedFinancialRejection {
+    #[error(
+        "Venmo declined the {operation} (error code 1393). Check activity and requests before trying again, and use the official Venmo app if the decline persists"
+    )]
+    PeerDeclined { operation: &'static str },
+
+    #[error(
+        "Venmo's risk checks declined the {operation} (error code 10104). Check activity and requests before trying again; use the official Venmo app or contact Venmo if the decline persists"
+    )]
+    PeerRiskDeclined { operation: &'static str },
+
+    #[error(
+        "Venmo rejected the {operation} because error code 230500 indicates a pending teen-account restriction. Review the account in the official Venmo app before trying again"
+    )]
+    PendingTeenAccount { operation: &'static str },
+
+    #[error(
+        "Venmo's risk checks declined this request acceptance. The request was not accepted; check its current status and use the official Venmo app before trying again"
+    )]
+    RequestAcceptanceRiskDeclined,
+
+    #[error(
+        "Venmo reported that this request acceptance is not eligible under its risk checks. The request was not accepted; check its current status and use the official Venmo app before trying again"
+    )]
+    RequestAcceptanceRiskIneligible,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+pub(crate) enum UnsupportedFinancialContinuation {
+    #[error(
+        "Venmo requires an in-app scam-warning review before the {operation} can continue (error code {code}). The CLI will not bypass that review or retry the transaction; review the recipient and use the official Venmo app only if you still intend to proceed"
+    )]
+    ScamWarning {
+        operation: &'static str,
+        code: &'static str,
+    },
+
+    #[error(
+        "Venmo requires the linked bank to be reconnected with Plaid before the {operation} can continue (error code 17461). Reconnect it in the official Venmo app; the CLI did not retry the transaction"
+    )]
+    PlaidRelink { operation: &'static str },
+
+    #[error(
+        "Venmo requires SMS verification before this outbound transfer can continue. The CLI does not support transfer verification and did not retry the transfer; use the official Venmo app"
+    )]
+    TransferSmsVerification,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FinancialErrorContext {
+    PeerRiskDecline,
+    PeerDecline,
+    TransferInsufficientFunds,
+    TransferAmountOrLimit,
+    TransferMethodUnavailable,
+    TransferAccountRestriction,
+    TransferRiskDecline,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct FinancialErrorContextSuffix(Option<FinancialErrorContext>);
+
+impl FinancialErrorContextSuffix {
+    pub(super) const fn new(context: Option<FinancialErrorContext>) -> Self {
+        Self(context)
+    }
+}
+
+impl std::fmt::Display for FinancialErrorContextSuffix {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Some(context) = self.0 else {
+            return Ok(());
+        };
+        let guidance = match context {
+            FinancialErrorContext::PeerRiskDecline => {
+                "; this peer-transaction code indicates a risk decline. Check activity and requests before retrying, then use the official app or contact Venmo if nothing was recorded"
+            }
+            FinancialErrorContext::PeerDecline => {
+                "; this peer-transaction code indicates a decline. Check activity and requests before retrying"
+            }
+            FinancialErrorContext::TransferInsufficientFunds => {
+                "; this outbound-transfer code indicates insufficient available funds. Check balance and activity before retrying"
+            }
+            FinancialErrorContext::TransferAmountOrLimit => {
+                "; this outbound-transfer code indicates an invalid amount, transfer limit, or rate limit. Review transfer limits and check activity before retrying"
+            }
+            FinancialErrorContext::TransferMethodUnavailable => {
+                "; this outbound-transfer code indicates an unavailable or unlinked bank method. Review linked banks and activity in the official app before retrying"
+            }
+            FinancialErrorContext::TransferAccountRestriction => {
+                "; this outbound-transfer code indicates an account, identity, or location restriction. Review the account in the official app and check activity before retrying"
+            }
+            FinancialErrorContext::TransferRiskDecline => {
+                "; this outbound-transfer code indicates a transfer or risk decline. Check activity before retrying, then use the official app or contact Venmo"
+            }
+        };
+        formatter.write_str(guidance)
     }
 }
 

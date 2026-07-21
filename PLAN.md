@@ -251,6 +251,11 @@ debit source or final fee. Exact HTTP 403/root code `1360` is a confirmed 10-min
 duplicate rejection, while exact HTTP 403/root code `10100` means Venmo's server-side checks
 blocked the payment. The message must tell the operator to try later or use the official app; it
 must not claim which internal check fired.
+All additional financial guidance must be operation-bound. Match the API operation, non-success
+HTTP result, root `error.code`, and exact root title where required; never give a number global
+meaning or promote nested codes/messages. Exact APK terminal/continuation cases may use actionable
+exit-1 errors. Broader APK-known peer and standard-cash-out code groups may improve an exit-3
+message, but must preserve outcome uncertainty and the no-retry-before-reconciliation warning.
 
 ### 3.4 Creating, accepting, and declining requests
 

@@ -183,6 +183,13 @@ Unless a token or financial rule below is stricter:
    checks, and semantic cross-checks are not relaxed.
 5. A response is accepted only after bounded full capture. Redirects are never
    followed.
+
+Financial non-2xx interpretation is stricter than generic code extraction. User-facing meaning is
+assigned only from an allowlisted tuple of operation, HTTP status or non-success class, root
+`error.code`, and exact root `error.title` where applicable. A code found at root `error_code`, root
+`code`, or under `data` may be rendered as bounded diagnostics but cannot inherit a financial
+meaning. Known-but-not-conclusive Android mappings add fixed recovery guidance while preserving
+outcome-unknown exit `3`; they never render the server's title, message, metadata, or body.
 ### 4.3 Shared values and records
 - **User ID:** positive ASCII decimal digits. Leading zeroes are preserved and
   compared exactly; no explicit length maximum is currently imposed.
@@ -577,6 +584,15 @@ client request UUID. After validation, one F3 continuation retains that UUID and
 while adding `metadata.verification_method: ["sms_otp"]` and
 `metadata.verification_status: "sms_otp_verified"`. A repeated challenge stops.
 
+F2/F3 non-2xx errors are interpreted only in their peer-creation operation context. Exact code
+`1393` is a terminal decline, exact `10104` a terminal risk decline, and exact `230500` a pending
+teen-account restriction. Codes `10200`/`10201` require an unsupported in-app scam-warning review;
+payment code `17461` requires Plaid relinking, while F3 has no funding method and does not inherit
+that meaning. Codes `10101`–`10103`, `10105`–`10199`, and
+`60000`–`60099` receive fixed risk/decline guidance but remain outcome-unknown. Exact `10100` and
+`10104` use their narrower dossiers rather than a range fallback. The same numbers under request
+acceptance, request mutation, or transfer APIs do not inherit these meanings.
+
 #### F4N — request-approval notification resolution
 ```http
 GET /v1/notifications?acknowledged=false
@@ -630,6 +646,10 @@ elsewhere fails closed. F2O/F2V use that server UUID. After validation, one F4S 
 same request-action ID and preserves source, eligibility token, fees, and quasi-cash metadata while
 merging `verification_method: ["sms_otp"]`, `verification_status: "sms_otp_verified"`, and
 `uuid: "<SERVER_CHALLENGE_UUID>"`. A repeated challenge stops. The OTP is never included in F4S.
+Exact F4S HTTP 403 root titles `RISK_DECLINED` and `RISK_INELIGIBLE` are terminal risk
+rejections. Code `17461` reports that the selected bank requires Plaid relinking in the official
+app. Other numeric codes remain outcome-unknown except the separately proven HTTP 400/root `1360`
+duplicate dossier. No F4S meaning is inferred from a nested title/code or another API's mapping.
 #### F5 — decline an incoming request
 ```http
 PUT /v1/payments/<REQUEST_ID>
@@ -827,6 +847,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-19 | AC1 other-user personal feed | Historical public client-1 documentation/wrapper + signer-verified Android 10.31.1 and 26.13.0 + exact synthetic | The single-user `target-or-actor` route is long-lived and current. Normal personal feeds use the unfiltered route; business/public-only feeds are a distinct branch and remain unsupported. |
 | 2026-07-19 | AC1 other-user response shape | Separately approved bounded structure-only probe using the active credential | Exact username resolution and one single-record personal-profile request returned the direct `data` story-array shape with a peer-payment record. Only paths and JSON types/nullness were emitted; no values, raw body, identifiers, names, note, amount, token, or continuation was retained. The probe made no mutation. |
 | 2026-07-20 | Mobile compatibility headers | Android 26.13.0 + maintained current client + controlled live differential | Current version/session conventions are established and the profile reaches the recognized payment challenge; individual header necessity remains unknown. |
+| 2026-07-20 | Financial error guidance | Signer-verified Android 26.13.0 + prior reconciled F2/F4S observations + exact synthetic cross-operation matrices | Error meaning is bound to operation, HTTP result, root code, and exact root title where required. Confirmed rejection and unsupported-continuation messages are distinct from APK-context hints that preserve exit 3. Wrong-operation, wrong-status, nested, malformed, and unknown values remain generic outcome-unknown. No additional live mutation was performed. |
 
 ## 10. Transfers: enabled options and standard out
 ### 10.1 Current command state
@@ -900,9 +921,14 @@ device-id: <DEVICE_ID>
 The adapter encodes this as `FinancialWrite`, so post-connect uncertainty is
 ambiguous. Success is only the exact T2 HTTP-201/direct-data contract in §5.3. Output
 reports requested amount, selector source when `all` was used, validated net amount, and fee; exact `pending` means
-accepted, not settled. Empty or mismatched JSON, status-only 2xx, non-201, error code,
-challenge, interruption, and output uncertainty remain ambiguous. The historical
-client's status-only 200–204 rule is rejected.
+accepted, not settled. Empty or mismatched JSON, status-only 2xx, non-201, interruption, and output
+uncertainty remain ambiguous. Known non-success T2 codes add fixed guidance for insufficient funds
+(`1319`, `9903`), amount/limits (`1358`, `1346`, `1757`, `1758`, `1766`, `13010`, `80907`),
+unavailable bank methods (`5204`, `5207`, `9902`, `1734`), account restrictions (`1361`, `1362`,
+`1364`, `81005`), and transfer/risk declines (`1760`, `1763`, `99027`) without changing exit `3`.
+Exact HTTP 403/root title `OTP_STEP_UP_REQUIRED` is an unsupported transfer SMS continuation and is
+never retried. Codes listed only for instant cash-out or add-money are not assigned T2 meaning. The
+historical client's status-only 200–204 rule is rejected.
 
 One owner-approved canary on 2026-07-17 refreshed T1, sent exactly one $0.01 T2, and
 made exactly two reconciliation reads with no retry or challenge continuation. T2

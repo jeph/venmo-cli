@@ -223,6 +223,12 @@ enum ApiErrorDetail {
     DuplicateRequestAcceptanceRejected {
         rendered: String,
     },
+    ConfirmedFinancialRejection {
+        rendered: String,
+    },
+    UnsupportedFinancialContinuation {
+        rendered: String,
+    },
     TemporaryPaymentRejected {
         rendered: String,
     },
@@ -283,6 +289,12 @@ impl ApiErrorSnapshot {
             }
             VenmoApiError::DuplicateRequestAcceptanceRejected => {
                 ApiErrorDetail::DuplicateRequestAcceptanceRejected { rendered }
+            }
+            VenmoApiError::ConfirmedFinancialRejection(_) => {
+                ApiErrorDetail::ConfirmedFinancialRejection { rendered }
+            }
+            VenmoApiError::UnsupportedFinancialContinuation(_) => {
+                ApiErrorDetail::UnsupportedFinancialContinuation { rendered }
             }
             VenmoApiError::TemporaryPaymentRejected => {
                 ApiErrorDetail::TemporaryPaymentRejected { rendered }
