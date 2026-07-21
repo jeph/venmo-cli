@@ -53,9 +53,9 @@ The initial MCP release provides structured, read-only access to the already imp
 - Let `pay user` and `requests create` select `private`, `friends`, or `public` visibility with an explicit typed `--visibility` option. Default to `private`. Venmo may apply the more restrictive setting selected between payment partners, so require a creation response to contain a supported audience no more public than requested; missing, unknown, or more-public response audiences remain ambiguous. Label output as the requested audience rather than claiming it is effective. Do not add the option to request acceptance, decline, or cancellation.
 - Limit payment release to personal-profile peer-to-peer operations with a valid eligibility token. Ordinary payment keeps its live-validated blank-source eligibility path. Explicit `pay user --protect` instead requires current source-bound eligibility and exactly one complete buyer-protection fee, submits the protected transaction type and fee without fallback, and requires response proof that Venmo tagged the payment. Allow a peer-eligible Venmo balance, bank, or card source regardless of method-level fee; display protected seller-fee and recipient-proceeds estimates without increasing the payer total or guaranteeing coverage. Acceptance defaults to an unprotected personal payment and always uses the current request-action route after deterministic funding selection and source-bound eligibility. Unprotected acceptance omits returned fee records. Explicit acceptance `--protect` strictly validates and submits bounded fee records. There is no automatic legacy fallback. No response proves the actual source or final fee beyond its eligibility evidence.
 - Select the submitted peer source deterministically. Without `--source`, use the peer-eligible Venmo balance source when authoritative available balance covers the full amount; otherwise validate external duplicate IDs and defaults, choose the unique external default regardless of fee, choose only a sole eligible external method when no default exists, and fail closed on external ambiguity. `--source` must exactly match a peer-eligible balance, bank, or card ID from `pay options`; explicit balance must cover the full amount, and unknown or ineligible IDs fail before confirmation. Explicit selection never silently substitutes another source and does not require an automatic choice among other external methods. Never choose by response order or fee. Success output may name an actual source only when authoritative evidence proves it.
-- Require default-No confirmation for `pay user`, `requests create`, `requests accept`, `requests decline`, and `requests cancel`.
-- Expose `--yes` only on `pay user` and all four request mutation commands, and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or the details display.
-- Do not expose any `--dry-run` flags.
+- Require default-No confirmation for all eight confirmed mutation leaves.
+- Expose `--yes` only on the eight confirmed mutation leaves (`pay user`, all four request mutations, both friendship mutations, and `transfer out`) and require it unless both stdin and stderr are interactive terminals. A redirected stderr must never hide a mutation confirmation prompt. The flag skips only confirmation, never authoritative validation or the details display.
+- Expose mutually exclusive `--dry-run` on those same eight leaves. It performs and displays the full authoritative preflight, then exits before confirmation, interruption protection, mutation, OTP, or reconciliation. It is not an offline/no-network mode because eligibility preflight may use POST.
 - Never automatically retry payment creation, request creation, request acceptance, request decline, or request cancellation. An exact HTTP-403/root-title P2P SMS challenge may make one verified continuation with the same immutable plan: payment and request creation retain their client UUID, while acceptance uses the server challenge UUID. This explicit challenge continuation is not an automatic retry.
 - Write no first-party `unsafe` Rust and prohibit it mechanically across every first-party target.
 - Use no `unwrap`, `unwrap_err`, `expect`, `expect_err`, or equivalent panic-based value extraction in first-party Rust, including tests and build tooling.
@@ -109,15 +109,15 @@ venmo auth login
 venmo auth logout
 venmo auth status
 
-venmo pay user <USERNAME> <AMOUNT> <NOTE> [--source <SOURCE_ID>] [--protect] [--visibility <VISIBILITY>] [--yes]
-venmo requests create <USERNAME> <AMOUNT> <NOTE> [--visibility <VISIBILITY>] [--yes]
-venmo requests accept <REQUEST_ID> [--source <SOURCE_ID>] [--protect] [--yes]
-venmo requests decline <REQUEST_ID> [--yes]
-venmo requests cancel <REQUEST_ID> [--yes]
+venmo pay user <USERNAME> <AMOUNT> <NOTE> [--source <SOURCE_ID>] [--protect] [--visibility <VISIBILITY>] [--yes | --dry-run]
+venmo requests create <USERNAME> <AMOUNT> <NOTE> [--visibility <VISIBILITY>] [--yes | --dry-run]
+venmo requests accept <REQUEST_ID> [--source <SOURCE_ID>] [--protect] [--yes | --dry-run]
+venmo requests decline <REQUEST_ID> [--yes | --dry-run]
+venmo requests cancel <REQUEST_ID> [--yes | --dry-run]
 
 venmo friends list [--user <USERNAME>] [--limit <N>] [--offset <N>]
-venmo friends add <USERNAME> [--yes]
-venmo friends remove <USERNAME> [--yes]
+venmo friends add <USERNAME> [--yes | --dry-run]
+venmo friends remove <USERNAME> [--yes | --dry-run]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
 venmo users info <USERNAME>
 venmo pay options
@@ -274,7 +274,7 @@ The command shares recipient, amount, note, and preflight validation with `pay u
 - Displays and flushes the exact requesting account, recipient, amount, note, requested audience,
   and create action before default-No confirmation.
 - Requires `--yes` when stdin or stderr is not interactive; the flag skips only confirmation.
-- Rejects payment-only options and `--dry-run` instead of ignoring them.
+- Rejects payment-only options; `--dry-run` performs this command's full request-creation preflight and stops before F3.
 - Normally performs one write and is never retried automatically. The exact P2P SMS challenge may
   add one verified continuation with the same client UUID.
 
@@ -392,7 +392,7 @@ client-1 live cancellation has not yet been performed.
   `/users/{id}/friends` endpoint. Official privacy guidance confirms that list visibility and
   individual appearance can be restricted; no live probe is required.
 
-#### `venmo friends add <USERNAME> [--yes]`
+#### `venmo friends add <USERNAME> [--yes | --dry-run]`
 
 - Uses shared bounded exact-username search followed by authoritative detail-by-ID; rejects self,
   non-personal profiles, and missing or unknown `friend_status` evidence.
@@ -405,7 +405,7 @@ client-1 live cancellation has not yet been performed.
   retries, and requires both the signer-evidenced response target and authoritative user-detail
   reconciliation to the expected final status.
 
-#### `venmo friends remove <USERNAME> [--yes]`
+#### `venmo friends remove <USERNAME> [--yes | --dry-run]`
 
 - Exact `friend` selects unfriend; exact `request_sent_by_you` selects outgoing-request
   cancellation. `not_friend` fails, and an incoming request is rejected rather than silently
@@ -481,7 +481,7 @@ All command-level username resolution is shared and fail-closed around the live-
   branch-level estimate/fee summaries and does not infer dollars, cents, limits, or final fees from
   unverified fee metadata.
 
-#### `venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]`
+#### `venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes | --dry-run]`
 
 - Runs current-account and balance checks plus fresh transfer options; selects only a unique default
   or sole standard bank destination and never accepts response order or a user-supplied ID.
@@ -694,8 +694,8 @@ Requirements:
 - Model `PayOperation::Options` and `PayOperation::User(PayUserArgs)` as exhaustive grouped operations, keeping payment-only fields out of the read-only options branch and matching `TransferOperation::Options` terminology.
 - Prove that `requests create @user ...`, `requests create <bare-or-numeric-username> ...`, `requests create @accept ...`, `requests accept <request-id>`, `requests decline <request-id>`, and `requests cancel <request-id>` dispatch exactly as documented.
 - Reject removed top-level and mixed forms such as `request @user ...`, `accept <id>`, `decline <id>`, and `requests accept <id> <amount>`.
-- Reject `--from` everywhere; accept `--yes` only on `pay user`, `requests create`, `requests accept`, `requests decline`, and `requests cancel`, and reject it on `pay options`.
-- Reject `--dry-run` everywhere; it is not part of the schema.
+- Reject `--from` everywhere; accept `--yes` only on the eight confirmed mutation leaves and reject it on read-only leaves such as `pay options`.
+- Accept mutually exclusive `--dry-run` on those same eight mutation leaves and reject it everywhere else.
 - Use `ValueEnum` for request direction.
 - Put validation that depends only on one value in `clap` parsers.
 - Put cross-field and network-dependent validation in the owning feature.
@@ -706,7 +706,7 @@ Requirements:
 
 This section defines only the `venmo` terminal adapter. `venmo-mcp` must not invoke the `clap` command dispatcher, parse terminal table output, or reuse human output writers. Its stdio stream is the protocol transport, so even a normal CLI banner or success message would corrupt framing. If a future startup policy flag such as `--allow-financial-writes` is added, parse only that server-composition setting before stdio service starts; it must never accept a secret or stand in for per-call human approval.
 
-Interactive mutation confirmation applies to `pay user`, `requests create`, `requests accept`, `requests decline`, and `requests cancel`. On a TTY, each command shows its complete details and asks for default-No confirmation unless `--yes` is present. With `--yes`, the details remain visible but the prompt is skipped. Off a TTY, each command fails before writing unless `--yes` is present. `auth login` remains an intentional non-financial exception because credential and OTP input is interactive-only; it has no `--yes` option.
+Interactive mutation confirmation applies to all eight confirmed mutation leaves. On a TTY, each command shows its complete details and asks for default-No confirmation unless `--yes` is present. With `--yes`, the details remain visible but the prompt is skipped. Off a TTY, each command fails before writing unless `--yes` is present. Mutually exclusive `--dry-run` shows those same full-preflight details and exits before authorization or mutation. `auth login` remains an intentional non-financial exception because credential and OTP input is interactive-only; it has neither option.
 
 Prompt adapter rules:
 
@@ -1401,8 +1401,8 @@ Before the decline write:
 Execution rules:
 
 - One invocation creates, accepts, declines, or cancels at most one operation.
-- For `pay user` and all four request mutations, prompt only when both stdin and stderr are terminals and default to No.
-- For `pay user` and all four request mutations, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation and never the details display.
+- For all eight confirmed mutation leaves, prompt only when both stdin and stderr are terminals and default to No.
+- For all eight confirmed mutation leaves, require `--yes` unless both stdin and stderr are terminals; on a terminal it skips only the final confirmation and never the details display.
 - Send one initial mutation for payment, request creation, or request acceptance; only an exact confirmed-prewrite P2P SMS challenge may add one verified continuation. Request decline and cancellation send exactly one mutation. No operation retries automatically.
 - Preserve the original API or transport cause on failure.
 - Never claim rollback or retry a write.
@@ -1486,9 +1486,10 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Grouped `requests create`/`accept`/`decline`/`cancel`, rejection of the removed top-level forms, and the valid `accept` or `@accept` recipient after `requests create`.
 - `--from` rejected by `pay user` and every other command; `--source` accepted only by `pay user`
   and `requests accept` with a typed payment-method ID; `--yes` accepted by `pay user`,
-  `requests create`, `requests accept`, `requests decline`, `requests cancel`, `friends add`, and
-  `friends remove`, and rejected by `pay options`, `friends list`, and request reads.
-- `--dry-run` rejected by every command.
+  `requests create`, `requests accept`, `requests decline`, `requests cancel`, `friends add`,
+  `friends remove`, and `transfer out`, and rejected by `pay options`, `friends list`, and request
+  reads.
+- `--dry-run` accepted only by the eight `--yes` mutation leaves, conflicts with `--yes`, and stops after full preflight/detail output without installing signal protection or writing.
 - Request acceptance, decline, and cancellation each require one request ID and reject recipient, amount, note, and unsupported arguments; only acceptance accepts request-mutation `--source` and `--protect`. The separate `pay user` leaf accepts its own `--source` and `--protect` options.
 - Absence of compatibility aliases for the removed top-level `request`, `accept`, and `decline` forms.
 - Direction enum.
@@ -1526,7 +1527,7 @@ Use `Cli::try_parse_from` and help snapshots to cover:
 - Balance does not infer unsupported values.
 - Funding is displayed in details before confirmation or `--yes` execution: `pay user` and `accept` show their exact selected balance or external source and applicable external method-level fee evidence. The internal automatic/explicit selection marker is not displayed. Explicit payment or acceptance `--protect` additionally shows the estimated seller deduction and recipient proceeds.
 - Cancelled `pay user`, request creation, acceptance, decline, and outgoing-cancellation prompts and all preflight failures send zero writes.
-- `pay user` and all four request mutations prompt default-No on a TTY and require `--yes` off a TTY.
+- All eight confirmed mutation leaves prompt default-No on a TTY and require `--yes` off a TTY; mutually exclusive `--dry-run` stops after full preflight and details.
 - An exact HTTP-403/root-title P2P challenge may issue and verify one hidden SMS OTP, then consume one challenge-verified response. Payment and request creation retain their client UUID; acceptance uses the valid server UUID from root error metadata. Every other branch consumes no second financial response, and a repeated challenge stops.
 - The `dialoguer` adapter sends prompts to stderr, never echoes the bearer token, maps default Enter to No, and distinguishes cancellation from terminal failure.
 - First write failure preserves its source.
@@ -1667,7 +1668,7 @@ Required sections:
 6. `venmo auth login`, trust-device warnings, status, and local-only logout behavior.
 7. Friends and user-search examples, including server-page `--limit`, typed `--offset`, copyable next offsets, one-page behavior, and changing-dataset/no-snapshot semantics.
 8. Payment-method and balance examples.
-9. Grouped `pay options`/`pay user`, `transfer options`/`transfer out`, and `requests create`/`requests accept`/`requests decline`/`requests cancel` examples; automatic fail-closed and exact explicit `--source` payment/acceptance funding policies; rejection of source input elsewhere; and uniform default-No confirmation/`--yes` rules for `pay user` and all four request mutations.
+9. Grouped `pay options`/`pay user`, `transfer options`/`transfer out`, and `requests create`/`requests accept`/`requests decline`/`requests cancel` examples; automatic fail-closed and exact explicit `--source` payment/acceptance funding policies; rejection of source input elsewhere; and uniform default-No confirmation/`--yes`/`--dry-run` rules for all eight mutation leaves.
 10. Activity and pending-request examples, including server-page bounds, native before-token notices, sparse locally filtered pages, and how to copy a canonical incoming request ID into `requests accept` or `requests decline`, or an outgoing open request ID into `requests cancel`.
 11. Ambiguous mutation recovery steps, including checking activity, request state, and the official app before any later operation.
 12. Troubleshooting guidance.
@@ -1823,7 +1824,7 @@ Deliverables:
 - Single-recipient payment and request-creation models plus single-ID `requests accept`, `requests decline`, and `requests cancel` models.
 - Recipient and funding-source resolution.
 - Authoritative incoming-request lookup and state validation.
-- Complete details and default-No confirmation rendering for `pay user` and all four request mutations.
+- Complete details, default-No confirmation, and full-preflight dry-run rendering for all eight mutation leaves.
 - One-write execution, stale-state handling, and ambiguous-outcome handling.
 - Native-state `friends add`/`friends remove`, exact P4/P5 transport, and mandatory P2
   reconciliation with the client-1 authorization gap documented.
@@ -1936,8 +1937,8 @@ Exit criteria:
 - Activity supports list and detail views usable for write reconciliation.
 - Pending requests are based on complete verified records and expose canonical IDs accepted by `requests accept`, `requests decline`, and `requests cancel` according to direction/state.
 - Payment and request-acceptance confirmation follows recipient/request and operation-specific funding resolution; request creation, decline, and cancellation confirmation follows authoritative operation-specific preflight.
-- Only `pay user`, `requests create`, `requests accept`, `requests decline`, and `requests cancel` expose `--yes` or use mutation confirmation; `pay options` does neither.
-- No command exposes `--dry-run`.
+- Only the eight confirmed mutation leaves expose `--yes`, `--dry-run`, or mutation confirmation; read-only leaves such as `pay options` expose neither.
+- Dry-run performs credential-backed full preflight and exact details output, then emits `Dry run complete; no changes made.` without confirmation, final mutation, OTP, or reconciliation.
 - `requests accept` validates an authoritative incoming pending record and settles that exact record through a verified contract.
 - `requests decline` validates an authoritative incoming pending record, sends no money, and proves that exact record reached the supported terminal server state.
 - `requests cancel` validates an authoritative outgoing pending/held charge, sends no money, and proves that exact record reached terminal `cancelled` state.

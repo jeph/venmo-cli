@@ -68,6 +68,9 @@ where
     )
     .await?;
     write_and_flush(stderr, &prepared, output::write_pay_details)?;
+    if args.dry_run {
+        return write_dry_run_complete(stdout);
+    }
     let authorized = pay::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -110,6 +113,9 @@ where
     )
     .await?;
     write_and_flush(stderr, &prepared, output::write_request_create_details)?;
+    if args.dry_run {
+        return write_dry_run_complete(stdout);
+    }
     let authorized = request_create::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result = protect_with_interruption(
@@ -162,6 +168,9 @@ where
     write_and_flush(stderr, &prepared, |writer, prepared| {
         output::write_accept_details(writer, prepared, timestamps)
     })?;
+    if args.dry_run {
+        return write_dry_run_complete(stdout);
+    }
     let authorized = accept::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -196,6 +205,9 @@ where
     write_and_flush(stderr, &prepared, |writer, prepared| {
         output::write_decline_details(writer, prepared, timestamps)
     })?;
+    if args.dry_run {
+        return write_dry_run_complete(stdout);
+    }
     let authorized = decline::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -230,6 +242,9 @@ where
     write_and_flush(stderr, &prepared, |writer, prepared| {
         output::write_cancel_details(writer, prepared, timestamps)
     })?;
+    if args.dry_run {
+        return write_dry_run_complete(stdout);
+    }
     let authorized = cancel::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -262,6 +277,9 @@ where
 {
     let prepared = transfer_out::prepare(store, api, args.amount.into(), args.speed.into()).await?;
     write_and_flush(stderr, &prepared, output::write_transfer_out_details)?;
+    if args.dry_run {
+        return write_dry_run_complete(stdout);
+    }
     let authorized = transfer_out::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -296,6 +314,7 @@ where
     run_friendship_mutation_with(
         &args.username,
         args.yes,
+        args.dry_run,
         FriendshipIntent::Add,
         store,
         api,
@@ -330,6 +349,7 @@ where
     run_friendship_mutation_with(
         &args.username,
         args.yes,
+        args.dry_run,
         FriendshipIntent::Remove,
         store,
         api,
@@ -345,6 +365,7 @@ where
 async fn run_friendship_mutation_with<R, A, P, W, E, M, S>(
     username: &crate::shared::Username,
     assume_yes: bool,
+    dry_run: bool,
     intent: FriendshipIntent,
     store: &R,
     api: &A,
@@ -365,6 +386,9 @@ where
 {
     let prepared = friendship::prepare(store, api, username, intent).await?;
     write_and_flush(stderr, &prepared, output::write_friendship_details)?;
+    if dry_run {
+        return write_dry_run_complete(stdout);
+    }
     let authorized = friendship::authorize(prompt, prepared, assume_yes)?;
     let interruption = make_interruption()?;
     let result =
@@ -373,6 +397,11 @@ where
     write_and_flush(stdout, &result, output::write_friendship_result)
         .map_err(|source| AppError::StateMutationResultOutput { source })?;
     Ok(())
+}
+
+fn write_dry_run_complete(writer: &mut impl Write) -> Result<(), AppError> {
+    write_and_flush(writer, &(), output::write_dry_run_complete)
+        .map_err(|source| AppError::CommandOutput { source })
 }
 
 #[cfg(unix)]
@@ -491,3 +520,7 @@ mod decline_handler_tests;
 #[cfg(test)]
 #[path = "writes_cancel_tests.rs"]
 mod cancel_handler_tests;
+
+#[cfg(test)]
+#[path = "writes_transfer_friend_tests.rs"]
+mod transfer_friend_handler_tests;

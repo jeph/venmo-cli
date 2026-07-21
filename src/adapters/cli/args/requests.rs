@@ -90,8 +90,12 @@ pub struct RequestArgs {
     pub visibility: VisibilityArg,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without creating the request.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -112,8 +116,12 @@ pub struct AcceptArgs {
     pub protect: bool,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without accepting the request.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -126,8 +134,12 @@ pub struct DeclineArgs {
     pub request_id: RequestId,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without declining the request.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -140,8 +152,12 @@ pub struct CancelArgs {
     pub request_id: RequestId,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without cancelling the request.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]

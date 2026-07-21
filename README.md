@@ -65,7 +65,7 @@ command, `venmo pay methods`, and ungrouped `venmo pay <USERNAME> ...` form are 
 retained as aliases. This matches the existing `venmo transfer options` naming.
 
 ```sh
-venmo pay user <USERNAME> <AMOUNT> <NOTE> [--source <SOURCE_ID>] [--protect] [--visibility private|friends|public] [--yes]
+venmo pay user <USERNAME> <AMOUNT> <NOTE> [--source <SOURCE_ID>] [--protect] [--visibility private|friends|public] [--yes | --dry-run]
 ```
 
 The old `charge`, split-payment, and multi-recipient interfaces were removed. `pay user` and direct request creation use the mobile-private API through independently verified Rust contracts; each passed exact synthetic HTTP tests and a separately approved, reconciled private one-cent live validation on 2026-07-12. Both enforce a personal/payable recipient, zero automatic retries, strict success validation, and ambiguous-outcome classification. Each creation normally makes one write; Venmo's exact prewrite SMS challenge may add one challenge-verified continuation with the same client UUID. They accept `--visibility private|friends|public`, default to `private`, and submit the selected value as the requested Venmo audience. Venmo may apply the more restrictive setting selected between payment partners, so creation responses are accepted only when they contain a supported audience no more public than requested; missing, unknown, or more-public responses remain ambiguous. Output labels the selection as the requested audience rather than claiming it is effective. Controlled one-cent payment validation on 2026-07-14 proved that both non-private values can become effective with a compatible counterparty and that another participant's settings can instead make a friends-selected payment private. Direct non-private request creation retains exact synthetic coverage and the same `/v1/payments` creation contract; at the owner's direction it was not repeated live. Without `--protect`, `pay user` obtains and validates the existing blank-source transaction eligibility token and fee data but does not reject a method or transaction because a fee is nonzero or unknown. It does not present that unbound eligibility fee as a payer fee or add it to the payment amount. Request creation has no funding or fee fields and never sends money from the authenticated account.
@@ -73,10 +73,10 @@ The old `charge`, split-payment, and multi-recipient interfaces were removed. `p
 Request creation, inspection, and request mutations are grouped under `venmo requests`. The write commands are:
 
 ```sh
-venmo requests create <USERNAME> <AMOUNT> <NOTE> [--visibility private|friends|public] [--yes]
-venmo requests accept <REQUEST_ID> [--source <SOURCE_ID>] [--protect] [--yes]
-venmo requests decline <REQUEST_ID> [--yes]
-venmo requests cancel <REQUEST_ID> [--yes]
+venmo requests create <USERNAME> <AMOUNT> <NOTE> [--visibility private|friends|public] [--yes | --dry-run]
+venmo requests accept <REQUEST_ID> [--source <SOURCE_ID>] [--protect] [--yes | --dry-run]
+venmo requests decline <REQUEST_ID> [--yes | --dry-run]
+venmo requests cancel <REQUEST_ID> [--yes | --dry-run]
 ```
 
 The former top-level `request`, `accept`, and `decline` forms are not compatibility aliases.
@@ -132,8 +132,8 @@ User-taking commands accept exact usernames with or without a leading `@`; they 
 Friendship mutations are grouped with friend listing:
 
 ```sh
-venmo friends add <USERNAME> [--yes]
-venmo friends remove <USERNAME> [--yes]
+venmo friends add <USERNAME> [--yes | --dry-run]
+venmo friends remove <USERNAME> [--yes | --dry-run]
 ```
 
 Both commands perform the same exact-username and authoritative-detail validation before showing
@@ -151,7 +151,7 @@ OAuth client 4 while this CLI retains its historical client-1 session. The imple
 therefore synthetically verified but has not yet received a controlled live canary proving that the
 current service authorizes these writes for the CLI's session family.
 
-Request creation, acceptance, decline, and outgoing cancellation each display and flush a complete validated action summary before authorization. Confirmation defaults to No; when either stdin or stderr is not a terminal, `--yes` is required. The flag skips only the prompt, never preflight or summary output. If any mutation exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
+Every command that accepts `--yes` also accepts mutually exclusive `--dry-run`. A dry run performs the same credential-backed authoritative preflight—including any non-mutating eligibility POSTs—and displays and flushes the exact validated action details. It then prints `Dry run complete; no changes made.` and exits successfully before confirmation, interrupt protection, the final mutation, SMS OTP, or post-write reconciliation. It is not an offline simulation. `--yes --dry-run` is a usage error. Request creation, acceptance, decline, and outgoing cancellation each display and flush a complete validated action summary before authorization. Confirmation defaults to No; when either stdin or stderr is not a terminal, `--yes` is required. The flag skips only the prompt, never preflight or summary output. If any mutation exits with code `3`, says its outcome is unknown, or says a successful result could not be written, **do not retry it**. Reconcile first with `venmo activity list`, `venmo requests list`, and the official Venmo application.
 
 ### Transfer options and standard cash-out
 
@@ -168,7 +168,7 @@ moves no money and does not expose inbound source metadata.
 The enabled first write shape is:
 
 ```sh
-venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]
+venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes | --dry-run]
 ```
 
 Standard-out performs current-account validation and reads a fresh available-balance snapshot before

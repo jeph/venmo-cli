@@ -27,6 +27,44 @@ async fn accept_handler_orders_default_no_authorization_one_write_output_and_flu
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn accept_dry_run_keeps_full_preflight_but_skips_prompt_signal_otp_and_write() -> TestResult {
+    let mut calls = preparation_calls();
+    calls.extend([
+        AcceptCall::StderrWrite,
+        AcceptCall::StderrFlush,
+        AcceptCall::StdoutWrite,
+        AcceptCall::StdoutFlush,
+    ]);
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        AcceptState {
+            calls,
+            remaining: Some(RemainingAcceptScript {
+                credentials: 1,
+                accounts: 1,
+                requests: 1,
+                users: 1,
+                balances: 1,
+                confirmations: 2,
+                interruptions: 2,
+                acceptances: 2,
+            }),
+            stdout: writer_state("Dry run complete; no changes made.\n", 1),
+            stderr: writer_state(ACCEPT_DETAILS, 1),
+        },
+    );
+    let mut harness = AcceptHarness::new(AcceptScript::successful(), AcceptState::default())?;
+    harness.args.yes = false;
+    harness.args.dry_run = true;
+
+    let result = harness.execute().await;
+    let observed = harness.observed(result);
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn accept_default_no_decline_stops_before_interrupt_installation_and_write() -> TestResult {
     // Setup.
     let script =

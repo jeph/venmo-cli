@@ -45,8 +45,12 @@ pub struct FriendAddArgs {
     pub username: Username,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without changing the friendship.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -59,6 +63,10 @@ pub struct FriendRemoveArgs {
     pub username: Username,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without changing the friendship.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }

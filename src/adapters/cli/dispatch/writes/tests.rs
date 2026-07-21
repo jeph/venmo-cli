@@ -401,6 +401,7 @@ pub(super) enum ErrorVariant {
     SignalInitialization,
     StateSignalInitialization,
     FinancialResultOutput,
+    CommandOutput,
     Unexpected,
 }
 
@@ -438,6 +439,65 @@ async fn request_handler_success_has_one_typed_write_and_complete_output_state()
     assert_eq!(observed, expected);
     assert!(!output.contains("synthetic-token"));
     assert!(!output.contains("synthetic-device"));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_dry_run_completes_full_preflight_without_prompt_signal_or_write() -> TestResult {
+    let mut setup = RequestSetup::successful()?;
+    setup.args.yes = false;
+    setup.args.dry_run = true;
+    let expected_calls = vec![
+        RequestCall::ReadCredential,
+        RequestCall::CurrentAccount,
+        RequestCall::SearchUsers,
+        RequestCall::UserById {
+            user_id: "456".to_owned(),
+        },
+    ];
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        RequestState {
+            calls: expected_calls,
+            stdout: writer_state("Dry run complete; no changes made.\n", 1),
+        },
+    );
+    let mut harness = RequestHarness::new(setup, RequestState::default())?;
+
+    let result = harness.execute().await;
+    let observed = harness.observed(result);
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn dry_run_completion_output_failure_is_ordinary_command_output() -> TestResult {
+    let mut setup = RequestSetup::successful()?;
+    setup.args.dry_run = true;
+    let initial = RequestState {
+        stdout: WriterState {
+            fail_write: true,
+            ..WriterState::default()
+        },
+        ..RequestState::default()
+    };
+    let mut harness = RequestHarness::new(setup, initial)?;
+
+    let result = harness.execute().await;
+
+    assert!(matches!(result, Err(AppError::CommandOutput { .. })));
+    assert_eq!(
+        harness.transcript.borrow().as_slice(),
+        &[
+            RequestCall::ReadCredential,
+            RequestCall::CurrentAccount,
+            RequestCall::SearchUsers,
+            RequestCall::UserById {
+                user_id: "456".to_owned(),
+            },
+        ]
+    );
     Ok(())
 }
 
@@ -744,6 +804,7 @@ fn snapshot_error(error: AppError) -> ResultSnapshot {
             AppError::SignalInitialization { .. } => ErrorVariant::SignalInitialization,
             AppError::StateSignalInitialization { .. } => ErrorVariant::StateSignalInitialization,
             AppError::FinancialResultOutput { .. } => ErrorVariant::FinancialResultOutput,
+            AppError::CommandOutput { .. } => ErrorVariant::CommandOutput,
             _ => ErrorVariant::Unexpected,
         },
         category: error.category(),

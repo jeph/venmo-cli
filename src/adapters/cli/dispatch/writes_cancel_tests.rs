@@ -33,6 +33,7 @@ enum Call {
     PromptAvailability,
     Confirm(String),
     Cancel(RequestId),
+    Interruption,
 }
 
 #[derive(Clone, Copy, Debug, thiserror::Error)]
@@ -185,6 +186,7 @@ async fn cancel_handler_orders_preflight_details_confirmation_one_write_and_resu
         CancelArgs {
             request_id: request_id.clone(),
             yes: false,
+            dry_run: false,
         },
         &reader,
         &api,
@@ -220,6 +222,61 @@ async fn cancel_handler_orders_preflight_details_confirmation_one_write_and_resu
         assert!(!stderr.contains(secret));
         assert!(!stdout.contains(secret));
     }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancel_dry_run_keeps_preflight_but_skips_prompt_signal_and_write() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let request_id = RequestId::from_str("request-1")?;
+    let reader = FakeReader {
+        transcript: Rc::clone(&transcript),
+    };
+    let api = FakeApi {
+        transcript: Rc::clone(&transcript),
+        request: outgoing_request()?,
+    };
+    let prompt = FakePrompt {
+        transcript: Rc::clone(&transcript),
+    };
+    let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let interruption_calls = Rc::clone(&transcript);
+
+    run_cancel_with(
+        CancelArgs {
+            request_id: request_id.clone(),
+            yes: false,
+            dry_run: true,
+        },
+        &reader,
+        &api,
+        &prompt,
+        &timestamps,
+        &mut stdout,
+        &mut stderr,
+        move || -> Result<
+            std::future::Pending<Result<(), crate::adapters::cli::error::AppError>>,
+            crate::adapters::cli::error::AppError,
+        > {
+            interruption_calls.borrow_mut().push(Call::Interruption);
+            Err(crate::adapters::cli::error::AppError::SignalInitialization {
+                source: std::io::Error::other("unexpected dry-run interruption installation"),
+            })
+        },
+    )
+    .await?;
+
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [Call::Credential, Call::Account, Call::Request(request_id),]
+    );
+    assert!(String::from_utf8(stderr)?.contains("Outgoing request cancellation details:"));
+    assert_eq!(
+        String::from_utf8(stdout)?,
+        "Dry run complete; no changes made.\n"
+    );
     Ok(())
 }
 

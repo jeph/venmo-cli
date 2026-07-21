@@ -95,14 +95,14 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 1 | `auth login` | Password: **A1 → A5**. OTP: **A1 → A2 → A3 → A5**, verified local save, then **A4** (maximum 5). | Remote auth plus hidden identifier/password/fresh-device prompts and optional hidden OTP. |
 | 2 | `auth logout` | No API call; delete only the local keyring entry. | Entirely local; does not revoke the remote token. |
 | 3 | `auth status` | **A5** once. | Live identity validation. |
-| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--protect] [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1**, then ordinary **F1** or protected **F1P**, then **F2**; exact step-up only: **F2O → F2V → F2** (maximum 13). | Financial; protection is explicit and never falls back to ordinary payment. One initial **F2**, or one initial rejected **F2** plus one challenge-verified **F2** with the same UUID. No automatic retry. |
-| 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes]` | **A5**; 1–4 × **P1** then **P2**; **F3**; exact step-up only: **F2O → F2V → F3** (maximum 10). | Financial; one initial **F3**, or one initial rejected **F3** plus one challenge-verified **F3** with the same UUID. No automatic retry. |
-| 6 | `requests accept <REQUEST_ID> [--source SOURCE_ID] [--protect] [--yes]` | **A5 → R2 → P2 → W2 → F4N → W1 → F4E → F4S**; exact step-up only: **F2O → F2V → F4S** (maximum 11). | Financial; always uses the current request-action route. One initial **F4S**, or one initial rejected **F4S** plus one challenge-verified **F4S** using the server challenge UUID. No legacy fallback or automatic retry. |
-| 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
-| 8 | `requests cancel <REQUEST_ID> [--yes]` | **A5 → R2 → F6** (3). | State-changing; exactly one **F6** after default-No confirmation. |
+| 4 | `pay user <USERNAME> <AMOUNT> <NOTE> [--source SOURCE_ID] [--protect] [--visibility ...] [--yes \| --dry-run]` | **A5**; 1–4 × **P1** then **P2**; **W2 → W1**, then ordinary **F1** or protected **F1P**, then **F2**; exact step-up only: **F2O → F2V → F2** (maximum 13). | Financial; protection is explicit and never falls back to ordinary payment. One initial **F2**, or one initial rejected **F2** plus one challenge-verified **F2** with the same UUID. No automatic retry. |
+| 5 | `requests create <USERNAME> <AMOUNT> <NOTE> [--visibility ...] [--yes \| --dry-run]` | **A5**; 1–4 × **P1** then **P2**; **F3**; exact step-up only: **F2O → F2V → F3** (maximum 10). | Financial; one initial **F3**, or one initial rejected **F3** plus one challenge-verified **F3** with the same UUID. No automatic retry. |
+| 6 | `requests accept <REQUEST_ID> [--source SOURCE_ID] [--protect] [--yes \| --dry-run]` | **A5 → R2 → P2 → W2 → F4N → W1 → F4E → F4S**; exact step-up only: **F2O → F2V → F4S** (maximum 11). | Financial; always uses the current request-action route. One initial **F4S**, or one initial rejected **F4S** plus one challenge-verified **F4S** using the server challenge UUID. No legacy fallback or automatic retry. |
+| 7 | `requests decline <REQUEST_ID> [--yes \| --dry-run]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
+| 8 | `requests cancel <REQUEST_ID> [--yes \| --dry-run]` | **A5 → R2 → F6** (3). | State-changing; exactly one **F6** after default-No confirmation. |
 | 9 | `friends list [--user USERNAME] [--limit N] [--offset N]` | Self: **P3** once. Other: 1–4 × **P1**, then **P2 → P3** (maximum 6). | One visible page; optional exact personal-profile subject. |
-| 10 | `friends add <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P4**, then reconciling **P2** (maximum 8). | Relationship write; sends or accepts according to authoritative state. |
-| 11 | `friends remove <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P5**, then reconciling **P2** (maximum 8). | Relationship write; unfriends or cancels an outgoing friend request. |
+| 10 | `friends add <USERNAME> [--yes \| --dry-run]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P4**, then reconciling **P2** (maximum 8). | Relationship write; sends or accepts according to authoritative state. |
+| 11 | `friends remove <USERNAME> [--yes \| --dry-run]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P5**, then reconciling **P2** (maximum 8). | Relationship write; unfriends or cancels an outgoing friend request. |
 | 12 | `users search <QUERY> [--limit N] [--offset N]` | **P1** once. | One page. |
 | 13 | `users info <USERNAME>` | 1–4 × **P1** then **P2** (maximum 5). | Shared exact-username resolution followed by detail read. |
 | 14 | `pay options` | **W1** once. | One read. |
@@ -112,13 +112,19 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 18 | `requests list [--direction all\|incoming\|outgoing] [--limit N] [--before TOKEN]` | **R1** once; direction is filtered locally. | One unfiltered source page. |
 | 19 | `requests info <REQUEST_ID>` | **R2** once; narrowed locally to open requests. | One detail read. |
 | 20 | `transfer options` | **T1** once. | Enabled read-only current eligibility view. |
-| 21 | `transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]` | **A5 → W2 → T1 → T2** (4). | Financial; exact lowercase `all` resolves from W2 available cents; exactly one **T2** after default-No confirmation. |
+| 21 | `transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes \| --dry-run]` | **A5 → W2 → T1 → T2** (4). | Financial; exact lowercase `all` resolves from W2 available cents; exactly one **T2** after default-No confirmation. |
 
 Help and version output are also service-free but are not leaf actions. There is no
 implemented generic payment list/detail, outgoing-request remind, explicit
 funding-source selection, token refresh, incoming-friend-request decline, payment-method mutation,
 remote token revocation, transfer-in command, instant transfer write, or manual
 transfer-destination selection.
+
+For each of the eight mutation leaves, `--dry-run` performs the same calls shown before the final
+mutation (F2, F3, F4S, F5, F6, P4, P5, or T2), renders and flushes the validated details, then exits
+0 without confirmation, interruption installation, mutation, OTP, or post-write reconciliation.
+These preflights can read authenticated service state and can use POST-based F1/F1P/F4E eligibility;
+dry-run means no final state change, not no network traffic. `--dry-run` and `--yes` conflict.
 
 ## 4. Shared implemented mobile boundary
 ### 4.1 Transport and headers
@@ -705,6 +711,11 @@ equivalence.
   the bearer token may remain valid. Missing state succeeds.
 - Status is A5 validation, not token-presence inspection.
 ### 6.2 Financial workflows
+All mutation workflows support a full-preflight `--dry-run` at the boundary between flushed details
+and authorization. This path sends none of the final mutation calls described below and never enters
+OTP or reconciliation. Failure to write its local completion line is an ordinary command-output
+failure because no mutation has started.
+
 **Pay:** A5 validates self; recipient search/detail proves a nonself personal/payable
 user; W2 captures balance; strict W1 supplies peer-eligible balance and external sources; the
 shared policy selects sufficient balance, the requested exact source, or the unique default/sole
@@ -862,7 +873,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 ### 10.1 Current command state
 ```text
 venmo transfer options
-venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes]
+venmo transfer out <AMOUNT_OR_ALL> [--speed standard] [--yes | --dry-run]
 ```
 
 `transfer options` implements the outbound portion of T1. Its CLI rendering contains eligible

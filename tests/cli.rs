@@ -447,25 +447,69 @@ fn removed_and_deferred_forms_are_rejected() {
         &["venmo", "decline", "request-1"][..],
         &["venmo", "payment-methods", "list"][..],
         &["venmo", "pay", "@alice", "1.00", "note"][..],
-        &[
-            "venmo",
-            "pay",
-            "user",
-            "@alice",
-            "1.00",
-            "note",
-            "--dry-run",
-        ][..],
-        &[
-            "venmo",
-            "requests",
-            "create",
-            "@alice",
-            "1.00",
-            "note",
-            "--dry-run",
-        ][..],
         &["venmo", "activity", "show", "activity-1"][..],
+    ] {
+        assert_rejected(arguments);
+    }
+}
+
+#[test]
+fn dry_run_is_local_to_every_confirmed_mutation_and_conflicts_with_yes() {
+    let mutation_commands: &[&[&str]] = &[
+        &["venmo", "pay", "user", "alice", "1.00", "note"],
+        &["venmo", "requests", "create", "alice", "1.00", "note"],
+        &["venmo", "requests", "accept", "request-1"],
+        &["venmo", "requests", "decline", "request-1"],
+        &["venmo", "requests", "cancel", "request-1"],
+        &["venmo", "friends", "add", "alice"],
+        &["venmo", "friends", "remove", "alice"],
+        &["venmo", "transfer", "out", "1.00"],
+    ];
+
+    for base in mutation_commands {
+        let defaults = Cli::try_parse_from(*base);
+        assert_eq!(
+            defaults.ok().and_then(mutation_flags),
+            Some((false, false)),
+            "defaults for {base:?}"
+        );
+
+        let mut dry_run = base.to_vec();
+        dry_run.push("--dry-run");
+        assert_eq!(
+            Cli::try_parse_from(&dry_run).ok().and_then(mutation_flags),
+            Some((false, true)),
+            "dry run for {base:?}"
+        );
+
+        let mut yes = base.to_vec();
+        yes.push("--yes");
+        assert_eq!(
+            Cli::try_parse_from(&yes).ok().and_then(mutation_flags),
+            Some((true, false)),
+            "yes for {base:?}"
+        );
+
+        let mut contradictory = base.to_vec();
+        contradictory.extend(["--yes", "--dry-run"]);
+        let error = Cli::try_parse_from(&contradictory).err();
+        assert_eq!(
+            error.as_ref().map(clap::Error::kind),
+            Some(ErrorKind::ArgumentConflict),
+            "conflict for {base:?}"
+        );
+    }
+
+    for arguments in [
+        &["venmo", "auth", "status", "--dry-run"][..],
+        &["venmo", "pay", "options", "--dry-run"][..],
+        &["venmo", "friends", "list", "--dry-run"][..],
+        &["venmo", "users", "search", "alice", "--dry-run"][..],
+        &["venmo", "balance", "--dry-run"][..],
+        &["venmo", "activity", "list", "--dry-run"][..],
+        &["venmo", "requests", "list", "--dry-run"][..],
+        &["venmo", "requests", "info", "request-1", "--dry-run"][..],
+        &["venmo", "transfer", "options", "--dry-run"][..],
     ] {
         assert_rejected(arguments);
     }
@@ -885,6 +929,32 @@ fn request_visibility(cli: Cli) -> Option<VisibilityArg> {
             | RequestsOperation::Decline(_)
             | RequestsOperation::Cancel(_)
             | RequestsOperation::Info(_) => None,
+        },
+        _ => None,
+    }
+}
+
+fn mutation_flags(cli: Cli) -> Option<(bool, bool)> {
+    match cli.command {
+        Command::Pay(args) => match args.operation {
+            PayOperation::User(args) => Some((args.yes, args.dry_run)),
+            PayOperation::Options => None,
+        },
+        Command::Requests(args) => match args.operation {
+            RequestsOperation::Create(args) => Some((args.yes, args.dry_run)),
+            RequestsOperation::Accept(args) => Some((args.yes, args.dry_run)),
+            RequestsOperation::Decline(args) => Some((args.yes, args.dry_run)),
+            RequestsOperation::Cancel(args) => Some((args.yes, args.dry_run)),
+            RequestsOperation::List(_) | RequestsOperation::Info(_) => None,
+        },
+        Command::Friends(args) => match args.operation {
+            venmo_cli::cli::FriendsOperation::Add(args) => Some((args.yes, args.dry_run)),
+            venmo_cli::cli::FriendsOperation::Remove(args) => Some((args.yes, args.dry_run)),
+            venmo_cli::cli::FriendsOperation::List(_) => None,
+        },
+        Command::Transfer(args) => match args.operation {
+            TransferOperation::Out(args) => Some((args.yes, args.dry_run)),
+            TransferOperation::Options => None,
         },
         _ => None,
     }

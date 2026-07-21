@@ -67,6 +67,10 @@ pub struct PayUserArgs {
     pub visibility: VisibilityArg,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without creating the payment.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }

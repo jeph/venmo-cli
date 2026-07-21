@@ -606,6 +606,41 @@ async fn decline_handler_orders_default_no_confirmation_one_write_output_and_flu
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn decline_dry_run_keeps_preflight_but_skips_prompt_signal_and_write() -> TestResult {
+    let mut calls = preparation_calls();
+    calls.extend([
+        DeclineCall::StderrWrite,
+        DeclineCall::StderrFlush,
+        DeclineCall::StdoutWrite,
+        DeclineCall::StdoutFlush,
+    ]);
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        DeclineState {
+            calls,
+            remaining: Some(RemainingDeclineScript {
+                credentials: 1,
+                accounts: 1,
+                requests: 1,
+                confirmations: 2,
+                interruptions: 2,
+                declines: 2,
+            }),
+            stdout: writer_state("Dry run complete; no changes made.\n", 1),
+            stderr: writer_state(DECLINE_DETAILS, 1),
+        },
+    );
+    let mut harness = DeclineHarness::new(DeclineScript::successful(), DeclineState::default())?;
+    harness.args.dry_run = true;
+
+    let result = harness.execute().await;
+    let observed = harness.observed(result);
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn decline_confirmation_rejection_and_failures_stop_before_interruption_and_write()
 -> TestResult {
     for (script, expected_result, expected_confirmation_count, expected_calls) in [

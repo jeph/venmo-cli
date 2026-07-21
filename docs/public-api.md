@@ -172,6 +172,12 @@ Both argument structs also expose an independent public `protect: bool` field. `
 ordinary unprotected behavior. `true` opts into the operation-specific Purchase Protection flow;
 callers constructing either struct directly must choose explicitly.
 
+All eight mutation argument structs that expose `yes: bool` also expose `dry_run: bool`:
+`PayUserArgs`, `RequestArgs`, `AcceptArgs`, `DeclineArgs`, `CancelArgs`, `FriendAddArgs`,
+`FriendRemoveArgs`, and `TransferOutArgs`. The CLI rejects both flags together. Direct callers must
+likewise treat them as mutually exclusive; dry-run performs authoritative preflight and detail
+output but stops before authorization or mutation.
+
 ## Initial 0.0.1 surface
 
 Version 0.0.1 exposes grouped `PayOperation::Options` and `PayOperation::User`, matching

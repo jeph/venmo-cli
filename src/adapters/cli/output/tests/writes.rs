@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use super::super::{
     write_accept_details, write_accept_result, write_cancel_details, write_cancel_result,
-    write_decline_details, write_decline_result, write_pay_details, write_pay_result,
-    write_request_create_details, write_request_create_result,
+    write_decline_details, write_decline_result, write_dry_run_complete, write_pay_details,
+    write_pay_result, write_request_create_details, write_request_create_result,
 };
 use crate::features::payments::pay::{PayResult, PreparedPay};
 use crate::features::payments::{
@@ -30,6 +30,19 @@ use crate::shared::{
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+#[test]
+fn dry_run_completion_is_explicit_and_stable() -> TestResult {
+    let mut output = Vec::new();
+
+    write_dry_run_complete(&mut output, &())?;
+
+    assert_eq!(
+        String::from_utf8(output)?,
+        "Dry run complete; no changes made.\n"
+    );
+    Ok(())
+}
 
 #[test]
 fn financial_output_is_complete_sanitized_and_does_not_claim_the_backup_was_used() -> TestResult {

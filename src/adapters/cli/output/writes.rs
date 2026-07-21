@@ -10,6 +10,10 @@ use crate::features::requests::decline::{DeclineResult, PreparedDecline};
 use super::TimestampFormatter;
 use super::shared::{financial_user_label, sanitize_terminal_text};
 
+pub(crate) fn write_dry_run_complete<W: Write>(writer: &mut W, _value: &()) -> io::Result<()> {
+    writeln!(writer, "Dry run complete; no changes made.")
+}
+
 pub(crate) fn write_pay_details<W: Write>(
     writer: &mut W,
     prepared: &PreparedPay,

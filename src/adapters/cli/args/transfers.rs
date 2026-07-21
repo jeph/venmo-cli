@@ -74,6 +74,10 @@ pub struct TransferOutArgs {
     pub speed: TransferSpeedArg,
 
     /// Skip only the final default-No confirmation.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "dry_run")]
     pub yes: bool,
+
+    /// Complete preflight and show details without creating the transfer.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
 }

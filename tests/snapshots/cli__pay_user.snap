@@ -32,6 +32,9 @@ Options:
       --yes
           Skip only the final default-No confirmation
 
+      --dry-run
+          Complete preflight and show details without creating the payment
+
   -h, --help
           Print help (see a summary with '-h')
 

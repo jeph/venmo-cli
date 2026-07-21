@@ -129,6 +129,12 @@ relationship-state selection, default-No and `--yes`, interruption ties, post-tr
 ambiguity, and authoritative user-detail reconciliation. Tests must leave an unexpected second
 mutation response unconsumed to prove there is no retry.
 
+Every `--yes` mutation also has direct full-preflight `--dry-run` coverage. The transcript must
+prove that validated details are flushed and the exact completion line is flushed, while terminal
+capability checks, confirmation, signal installation, mutation, OTP, and reconciliation remain
+unconsumed. Parser tests pin `--yes`/`--dry-run` conflicts and reject dry-run on non-mutation leaves.
+A completion-output failure maps to ordinary command output, never ambiguous-write output.
+
 Request-acceptance coverage proves current-route balance and external funding, explicit source
 selection, and explicit protection. Every plan must first resolve exactly one
 unacknowledged notification by matching its payment ID to the canonical pending-request ID. Tests
