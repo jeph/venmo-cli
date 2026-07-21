@@ -6,7 +6,7 @@ use super::super::{
     write_balance, write_friends, write_friendship_details, write_friendship_result,
     write_payment_methods, write_user_info, write_user_search,
 };
-use crate::features::people::friends::FriendsResult;
+use crate::features::people::friends::{FriendsResult, FriendsSubject};
 use crate::features::people::friendship::{
     FriendshipAction, FriendshipMutationResult, FriendshipPlan, PreparedFriendshipMutation,
 };
@@ -142,6 +142,30 @@ fn empty_people_and_payment_method_lists_have_exact_messages() -> TestResult {
     assert_eq!(friends_stdout, b"No friends found.\n");
     assert_eq!(friends_stderr, b"");
     assert_eq!(methods_stdout, b"No payment methods found.\n");
+    Ok(())
+}
+
+#[test]
+fn other_user_friend_output_is_scoped_and_privacy_aware() -> TestResult {
+    let subject = FriendsSubject::new(UserId::from_str("2000")?, Username::from_bare("alice")?);
+    let nonempty = FriendsResult::for_subject(
+        subject.clone(),
+        vec![synthetic_user("456", "bob")?],
+        Some(Offset::new(10)),
+    );
+    let empty = FriendsResult::for_subject(subject, Vec::new(), None);
+    let mut nonempty_stdout = Vec::new();
+    let mut nonempty_stderr = Vec::new();
+    let mut empty_stdout = Vec::new();
+    let mut empty_stderr = Vec::new();
+
+    write_friends(&mut nonempty_stdout, &mut nonempty_stderr, &nonempty)?;
+    write_friends(&mut empty_stdout, &mut empty_stderr, &empty)?;
+
+    insta::assert_snapshot!("friends_other_user", String::from_utf8(nonempty_stdout)?);
+    assert_eq!(nonempty_stderr, b"Next offset: 10\n");
+    assert_eq!(empty_stdout, b"No visible friends found for @alice.\n");
+    assert_eq!(empty_stderr, b"");
     Ok(())
 }
 

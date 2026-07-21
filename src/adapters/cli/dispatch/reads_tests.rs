@@ -88,7 +88,7 @@ enum ReadCall {
     },
     Friends {
         session: SessionCall,
-        current_user_id: UserId,
+        subject_user_id: UserId,
         page: FriendsPageRequest,
     },
     Balance {
@@ -346,6 +346,8 @@ impl UserSearchApi for UserInfoFake {
 
 struct FriendsFake {
     responses: ResponseQueue<FriendsPage>,
+    search_responses: Option<ResponseQueue<UserSearchPage>>,
+    detail_responses: Option<ResponseQueue<User>>,
     transcript: Transcript,
 }
 
@@ -356,15 +358,59 @@ impl FriendsApi for FriendsFake {
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
+        subject_user_id: &'a UserId,
         page: FriendsPageRequest,
     ) -> impl Future<Output = Result<FriendsPage, Self::Error>> + Send + 'a {
         self.transcript.borrow_mut().push(ReadCall::Friends {
             session: session_call(access_token, device_id),
-            current_user_id: current_user_id.clone(),
+            subject_user_id: subject_user_id.clone(),
             page,
         });
         ready(self.responses.take())
+    }
+}
+
+impl UserLookupApi for FriendsFake {
+    type Error = FakeApiError;
+
+    fn user_by_id<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        user_id: &'a UserId,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(ReadCall::UserInfo {
+            session: session_call(access_token, device_id),
+            user_id: user_id.clone(),
+        });
+        ready(
+            self.detail_responses
+                .as_ref()
+                .map_or(Err(FakeApiError), ResponseQueue::take),
+        )
+    }
+}
+
+impl UserSearchApi for FriendsFake {
+    type Error = FakeApiError;
+
+    fn search_users<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        query: &'a UserSearchQuery,
+        page: UserSearchPageRequest,
+    ) -> impl Future<Output = Result<UserSearchPage, Self::Error>> + Send + 'a {
+        self.transcript.borrow_mut().push(ReadCall::SearchUsers {
+            session: session_call(access_token, device_id),
+            query: query.clone(),
+            page,
+        });
+        ready(
+            self.search_responses
+                .as_ref()
+                .map_or(Err(FakeApiError), ResponseQueue::take),
+        )
     }
 }
 

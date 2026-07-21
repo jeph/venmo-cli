@@ -56,7 +56,9 @@ public facades are outward-facing allowlists, not modules for internal code to d
 
 Cross-feature dependencies must remain explicit and acyclic. For example, activity owns activity
 records but uses the people-owned `User` and exact user-resolution ports for optional personal-profile
-feeds; payments composes auth, people, and wallet capabilities;
+feeds; the people-owned friend-list use case reuses those same lookup ports for optional
+personal-profile subjects while retaining its own `FriendsSubject`; payments composes auth, people,
+and wallet capabilities;
 requests composes auth, payments, people, and wallet capabilities; transfers composes auth,
 payments confirmation/account validation, and wallet balance capabilities. Move a concept to `shared` only
 when its identity and invariant are genuinely shared. Do not move a type merely to avoid choosing

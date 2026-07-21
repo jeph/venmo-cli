@@ -146,6 +146,17 @@ Business, charity, unknown, and missing profile types therefore fail before AC1.
 scope requires exact synthetic and static evidence for each supported profile class; a generic
 personal-feed fallback is not acceptable.
 
+## Non-personal friend-list profiles and visibility
+
+`friends list --user` supports authoritative personal profiles only. Signer-verified Android
+26.13.0 proves that another personal profile's external ID is passed to the same
+`GET /v1/users/{id}/friends` route. Official privacy guidance separately establishes that a list can
+be public, friends-only, or private and that users can opt out of appearing in others' lists. The
+CLI therefore reports only visible friends and never claims completeness. Business, charity,
+unknown, and missing profile types fail before P3; adding any non-personal profile class requires a
+separately established route, privacy, response, and pagination contract. No live probe is needed
+for the implemented personal-profile route.
+
 ## Peer-payment list and detail reads
 
 `payments list` and `payments info <PAYMENT_ID>` remain unavailable. The only current list contract

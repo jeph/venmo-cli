@@ -10,7 +10,7 @@ pub struct FriendsArgs {
 
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum FriendsOperation {
-    /// List friends of the active account.
+    /// List visible friends of the active account or another personal profile.
     List(FriendsListArgs),
 
     /// Send or accept a friend request according to the current relationship.
@@ -22,6 +22,10 @@ pub enum FriendsOperation {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 pub struct FriendsListArgs {
+    /// Exact username whose visible friends should be listed.
+    #[arg(long, value_name = "USERNAME")]
+    pub user: Option<Username>,
+
     /// Server request page size.
     #[arg(long, value_name = "N", default_value = "10")]
     pub limit: Limit,

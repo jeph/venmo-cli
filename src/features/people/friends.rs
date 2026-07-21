@@ -1,13 +1,41 @@
 use thiserror::Error;
 
-use super::{FriendsApi, FriendsPageRequest, User};
-use crate::shared::{
-    ApiOperationFailure, CredentialAccessError, CredentialReader, FirstSeen, FirstSeenResult,
-    Limit, Offset, ReadFailureKind, require_credential,
+use super::lookup::UserLookupError;
+use super::{
+    FriendsApi, FriendsPageRequest, User, UserLookupApi, UserProfileKind, UserSearchApi, lookup,
 };
+use crate::shared::{
+    ApiOperationFailure, ApplicationFailureKind, CredentialAccessError, CredentialEnvelope,
+    CredentialReader, FirstSeen, FirstSeenResult, Limit, Offset, UserId, Username,
+    require_credential,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FriendsSubject {
+    user_id: UserId,
+    username: Username,
+}
+
+impl FriendsSubject {
+    #[must_use]
+    pub const fn new(user_id: UserId, username: Username) -> Self {
+        Self { user_id, username }
+    }
+
+    #[must_use]
+    pub const fn user_id(&self) -> &UserId {
+        &self.user_id
+    }
+
+    #[must_use]
+    pub const fn username(&self) -> &Username {
+        &self.username
+    }
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct FriendsResult {
+    subject: Option<FriendsSubject>,
     users: Vec<User>,
     next_offset: Option<Offset>,
 }
@@ -15,7 +43,29 @@ pub struct FriendsResult {
 impl FriendsResult {
     #[must_use]
     pub(crate) fn new(users: Vec<User>, next_offset: Option<Offset>) -> Self {
-        Self { users, next_offset }
+        Self {
+            subject: None,
+            users,
+            next_offset,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn for_subject(
+        subject: FriendsSubject,
+        users: Vec<User>,
+        next_offset: Option<Offset>,
+    ) -> Self {
+        Self {
+            subject: Some(subject),
+            users,
+            next_offset,
+        }
+    }
+
+    #[must_use]
+    pub const fn subject(&self) -> Option<&FriendsSubject> {
+        self.subject.as_ref()
     }
 
     #[must_use]
@@ -34,6 +84,18 @@ pub enum FriendsError {
     #[error(transparent)]
     Credential(#[from] CredentialAccessError),
 
+    #[error("failed to resolve the friend-list subject: {source}")]
+    UserLookup {
+        #[source]
+        source: UserLookupError,
+    },
+
+    #[error("the selected friend-list subject did not provide a profile type")]
+    MissingProfileType,
+
+    #[error("friend listing currently supports only personal Venmo profiles")]
+    UnsupportedProfileType,
+
     #[error("failed to list Venmo friends: {source}")]
     Api {
         #[source]
@@ -46,11 +108,15 @@ pub enum FriendsError {
 
 impl FriendsError {
     #[must_use]
-    pub const fn failure_kind(&self) -> ReadFailureKind {
+    pub const fn failure_kind(&self) -> ApplicationFailureKind {
         match self {
-            Self::Credential(_) => ReadFailureKind::Credential,
-            Self::Api { source } => ReadFailureKind::Api(source.kind()),
-            Self::ResponseContract { .. } => ReadFailureKind::ResponseContract,
+            Self::Credential(_) => ApplicationFailureKind::Credential,
+            Self::UserLookup { source } => source.application_failure_kind(),
+            Self::MissingProfileType | Self::UnsupportedProfileType => {
+                ApplicationFailureKind::Usage
+            }
+            Self::Api { source } => ApplicationFailureKind::Api(source.kind()),
+            Self::ResponseContract { .. } => ApplicationFailureKind::ApiContract,
         }
     }
 }
@@ -66,11 +132,61 @@ where
     A: FriendsApi,
 {
     let loaded = require_credential(credentials)?;
+    list_page(
+        &loaded.envelope,
+        api,
+        loaded.envelope.user_id(),
+        None,
+        limit,
+        offset,
+    )
+    .await
+}
+
+pub async fn list_for_user<R, A>(
+    credentials: &R,
+    api: &A,
+    username: &Username,
+    limit: Limit,
+    offset: Offset,
+) -> Result<FriendsResult, FriendsError>
+where
+    R: CredentialReader,
+    A: FriendsApi + UserLookupApi + UserSearchApi,
+{
+    let loaded = require_credential(credentials)?;
+    let subject = resolve_subject(&loaded.envelope, api, username).await?;
+    let subject_user_id = subject.as_ref().map_or_else(
+        || loaded.envelope.user_id().clone(),
+        |subject| subject.user_id().clone(),
+    );
+    list_page(
+        &loaded.envelope,
+        api,
+        &subject_user_id,
+        subject,
+        limit,
+        offset,
+    )
+    .await
+}
+
+async fn list_page<A>(
+    credential: &CredentialEnvelope,
+    api: &A,
+    subject_user_id: &UserId,
+    subject: Option<FriendsSubject>,
+    limit: Limit,
+    offset: Offset,
+) -> Result<FriendsResult, FriendsError>
+where
+    A: FriendsApi,
+{
     let page = api
         .friends(
-            loaded.envelope.access_token(),
-            loaded.envelope.device_id(),
-            loaded.envelope.user_id(),
+            credential.access_token(),
+            credential.device_id(),
+            subject_user_id,
             FriendsPageRequest::new(limit, offset),
         )
         .await
@@ -86,7 +202,46 @@ where
         });
     }
     let users = buffer_users(page_users)?;
-    Ok(FriendsResult::new(users, next_token))
+    Ok(match subject {
+        Some(subject) => FriendsResult::for_subject(subject, users, next_token),
+        None => FriendsResult::new(users, next_token),
+    })
+}
+
+async fn resolve_subject<A>(
+    credential: &CredentialEnvelope,
+    api: &A,
+    username: &Username,
+) -> Result<Option<FriendsSubject>, FriendsError>
+where
+    A: UserLookupApi + UserSearchApi,
+{
+    if username
+        .as_str()
+        .eq_ignore_ascii_case(credential.username().as_str())
+    {
+        return Ok(None);
+    }
+    let user = lookup::resolve_with_credential(credential, api, username)
+        .await
+        .map_err(|source| FriendsError::UserLookup { source })?;
+    match user.profile_kind() {
+        Some(UserProfileKind::Personal) => {}
+        Some(UserProfileKind::Business | UserProfileKind::Charity | UserProfileKind::Unknown) => {
+            return Err(FriendsError::UnsupportedProfileType);
+        }
+        None => return Err(FriendsError::MissingProfileType),
+    }
+    let resolved_username = user
+        .username()
+        .cloned()
+        .ok_or(FriendsError::ResponseContract {
+            problem: "the authoritative friend-list subject omitted its username",
+        })?;
+    Ok(Some(FriendsSubject::new(
+        user.user_id().clone(),
+        resolved_username,
+    )))
 }
 
 fn buffer_users(page_users: Vec<User>) -> Result<Vec<User>, FriendsError> {
@@ -186,7 +341,7 @@ mod tests {
         ReadCredential,
         Friends {
             session: SessionCall,
-            current_user_id: UserId,
+            subject_user_id: UserId,
             page: FriendsPageRequest,
         },
     }
@@ -216,6 +371,7 @@ mod tests {
         CredentialReadFailure,
         ApiFailure(ApiFailureKind),
         ResponseContract(&'static str),
+        OtherFailure,
     }
 
     impl From<Result<FriendsResult, FriendsError>> for Outcome {
@@ -230,6 +386,11 @@ mod tests {
                 }
                 Err(FriendsError::Api { source }) => Self::ApiFailure(source.kind()),
                 Err(FriendsError::ResponseContract { problem }) => Self::ResponseContract(problem),
+                Err(
+                    FriendsError::UserLookup { .. }
+                    | FriendsError::MissingProfileType
+                    | FriendsError::UnsupportedProfileType,
+                ) => Self::OtherFailure,
             }
         }
     }
@@ -325,12 +486,12 @@ mod tests {
             &'a self,
             access_token: &'a AccessToken,
             device_id: &'a DeviceId,
-            current_user_id: &'a UserId,
+            subject_user_id: &'a UserId,
             request: FriendsPageRequest,
         ) -> impl Future<Output = Result<FriendsPage, Self::Error>> + Send + 'a {
             self.transcript.borrow_mut().push(Call::Friends {
                 session: session_call(access_token, device_id),
-                current_user_id: current_user_id.clone(),
+                subject_user_id: subject_user_id.clone(),
                 page: request,
             });
             let result = self
@@ -427,7 +588,7 @@ mod tests {
                     Call::ReadCredential,
                     Call::Friends {
                         session: fixture_session(),
-                        current_user_id: UserId::from_str(FIXTURE_USER_ID)?,
+                        subject_user_id: UserId::from_str(FIXTURE_USER_ID)?,
                         page: FriendsPageRequest::new(limit, offset),
                     },
                 ],
@@ -469,7 +630,7 @@ mod tests {
                     Call::ReadCredential,
                     Call::Friends {
                         session: fixture_session(),
-                        current_user_id: UserId::from_str(FIXTURE_USER_ID)?,
+                        subject_user_id: UserId::from_str(FIXTURE_USER_ID)?,
                         page: FriendsPageRequest::new(limit, offset),
                     },
                 ],
@@ -537,7 +698,7 @@ mod tests {
                         Call::ReadCredential,
                         Call::Friends {
                             session: fixture_session(),
-                            current_user_id: UserId::from_str(FIXTURE_USER_ID)?,
+                            subject_user_id: UserId::from_str(FIXTURE_USER_ID)?,
                             page: FriendsPageRequest::new(limit, offset),
                         },
                     ],
@@ -621,7 +782,7 @@ mod tests {
                         Call::ReadCredential,
                         Call::Friends {
                             session: fixture_session(),
-                            current_user_id: UserId::from_str(FIXTURE_USER_ID)?,
+                            subject_user_id: UserId::from_str(FIXTURE_USER_ID)?,
                             page: FriendsPageRequest::new(limit, offset),
                         },
                     ],
@@ -663,3 +824,7 @@ mod tests {
         ))
     }
 }
+
+#[cfg(test)]
+#[path = "friends_subject_tests.rs"]
+mod subject_tests;

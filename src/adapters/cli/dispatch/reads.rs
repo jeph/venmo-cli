@@ -26,11 +26,16 @@ pub(super) async fn run_friends_list<R, A, W, E>(
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
-    A: FriendsApi,
+    A: FriendsApi + UserLookupApi + UserSearchApi,
     W: Write,
     E: Write,
 {
-    let result = friends::list(store, api, args.limit, args.offset).await?;
+    let result = match args.user.as_ref() {
+        Some(username) => {
+            friends::list_for_user(store, api, username, args.limit, args.offset).await?
+        }
+        None => friends::list(store, api, args.limit, args.offset).await?,
+    };
     output::write_friends(stdout, stderr, &result)?;
     Ok(())
 }

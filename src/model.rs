@@ -17,7 +17,7 @@ pub use crate::features::payments::model::{
     PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection, PeerFundingSources,
 };
 pub use crate::features::payments::pay::PayResult;
-pub use crate::features::people::friends::FriendsResult;
+pub use crate::features::people::friends::{FriendsResult, FriendsSubject};
 pub use crate::features::people::info::UserInfoResult;
 pub use crate::features::people::recipient::{RecipientInput, RecipientParseError};
 pub use crate::features::people::user::{

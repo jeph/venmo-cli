@@ -264,7 +264,7 @@ impl AppError {
                 UserSearchFailureKind::Internal => ErrorCategory::Internal,
             },
             Self::UserInfo { source } => application_failure_category(source.failure_kind()),
-            Self::Friends { source } => read_failure_category(source.failure_kind()),
+            Self::Friends { source } => application_failure_category(source.failure_kind()),
             Self::FriendshipMutation { source } => {
                 application_failure_category(source.failure_kind())
             }

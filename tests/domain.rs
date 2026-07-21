@@ -2,9 +2,9 @@ use std::str::FromStr;
 
 use proptest::prelude::*;
 use venmo_cli::model::{
-    ActivityBeforeId, Limit, Money, Note, Offset, PeerFundingFee, RecipientInput, RequestAction,
-    RequestDirection, RequestId, RequestInfoResult, RequestRecord, RequestStatus, User, UserId,
-    UserInfoResult, UserSearchQuery, Username,
+    ActivityBeforeId, FriendsSubject, Limit, Money, Note, Offset, PeerFundingFee, RecipientInput,
+    RequestAction, RequestDirection, RequestId, RequestInfoResult, RequestRecord, RequestStatus,
+    User, UserId, UserInfoResult, UserSearchQuery, Username,
 };
 
 #[test]
@@ -111,6 +111,15 @@ fn public_info_result_facades_expose_only_their_completed_records() {
             .map(RequestInfoResult::request)
             .is_none()
     );
+}
+
+#[test]
+fn public_friend_subject_preserves_validated_identity() -> Result<(), Box<dyn std::error::Error>> {
+    let subject = FriendsSubject::new(UserId::from_str("2000")?, Username::from_bare("alice")?);
+
+    assert_eq!(subject.user_id().as_str(), "2000");
+    assert_eq!(subject.username().as_str(), "alice");
+    Ok(())
 }
 
 proptest! {

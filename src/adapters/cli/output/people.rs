@@ -67,8 +67,22 @@ pub(crate) fn write_friends<W: Write, E: Write>(
     result: &FriendsResult,
 ) -> io::Result<()> {
     if result.users().is_empty() {
-        writeln!(stdout, "No friends found.")?;
+        match result.subject() {
+            Some(subject) => writeln!(
+                stdout,
+                "No visible friends found for {}.",
+                sanitize_terminal_text(&subject.username().to_string())
+            )?,
+            None => writeln!(stdout, "No friends found.")?,
+        }
     } else {
+        if let Some(subject) = result.subject() {
+            writeln!(
+                stdout,
+                "Friends for {}",
+                sanitize_terminal_text(&subject.username().to_string())
+            )?;
+        }
         write_users_table(stdout, result.users())?;
     }
     write_next_offset(stderr, result.next_offset())

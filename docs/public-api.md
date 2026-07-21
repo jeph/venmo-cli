@@ -65,7 +65,8 @@ does not expose service ports, credentials, HTTP DTOs, or a client.
 - `User`, `UserProfileKind`, `FriendshipStatus`, `UserSearchQuery`,
   `UserSearchQueryParseError`.
 - `RecipientInput`, `RecipientParseError`.
-- `FriendsResult`, `UserSearchResult`, `UserInfoResult`.
+- `FriendsSubject`, `FriendsResult`, `UserSearchResult`, `UserInfoResult`. `FriendsResult::subject`
+  distinguishes explicitly scoped other-user visible results from the default self list.
 
 ### Wallet
 

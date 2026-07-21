@@ -2,11 +2,14 @@
 source: tests/cli.rs
 expression: help
 ---
-List friends of the active account
+List visible friends of the active account or another personal profile
 
 Usage: list [OPTIONS]
 
 Options:
+      --user <USERNAME>
+          Exact username whose visible friends should be listed
+
       --limit <N>
           Server request page size
 

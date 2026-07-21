@@ -253,6 +253,39 @@ async fn friends_reject_untrusted_continuation_origins() -> TestResult {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn friends_bind_continuations_to_the_selected_subject_path() -> TestResult {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/users/999/friends"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [],
+            "pagination":{"next":"https://api.venmo.com/v1/users/123/friends?limit=1&offset=1"}
+        })))
+        .mount(&server)
+        .await;
+    let client = test_client(&server)?;
+    let (token, device_id) = test_session()?;
+    let subject_user_id = UserId::from_str("999")?;
+
+    let result = client
+        .friends(
+            &token,
+            &device_id,
+            &subject_user_id,
+            FriendsPageRequest::new(Limit::MIN, Offset::default()),
+        )
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(VenmoApiError::Transport(
+            TransportError::InvalidContinuationLink
+        ))
+    ));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn friends_reject_duplicate_or_unexpected_continuation_fields() -> TestResult {
     for next in [
         "https://api.venmo.com/v1/users/123/friends?limit=1&limit=1&offset=1",

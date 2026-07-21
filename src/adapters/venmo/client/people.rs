@@ -24,13 +24,13 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         &self,
         access_token: &AccessToken,
         device_id: &DeviceId,
-        current_user_id: &UserId,
+        subject_user_id: &UserId,
         page: FriendsPageRequest,
     ) -> Result<FriendsPage, VenmoApiError> {
         let offset = page.offset().get();
         let offset_value = offset.to_string();
         let limit_value = page.page_size().get().to_string();
-        let path_segments = ["users", current_user_id.as_str(), "friends"];
+        let path_segments = ["users", subject_user_id.as_str(), "friends"];
         let response = self
             .transport
             .send_authenticated(
@@ -309,10 +309,10 @@ impl<T: ApiTransport> FriendsApi for VenmoApiClient<T> {
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
+        subject_user_id: &'a UserId,
         page: FriendsPageRequest,
     ) -> impl Future<Output = Result<FriendsPage, Self::Error>> + Send + 'a {
-        self.fetch_friends_page(access_token, device_id, current_user_id, page)
+        self.fetch_friends_page(access_token, device_id, subject_user_id, page)
     }
 }
 

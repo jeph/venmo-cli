@@ -100,7 +100,7 @@ Counts begin after local credential loading; failed local gates can stop earlier
 | 6 | `requests accept <REQUEST_ID> [--source SOURCE_ID] [--protect] [--yes]` | **A5 → R2 → P2 → W2 → F4N → W1 → F4E → F4S**; exact step-up only: **F2O → F2V → F4S** (maximum 11). | Financial; always uses the current request-action route. One initial **F4S**, or one initial rejected **F4S** plus one challenge-verified **F4S** using the server challenge UUID. No legacy fallback or automatic retry. |
 | 7 | `requests decline <REQUEST_ID> [--yes]` | **A5 → R2 → F5** (3). | State-changing; exactly one **F5** after default-No confirmation. |
 | 8 | `requests cancel <REQUEST_ID> [--yes]` | **A5 → R2 → F6** (3). | State-changing; exactly one **F6** after default-No confirmation. |
-| 9 | `friends list [--limit N] [--offset N]` | **P3** once. | One page; stored self ID. |
+| 9 | `friends list [--user USERNAME] [--limit N] [--offset N]` | Self: **P3** once. Other: 1–4 × **P1**, then **P2 → P3** (maximum 6). | One visible page; optional exact personal-profile subject. |
 | 10 | `friends add <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P4**, then reconciling **P2** (maximum 8). | Relationship write; sends or accepts according to authoritative state. |
 | 11 | `friends remove <USERNAME> [--yes]` | **A5**; 1–4 × **P1** then **P2**; exactly one **P5**, then reconciling **P2** (maximum 8). | Relationship write; unfriends or cancels an outgoing friend request. |
 | 12 | `users search <QUERY> [--limit N] [--offset N]` | **P1** once. | One page. |
@@ -297,7 +297,7 @@ required. Existing-credential callers require exact equality with the stored use
 |---|---|---|
 | **P1** | `GET /v1/users?query=<QUERY>&limit=<LIMIT>&offset=<OFFSET>[&type=username]` | `data` array or `data.users`; each item is a user and count ≤ limit. Server pagination is ignored; §7 synthesizes offsets. |
 | **P2** | `GET /v1/users/<USER_ID>` | `data` user or `data.user`; returned ID must exactly equal the path ID. |
-| **P3** | `GET /v1/users/<SELF_USER_ID>/friends?limit=<LIMIT>&offset=<OFFSET>` | `data` user array and optional `pagination.next`; count ≤ limit and any next URL passes §7. |
+| **P3** | `GET /v1/users/<SUBJECT_USER_ID>/friends?limit=<LIMIT>&offset=<OFFSET>` | `data` user array and optional `pagination.next`; count ≤ limit and any next URL passes §7 for the exact selected subject path. The result is only the friends visible to the authenticated viewer. |
 | **P4** | `POST /v1/friend-requests`, form body `user_id=<TARGET_USER_ID>` | 2xx JSON must contain exact target `data.user`; then P2 must prove `request_sent_by_you` for send or `friend` for accept. |
 | **P5** | `DELETE /v1/users/<SELF_USER_ID>/friends/<TARGET_USER_ID>`, no body | Any complete 2xx status is provisionally accepted because signer-verified current implementations disagree on response body; then P2 must prove `not_friend`. |
 | **W2** | `GET /v1/account` | Requires direct string fields `data.balance` and `data.balance_on_hold`, each an exact signed USD decimal with ≤2 fractional digits. It never infers external balances. |
@@ -312,6 +312,12 @@ signer-verified Android 10.31.1 and 26.13.0 independently retain that route for 
 profile feeds. Android uses a separate `only_public_stories=true` call path for business/public
 profiles, which is why the CLI fails those profile types closed rather than reusing the personal
 contract.
+
+Current signer-verified Android 26.13.0 also routes another personal profile's external user ID
+through its friends-list data source to `GET /v1/users/{id}/friends` with `limit` and `offset`.
+Official Venmo guidance says friend-list visibility can be public, friends-only, or private and that
+a user can opt out of appearing in others' lists. The CLI therefore labels these records as visible
+friends, requires an authoritative personal profile, and does not infer completeness.
 
 P4/P5 static evidence comes from Android artifacts signed by Venmo certificate SHA-256
 `c77e2631ac0451c086f25f79ae258238afa400961e8d599db78e25eadcdcc947`: 9.26.0 APK
@@ -761,8 +767,10 @@ the request/state contract, but current client-1 authorization has not been live
 ### 6.4 Reads
 Every public list fetches exactly one page. Full server next URLs are never followed
 or printed. `activity list` and `requests list` do print validated raw continuation
-tokens to stderr; `friends list` and default `activity list` use stored self ID without A5.
-Other-user activity uses exact P1/P2 resolution but no A5. `activity info` uses the unique story ID.
+tokens to stderr; default `friends list` and default `activity list` use stored self ID without A5.
+Other-user friends and activity use exact P1/P2 resolution but no A5. A `--user` matching the
+stored username case-insensitively keeps the self path and skips P1/P2. `activity info` uses the
+unique story ID.
 Request direction is local, so a displayed page can be empty and still
 have a continuation.
 
@@ -846,6 +854,7 @@ and success 0. Token issuance ambiguity is authentication failure, not financial
 | 2026-07-19 | P4/P5 friendship mutations | Direct observation of signer-verified Android 9.26.0, 10.31.1, and 26.13.0 + exact synthetic; residual auth gap | Current native route/body/state semantics are consistent across artifacts. No public mutation implementation was found. The CLI's client-1 session has not received a controlled live mutation validation; no canary has run. |
 | 2026-07-19 | AC1 other-user personal feed | Historical public client-1 documentation/wrapper + signer-verified Android 10.31.1 and 26.13.0 + exact synthetic | The single-user `target-or-actor` route is long-lived and current. Normal personal feeds use the unfiltered route; business/public-only feeds are a distinct branch and remain unsupported. |
 | 2026-07-19 | AC1 other-user response shape | Separately approved bounded structure-only probe using the active credential | Exact username resolution and one single-record personal-profile request returned the direct `data` story-array shape with a peer-payment record. Only paths and JSON types/nullness were emitted; no values, raw body, identifiers, names, note, amount, token, or continuation was retained. The probe made no mutation. |
+| 2026-07-20 | P3 other-user visible friends | Signer-verified Android 26.13.0 + current official privacy guidance + exact synthetic | Current native profile navigation passes another user's external ID through the friends data source to `GET /v1/users/{id}/friends` with limit/offset. The CLI uses bounded exact P1/P2 resolution, personal-profile gating, exact subject-path continuation binding, and privacy-aware visible-result wording. No live probe was needed or performed. |
 | 2026-07-20 | Mobile compatibility headers | Android 26.13.0 + maintained current client + controlled live differential | Current version/session conventions are established and the profile reaches the recognized payment challenge; individual header necessity remains unknown. |
 | 2026-07-20 | Financial error guidance | Signer-verified Android 26.13.0 + prior reconciled F2/F4S observations + exact synthetic cross-operation matrices | Error meaning is bound to operation, HTTP result, root code, and exact root title where required. Confirmed rejection and unsupported-continuation messages are distinct from APK-context hints that preserve exit 3. Wrong-operation, wrong-status, nested, malformed, and unknown values remain generic outcome-unknown. No additional live mutation was performed. |
 

@@ -209,6 +209,8 @@ async fn friends_handler_routes_exact_page_and_continuation_streams_without_flus
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = FriendsFake {
         responses: ResponseQueue::successful(response),
+        search_responses: None,
+        detail_responses: None,
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
@@ -220,7 +222,7 @@ async fn friends_handler_routes_exact_page_and_continuation_streams_without_flus
                 ReadCall::ReadCredential,
                 ReadCall::Friends {
                     session: fixture_session(),
-                    current_user_id: UserId::from_str("1000")?,
+                    subject_user_id: UserId::from_str("1000")?,
                     page: FriendsPageRequest::new(limit, offset),
                 },
                 ReadCall::StdoutWrite,
@@ -249,6 +251,86 @@ async fn friends_handler_routes_exact_page_and_continuation_streams_without_flus
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn friends_handler_resolves_other_user_and_labels_visible_results() -> TestResult {
+    let args = match Cli::try_parse_from([
+        "venmo", "friends", "list", "--user", "@alice", "--limit", "1", "--offset", "20",
+    ])?
+    .command
+    {
+        Command::Friends(args) => match args.operation {
+            FriendsOperation::List(args) => args,
+            FriendsOperation::Add(_) | FriendsOperation::Remove(_) => {
+                return Err(io::Error::other("list parsed as a mutation").into());
+            }
+        },
+        _ => return Err(io::Error::other("friends parsed as another command").into()),
+    };
+    let limit = Limit::try_from(1)?;
+    let offset = Offset::new(20);
+    let search_user = User::new(
+        UserId::from_str("2000")?,
+        Some(Username::from_bare("alice")?),
+        Some("Alice".to_owned()),
+    );
+    let detail_user = search_user
+        .clone()
+        .with_financial_attributes(UserProfileKind::Personal, true);
+    let response = FriendsPage::new(
+        vec![User::new(
+            UserId::from_str("456")?,
+            Some(Username::from_bare("bob")?),
+            Some("Bob\nName".to_owned()),
+        )],
+        Some(Offset::new(21)),
+    );
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::standard(Rc::clone(&transcript));
+    let api = FriendsFake {
+        responses: ResponseQueue::successful(response),
+        search_responses: Some(ResponseQueue::successful(UserSearchPage::new(
+            vec![search_user],
+            None,
+        ))),
+        detail_responses: Some(ResponseQueue::successful(detail_user)),
+        transcript: Rc::clone(&transcript),
+    };
+    let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
+    let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+
+    let result = run_friends_list(args, &reader, &api, &mut stdout, &mut stderr).await;
+
+    assert!(result.is_ok());
+    assert_eq!(
+        transcript.borrow().as_slice(),
+        [
+            ReadCall::ReadCredential,
+            ReadCall::SearchUsers {
+                session: fixture_session(),
+                query: UserSearchQuery::from_str("alice")?,
+                page: UserSearchPageRequest::new(Limit::try_from(50)?, Offset::default()),
+            },
+            ReadCall::UserInfo {
+                session: fixture_session(),
+                user_id: UserId::from_str("2000")?,
+            },
+            ReadCall::Friends {
+                session: fixture_session(),
+                subject_user_id: UserId::from_str("2000")?,
+                page: FriendsPageRequest::new(limit, offset),
+            },
+            ReadCall::StdoutWrite,
+            ReadCall::StderrWrite,
+        ]
+    );
+    assert_eq!(
+        stdout.state,
+        writer_state(&format!("Friends for @alice\n{FRIENDS_OUTPUT}"))
+    );
+    assert_eq!(stderr.state, writer_state("Next offset: 21\n"));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn representative_record_output_failure_stops_continuation_without_an_extra_api_call()
 -> TestResult {
     // Setup.
@@ -269,6 +351,8 @@ async fn representative_record_output_failure_stops_continuation_without_an_extr
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = FriendsFake {
         responses: ResponseQueue::successful(response),
+        search_responses: None,
+        detail_responses: None,
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = RecordingWriter::new(
@@ -287,7 +371,7 @@ async fn representative_record_output_failure_stops_continuation_without_an_extr
                 ReadCall::ReadCredential,
                 ReadCall::Friends {
                     session: fixture_session(),
-                    current_user_id: UserId::from_str("1000")?,
+                    subject_user_id: UserId::from_str("1000")?,
                     page: FriendsPageRequest::new(limit, offset),
                 },
                 ReadCall::StdoutWrite,

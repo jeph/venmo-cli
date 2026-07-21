@@ -21,6 +21,13 @@ Scripted transport tests pin the selected-user path, native unfiltered query, su
 direction, scope-aware continuation, supported audiences, private viewer participation, and
 rejection of nonpayment records. Detail tests preserve absolute payment actor/target identities.
 
+Other-user friend-list coverage is likewise service-free. Feature transcripts pin the
+case-insensitive self shortcut, bounded exact P1/P2 resolution, authoritative personal-profile
+gating, target P3 user ID, subject retention, failure categories, one-page behavior, and no P3 call
+after lookup/profile failure. Adapter tests bind continuation links to the exact selected subject
+path. CLI and output tests pin optional-`@` grammar, self-output compatibility, scoped
+`Friends for @username` headings, privacy-aware empty wording, and continuation ordering.
+
 ## Test layers
 
 | Layer | Primary contract |

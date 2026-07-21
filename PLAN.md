@@ -115,7 +115,7 @@ venmo requests accept <REQUEST_ID> [--source <SOURCE_ID>] [--protect] [--yes]
 venmo requests decline <REQUEST_ID> [--yes]
 venmo requests cancel <REQUEST_ID> [--yes]
 
-venmo friends list [--limit <N>] [--offset <N>]
+venmo friends list [--user <USERNAME>] [--limit <N>] [--offset <N>]
 venmo friends add <USERNAME> [--yes]
 venmo friends remove <USERNAME> [--yes]
 venmo users search <QUERY> [--limit <N>] [--offset <N>]
@@ -376,13 +376,21 @@ client-1 live cancellation has not yet been performed.
 
 ### 3.5 Friends and user discovery
 
-#### `venmo friends list [--limit <N>] [--offset <N>]`
+#### `venmo friends list [--user <USERNAME>] [--limit <N>] [--offset <N>]`
 
-- Lists friends of the active account.
+- Lists friends visible to the authenticated viewer for the active account by default.
+- Optional `--user` accepts an exact username with or without `@`. A case-insensitive self match
+  uses the stored user ID without lookup; another user uses shared bounded exact search plus
+  authoritative detail and must be a personal profile.
 - Displays a copyable recipient value such as `@username`, display name, and user ID.
 - Fetches exactly one API page using the supplied server page size and zero-based offset; defaults are 10 and 0, and the page-size maximum is 50.
 - If the trusted next link has another page, writes only its validated copyable `Next offset: <N>` value to stderr after record output succeeds.
-- Treats the invocation as one page rather than claiming that it is the complete friend list.
+- Treats the invocation as one visible page rather than claiming that it is the complete friend
+  list. Other-user output names the subject, and an empty page uses privacy-aware “no visible
+  friends” wording.
+- Current signer-verified Android 26.13.0 routes another profile's external ID through the same
+  `/users/{id}/friends` endpoint. Official privacy guidance confirms that list visibility and
+  individual appearance can be restricted; no live probe is required.
 
 #### `venmo friends add <USERNAME> [--yes]`
 

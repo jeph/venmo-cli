@@ -201,13 +201,22 @@ evidence-gated.
 Four read-only commands expose the continuation fields used by their source endpoints:
 
 ```sh
-venmo friends list [--limit N] [--offset N]
+venmo friends list [--user USERNAME] [--limit N] [--offset N]
 venmo users search <QUERY> [--limit N] [--offset N]
 venmo activity list [--user USERNAME] [--limit N] [--before-id TOKEN]
 venmo requests list [--direction all|incoming|outgoing] [--limit N] [--before TOKEN]
 ```
 
 Each of these four invocations requests exactly one source API page, validates and buffers that complete page, and then renders its records. `--limit` is the server request page size; it defaults to 10 and cannot exceed 50. Friend listing and user search use a typed nonnegative `--offset` that defaults to 0. Activity uses its opaque `--before-id`, while pending requests use their opaque `--before`. There is no universal continuation input, universal offset, page number, or public multi-page collector. A single-token user search is normalized as a username search, so `users search alice` and `users search @alice` are equivalent; multi-word input remains a general fuzzy search.
+
+Friend listing defaults to the active account. Optional `--user alice` and `--user @alice` are
+equivalent: they use the shared bounded exact-username search and authoritative detail read, require
+a personal profile, and request the friends visible to the authenticated viewer. A matching active
+username uses the stored self ID without lookup. Other-user output is explicitly scoped as
+`Friends for @username`; an empty page says `No visible friends found` because Venmo privacy
+settings can hide a list or individual appearances. Business, charity, unknown, and missing
+profile types fail before the friends request. The CLI never claims that a visible page is an
+exhaustive social graph.
 
 Activity listing defaults to the authenticated user's existing feed. Optional `--user alice` and
 `--user @alice` are equivalent: they use the shared bounded exact-username search and authoritative

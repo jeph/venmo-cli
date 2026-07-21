@@ -114,7 +114,7 @@ pub trait FriendsApi {
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
+        subject_user_id: &'a UserId,
         page: FriendsPageRequest,
     ) -> impl Future<Output = Result<FriendsPage, Self::Error>> + Send + 'a;
 }

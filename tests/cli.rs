@@ -660,7 +660,7 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
         Ok(cli) => match cli.command {
             Command::Friends(args) => match args.operation {
                 venmo_cli::cli::FriendsOperation::List(list) => {
-                    Some((list.limit.get(), list.offset.get()))
+                    Some((list.user, list.limit.get(), list.offset.get()))
                 }
                 venmo_cli::cli::FriendsOperation::Add(_)
                 | venmo_cli::cli::FriendsOperation::Remove(_) => None,
@@ -669,7 +669,7 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
         },
         Err(_) => None,
     };
-    assert_eq!(values, Some((10, 0)));
+    assert_eq!(values, Some((None, 10, 0)));
 
     assert_rejected(&["venmo", "friends", "list", "--offset", "-1"]);
     assert_rejected(&[
@@ -680,6 +680,34 @@ fn pagination_defaults_are_limit_ten_and_offset_zero() {
         "--offset",
         "4294967296",
     ]);
+}
+
+#[test]
+fn friends_list_accepts_only_an_optional_exact_subject_username() {
+    for input in ["alice", "@alice"] {
+        let parsed = Cli::try_parse_from([
+            "venmo", "friends", "list", "--user", input, "--limit", "3", "--offset", "4",
+        ]);
+        assert!(parsed.is_ok_and(|cli| matches!(
+            cli.command,
+            Command::Friends(args)
+                if matches!(
+                    &args.operation,
+                    venmo_cli::cli::FriendsOperation::List(list)
+                        if list.user.as_ref().is_some_and(|user| user.as_str() == "alice")
+                            && list.limit.get() == 3
+                            && list.offset.get() == 4
+                )
+        )));
+    }
+
+    for arguments in [
+        &["venmo", "friends", "add", "alice", "--user", "bob"][..],
+        &["venmo", "friends", "remove", "alice", "--user", "bob"][..],
+        &["venmo", "users", "search", "alice", "--user", "bob"][..],
+    ] {
+        assert_rejected(arguments);
+    }
 }
 
 #[test]

@@ -50,7 +50,7 @@ pub enum Command {
     /// Pay users or inspect payment options.
     Pay(PayArgs),
 
-    /// Inspect and manage friends of the active account.
+    /// Inspect visible friend lists and manage active-account friendships.
     Friends(FriendsArgs),
 
     /// Find Venmo users.

@@ -9,7 +9,7 @@ Usage: venmo [OPTIONS] <COMMAND>
 Commands:
   auth      Validate and manage the stored Venmo bearer token
   pay       Pay users or inspect payment options
-  friends   Inspect and manage friends of the active account
+  friends   Inspect visible friend lists and manage active-account friendships
   users     Find Venmo users
   balance   Show the Venmo wallet balance
   activity  Inspect account activity

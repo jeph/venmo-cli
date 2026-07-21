@@ -1,0 +1,8 @@
+---
+source: src/adapters/cli/output/tests/people_wallet.rs
+expression: "String::from_utf8(nonempty_stdout)?"
+---
+Friends for @alice
+ Id  | Username | Name
+-----+----------+----------------
+ 456 | @bob     | Synthetic User
