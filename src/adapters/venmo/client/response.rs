@@ -6,8 +6,8 @@ use serde_json::Value;
 use crate::shared::ClientRequestId;
 
 use super::super::transport::HttpResponse;
-use super::PAYMENT_CREATION_OPERATION;
 use super::error::{ApiCodeSuffix, VenmoApiError};
+use super::{PAYMENT_CREATION_OPERATION, REQUEST_ACCEPTANCE_OPERATION, REQUEST_CREATION_OPERATION};
 
 pub(super) fn decode_success<T: DeserializeOwned>(
     operation: &'static str,
@@ -163,13 +163,18 @@ fn confirmed_financial_rejection(
     root_code: Option<&str>,
     displayed_code: Option<&str>,
 ) -> Option<VenmoApiError> {
-    if operation != PAYMENT_CREATION_OPERATION {
-        return None;
-    }
-    match (status, root_code) {
-        (403, Some("1360")) => Some(VenmoApiError::DuplicatePaymentRejected),
-        (403, Some("10100")) => Some(VenmoApiError::TemporaryPaymentRejected),
-        (400 | 403, Some("1396")) | (400, Some("13006")) => Some(VenmoApiError::Http {
+    match (operation, status, root_code) {
+        (PAYMENT_CREATION_OPERATION | REQUEST_CREATION_OPERATION, 403, Some("1360")) => {
+            Some(VenmoApiError::DuplicatePaymentRejected)
+        }
+        (REQUEST_ACCEPTANCE_OPERATION, 400, Some("1360")) => {
+            Some(VenmoApiError::DuplicateRequestAcceptanceRejected)
+        }
+        (PAYMENT_CREATION_OPERATION, 403, Some("10100")) => {
+            Some(VenmoApiError::TemporaryPaymentRejected)
+        }
+        (PAYMENT_CREATION_OPERATION, 400 | 403, Some("1396"))
+        | (PAYMENT_CREATION_OPERATION, 400, Some("13006")) => Some(VenmoApiError::Http {
             operation,
             status,
             code_suffix: ApiCodeSuffix::from_remote(displayed_code),

@@ -41,9 +41,14 @@ pub(crate) enum VenmoApiError {
     RequestApprovalEligibilityDenied,
 
     #[error(
-        "Venmo rejected this payment as a duplicate (error code 1360); the same recipient, amount, and note cannot be submitted again within Venmo's 10-minute duplicate window"
+        "Venmo rejected this payment or request as a duplicate (error code 1360); the same person, amount, and note were used within Venmo's 10-minute duplicate window. Check activity and requests before trying again"
     )]
     DuplicatePaymentRejected,
+
+    #[error(
+        "Venmo rejected this request acceptance because a matching payment or charge was recently submitted (error code 1360). This acceptance did not satisfy the request; check activity and request status before retrying because a later retry could send a second payment"
+    )]
+    DuplicateRequestAcceptanceRejected,
 
     #[error(
         "Venmo's server-side checks blocked this payment (error code 10100); try again later or use the official Venmo app"
@@ -137,6 +142,7 @@ impl ApiFailure for VenmoApiError {
             | Self::ProtectedPaymentEligibilityDenied
             | Self::RequestApprovalEligibilityDenied
             | Self::DuplicatePaymentRejected
+            | Self::DuplicateRequestAcceptanceRejected
             | Self::TemporaryPaymentRejected => ApiFailureKind::Rejected,
         }
     }

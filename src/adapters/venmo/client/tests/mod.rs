@@ -220,6 +220,9 @@ enum ApiErrorDetail {
     DuplicatePaymentRejected {
         rendered: String,
     },
+    DuplicateRequestAcceptanceRejected {
+        rendered: String,
+    },
     TemporaryPaymentRejected {
         rendered: String,
     },
@@ -277,6 +280,9 @@ impl ApiErrorSnapshot {
             }
             VenmoApiError::DuplicatePaymentRejected => {
                 ApiErrorDetail::DuplicatePaymentRejected { rendered }
+            }
+            VenmoApiError::DuplicateRequestAcceptanceRejected => {
+                ApiErrorDetail::DuplicateRequestAcceptanceRejected { rendered }
             }
             VenmoApiError::TemporaryPaymentRejected => {
                 ApiErrorDetail::TemporaryPaymentRejected { rendered }
@@ -354,7 +360,16 @@ impl ApiErrorSnapshot {
         Self {
             kind: ApiFailureKind::Rejected,
             detail: ApiErrorDetail::DuplicatePaymentRejected {
-                rendered: "Venmo rejected this payment as a duplicate (error code 1360); the same recipient, amount, and note cannot be submitted again within Venmo's 10-minute duplicate window".to_owned(),
+                rendered: "Venmo rejected this payment or request as a duplicate (error code 1360); the same person, amount, and note were used within Venmo's 10-minute duplicate window. Check activity and requests before trying again".to_owned(),
+            },
+        }
+    }
+
+    fn duplicate_request_acceptance_rejected() -> Self {
+        Self {
+            kind: ApiFailureKind::Rejected,
+            detail: ApiErrorDetail::DuplicateRequestAcceptanceRejected {
+                rendered: "Venmo rejected this request acceptance because a matching payment or charge was recently submitted (error code 1360). This acceptance did not satisfy the request; check activity and request status before retrying because a later retry could send a second payment".to_owned(),
             },
         }
     }

@@ -721,6 +721,66 @@ async fn source_funded_request_acceptance_uses_modern_options_route() -> TestRes
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn duplicate_request_acceptance_has_specific_safe_message_only_for_exact_dossier()
+-> TestResult {
+    let (token, device_id) = test_session()?;
+    let expected_request = authenticated_request(
+        Method::PUT,
+        "/requests/{request-id}",
+        &["requests", "notification-1"],
+        &[],
+        Some(br#"{"funding_source_id":"bank-1","eligibility_token":"synthetic-approval-token","metadata":{"quasi_cash_disclaimer_viewed":false}}"#),
+        OperationClass::FinancialWrite,
+    );
+
+    let response = scripted_json_response(400, serde_json::json!({"error": {"code": 1360}}))?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let result = client
+        .accept_request(
+            &token,
+            &device_id,
+            &source_funded_unprotected_accept_plan()?,
+            RequestAcceptanceVerification::Unverified,
+        )
+        .await;
+    let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+    let expected = ScriptedObservation::expected(
+        Err(ApiErrorSnapshot::duplicate_request_acceptance_rejected()),
+        vec![expected_request.clone()],
+    );
+    assert_eq!(observed, expected);
+
+    for (status, body) in [
+        (403, serde_json::json!({"error": {"code": 1360}})),
+        (400, serde_json::json!({"error_code": 1360})),
+        (400, serde_json::json!({"data": {"error": {"code": 1360}}})),
+    ] {
+        let response = scripted_json_response(status, body)?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let result = client
+            .accept_request(
+                &token,
+                &device_id,
+                &source_funded_unprotected_accept_plan()?,
+                RequestAcceptanceVerification::Unverified,
+            )
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::financial_http_unknown(
+                REQUEST_ACCEPTANCE_OPERATION,
+                status,
+                Some("1360"),
+            )),
+            vec![expected_request.clone()],
+        );
+        assert_eq!(observed, expected);
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn source_funded_acceptance_continuations_and_malformed_success_are_ambiguous() -> TestResult
 {
     for body in [

@@ -1113,3 +1113,56 @@ async fn duplicate_and_temporary_payment_rejections_have_specific_safe_messages(
     }
     Ok(())
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn duplicate_request_creation_has_specific_safe_message_only_for_exact_dossier() -> TestResult
+{
+    let (token, device_id) = test_session()?;
+    let expected_request = payment_creation_request(REQUEST_CREATION_REQUEST_BODY);
+
+    let response = scripted_json_response(403, serde_json::json!({"error": {"code": 1360}}))?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let result = client
+        .create_request(
+            &token,
+            &device_id,
+            &request_plan()?,
+            RequestCreationVerification::Unverified,
+        )
+        .await;
+    let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+    let expected = ScriptedObservation::expected(
+        Err(ApiErrorSnapshot::duplicate_payment_rejected()),
+        vec![expected_request.clone()],
+    );
+    assert_eq!(observed, expected);
+
+    for (status, body) in [
+        (400, serde_json::json!({"error": {"code": 1360}})),
+        (403, serde_json::json!({"error_code": 1360})),
+        (403, serde_json::json!({"data": {"error": {"code": 1360}}})),
+    ] {
+        let response = scripted_json_response(status, body)?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let result = client
+            .create_request(
+                &token,
+                &device_id,
+                &request_plan()?,
+                RequestCreationVerification::Unverified,
+            )
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::financial_http_unknown(
+                REQUEST_CREATION_OPERATION,
+                status,
+                Some("1360"),
+            )),
+            vec![expected_request.clone()],
+        );
+        assert_eq!(observed, expected);
+    }
+
+    Ok(())
+}
