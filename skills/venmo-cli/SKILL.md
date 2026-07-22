@@ -32,7 +32,7 @@ output differs from this skill.
    read commands and ask the user to check the official Venmo app.
 7. **Keep OTP human-only.** If a payment or request reports that SMS verification requires an
    interactive terminal, stop. Give the user the same command without `--yes` so the CLI can show
-   its default-No confirmation and hidden OTP prompt in their terminal. Never request the code.
+   its default-No confirmation and masked OTP prompt in their terminal. Never request the code.
 8. **Do not invent machine-readable output.** The CLI does not currently offer JSON. Read its
    human-oriented output conservatively and use opaque IDs and continuation tokens exactly as
    printed.

@@ -50,8 +50,9 @@ venmo auth status
 venmo auth logout
 ```
 
-- `auth login` always uses an interactive human flow. It can request the account identifier, hidden
-  password, hidden trusted `v_id` or device ID, and hidden SMS OTP.
+- `auth login` always uses an interactive human flow. It can request the account identifier, masked
+  password, masked trusted `v_id` or device ID, and masked SMS OTP. Secret prompts display one `*`
+  per entered character without echoing the underlying value.
 - `auth status` validates the stored credential and shows the active account.
 - `auth logout` deletes local credential state. It does not contact Venmo or revoke the remote token.
 

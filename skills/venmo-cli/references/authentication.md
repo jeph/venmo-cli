@@ -24,7 +24,9 @@ venmo auth login
 
 Do not run this command through an agent terminal. Do not ask the user to send any prompted value.
 The command interactively requests the account identifier, password, and trusted browser `v_id` or
-device ID. It requests a hidden six-digit SMS code only if Venmo challenges the login.
+device ID. It requests a masked six-digit SMS code only if Venmo challenges the login. Password,
+device ID, and SMS code prompts display one `*` per entered character and clear the masked prompt
+after submission or cancellation; the underlying value is never echoed.
 
 ### Retrieve the trusted browser `v_id`
 
@@ -76,7 +78,7 @@ At that point:
 2. Do not attempt to pipe a code into the command.
 3. Give the user the exact approved command with `--yes` removed.
 4. Ask the user to run it in their own terminal, review the default-No confirmation, and enter the
-   hidden OTP there if requested.
+   masked OTP there if requested.
 5. Afterward, use the appropriate read command to verify the resulting state.
 
 ## Logout
