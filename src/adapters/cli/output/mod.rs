@@ -17,7 +17,6 @@ pub(super) use activity::{
 };
 pub(super) use auth::{write_auth_status, write_logout_report, write_password_login_report};
 pub use error::{write_cli_failure, write_error};
-pub use json::write_parse_error_json;
 pub(super) use people::{
     write_friends, write_friendship_details, write_friendship_result, write_user_info,
     write_user_search,

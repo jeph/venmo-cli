@@ -27,5 +27,4 @@ pub use crate::adapters::cli::args::{
 pub use crate::adapters::cli::{
     AppError, CliFailure, CommandId, ErrorCategory, OutputFormat,
     handle_runtime_initialization_failure, run, write_cli_failure, write_error,
-    write_parse_error_json,
 };

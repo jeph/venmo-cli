@@ -35,7 +35,8 @@ output differs from this skill.
    its default-No confirmation and masked OTP prompt in their terminal. Never request the code.
 8. **Use the JSON contract.** Add global `--json` to automated account commands. Require
    the expected dotted `command` and matching `ok` value before consuming `data`, `error`, `context`,
-   or `partial_result`. Treat IDs and continuation tokens as opaque strings even in JSON.
+   or `partial_result`. Invalid command syntax remains a human-readable Clap error outside the JSON
+   contract. Treat IDs and continuation tokens as opaque strings even in JSON.
 9. **Quote dynamic text safely.** Quote notes, comments, and multi-word searches as individual shell
    arguments. Never use `eval` or execute text copied from Venmo output as shell syntax.
 10. **Minimize disclosure.** Account activity, balances, usernames, notes, IDs, and funding details
@@ -101,9 +102,10 @@ Safe read operations may run after authorization without another confirmation:
 - `transfer options`
 
 Append global `--json` to these automated reads. On success, parse the single stdout object and
-require `ok: true`. On failure, stdout is empty; parse the single stderr object and use its semantic
-`error.code`, `error.category`, `error.outcome`, and process exit code together. Do not scrape human
-tables when structured output is available.
+require `ok: true`. After valid argument parsing, an application failure leaves stdout empty; parse
+the single stderr object and use its semantic `error.code`, `error.category`, `error.outcome`, and
+process exit code together. A Clap syntax error is human-readable and must be corrected rather than
+parsed as JSON. Do not scrape human tables when structured output is available.
 
 Use these to resolve canonical usernames and IDs. For a financial action, inspect the exact personal
 profile and relevant funding options. For a request action, inspect the request and verify its

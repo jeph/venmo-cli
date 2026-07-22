@@ -26,19 +26,19 @@ stderr, including request timing, route, status, retry, response size, and sanit
 credentials, raw bodies, dynamic identifiers, usernames, notes, and amounts. Use it only for
 troubleshooting.
 
-`--json` is also global and may appear at any command depth. On success, one compact JSON object plus
-one newline is written to stdout. On failure, stdout stays empty and one JSON error object is written
-to stderr. Help and version remain human-readable. Clean `--dry-run`, `--yes`, and noninteractive
-invocations suppress human preflight text; an actual interactive prompt or explicit `--debug` may
-write diagnostics before the final JSON object on stderr.
+`--json` is also global and may appear at any command depth. After valid argument parsing, success
+writes one compact JSON object plus one newline to stdout, while an application failure leaves
+stdout empty and writes one JSON error object to stderr. Invalid syntax, help, and version remain
+human-readable Clap output. Clean `--dry-run`, `--yes`, and noninteractive invocations suppress
+human preflight text; an actual interactive prompt or explicit `--debug` may write diagnostics
+before the final JSON object on stderr.
 
 Require the expected dotted `command` and `ok: true` before consuming success `data`. Exact money is
 `{"amount":"12.34","currency":"USD"}`, timestamps are RFC 3339 UTC,
 collections are arrays, and unavailable values are `null`. Confirmed mutations use
 `data.outcome`, `data.performed`, `data.plan`, and nullable `data.result`. Failures use stable
 `error.code`, `error.category`, `error.exit_code`, and `error.outcome`, with optional safe
-`context.plan` and `partial_result`. Parser failures use `command: null`. See the repository's
-`JSON.md` for the complete contract.
+`context.plan` and `partial_result`. See the repository's `JSON.md` for the complete contract.
 
 ## Common values
 

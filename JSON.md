@@ -1,17 +1,18 @@
 # JSON output contract
 
-Pass the global `--json` flag to make a Venmo CLI command emit its final result as one compact JSON
-object followed by one newline. The flag may appear at any command depth before an argument
-terminator (`--`). Help and version output remain human-readable even when `--json` is present.
+Pass the global `--json` flag to make a valid Venmo CLI command emit its final result as one compact
+JSON object followed by one newline. The flag may appear at any command depth. Argument parsing,
+help, and version remain owned by Clap and use its normal human-readable output.
 
 The current JSON contract is intentionally unversioned. A schema-version field can be introduced if
 a version 2 contract is added in the future.
 
 ## Streams and exit status
 
-- A successful command writes one JSON object to stdout and leaves stderr empty during clean,
-  noninteractive operation.
-- A failed command leaves stdout empty and writes one JSON error object to stderr.
+- After argument parsing succeeds, a successful command writes one JSON object to stdout and leaves
+  stderr empty during clean, noninteractive operation.
+- An application failure after successful parsing leaves stdout empty and writes one JSON error
+  object to stderr.
 - Existing exit codes are unchanged: `0` success, `1` operational failure, `2` usage failure, and
   `3` unknown or otherwise ambiguous mutation outcome.
 - An actual interactive confirmation or OTP flow may write its prompt and safe preflight details to
@@ -30,11 +31,11 @@ Success:
 Failure:
 
 ```json
-{"command":"balance","ok":false,"error":{"code":"authentication_required","category":"authentication","message":"authentication failed; run `venmo auth login` and try again","exit_code":1,"outcome":"not_performed","details":null},"context":null,"partial_result":null}
+{"command":"balance","ok":false,"error":{"code":"authentication_required","category":"authentication","message":"authentication failed; run `venmo auth login` and try again","exit_code":1,"outcome":"not_performed"},"context":null,"partial_result":null}
 ```
 
-Argument parsing can fail before a command is known. Such failures use `"command": null`,
-`error.code: "invalid_arguments"`, and a stable parser kind in `error.details.kind`.
+Invalid syntax is outside this contract because no command was created. Clap prints its normal usage
+error and exits before `--json` takes effect.
 
 `command` is one of these stable identities:
 
@@ -140,14 +141,14 @@ api_contract  ambiguous_write  internal
 `error.code` uses this smaller semantic vocabulary:
 
 ```text
-invalid_arguments                usage_error
-cancelled                        credential_error
-authentication_required          network_error
-timeout                          api_rejected
-api_contract_violation           internal_error
-write_outcome_unknown            result_output_failed
-device_trust_incomplete          logout_incomplete
-credential_cleanup_incomplete    credential_state_unknown
+usage_error                      cancelled
+credential_error                 authentication_required
+network_error                    timeout
+api_rejected                     api_contract_violation
+internal_error                   write_outcome_unknown
+result_output_failed             device_trust_incomplete
+logout_incomplete                credential_cleanup_incomplete
+credential_state_unknown
 ```
 
 `error.outcome` describes mutation/state effects independently of the exit code:

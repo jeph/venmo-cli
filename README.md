@@ -235,8 +235,10 @@ venmo activity list --json
 venmo requests create @alice 12.50 "Dinner" --dry-run --json
 ```
 
-Successful results go to stdout. Failures go to stderr and preserve the normal exit code, leaving
-stdout empty. Every object includes a stable dotted command identity and `ok`.
+After argument parsing succeeds, results go to stdout and application failures go to stderr while
+preserving the normal exit code and leaving stdout empty. Invalid syntax remains a normal
+human-readable Clap usage error. Every JSON object includes a stable dotted command identity and
+`ok`.
 Money uses exact decimal strings rather than floating-point numbers, timestamps use RFC 3339 UTC,
 and missing values are explicit `null`s. Mutations include a safe resolved `plan` and distinguish
 `dry_run`, `completed`, `partial`, and `unknown` outcomes.

@@ -4,7 +4,6 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::super::command::CommandId;
-use super::super::error::ErrorCategory;
 use super::super::failure::{CliFailure, error_code};
 
 #[derive(Serialize)]
@@ -21,12 +20,11 @@ struct ErrorBody<'a> {
     message: &'a str,
     exit_code: u8,
     outcome: &'a str,
-    details: Option<Value>,
 }
 
 #[derive(Serialize)]
 struct FailureEnvelope<'a> {
-    command: Option<&'static str>,
+    command: &'static str,
     ok: bool,
     error: ErrorBody<'a>,
     context: Option<FailureContext<'a>>,
@@ -58,7 +56,7 @@ pub(super) fn write_failure(writer: &mut impl Write, failure: &CliFailure) -> io
     write_compact(
         writer,
         &FailureEnvelope {
-            command: Some(failure.command.as_str()),
+            command: failure.command.as_str(),
             ok: false,
             error: ErrorBody {
                 code: error_code(&failure.error),
@@ -66,34 +64,9 @@ pub(super) fn write_failure(writer: &mut impl Write, failure: &CliFailure) -> io
                 message: &message,
                 exit_code: failure.error.exit_code(),
                 outcome: failure.outcome.as_str(),
-                details: None,
             },
             context: failure.plan.as_ref().map(|plan| FailureContext { plan }),
             partial_result: failure.partial_result.as_ref(),
-        },
-    )
-}
-
-pub fn write_parse_error_json(
-    writer: &mut impl Write,
-    message: &str,
-    kind: &str,
-) -> io::Result<()> {
-    write_compact(
-        writer,
-        &FailureEnvelope {
-            command: None,
-            ok: false,
-            error: ErrorBody {
-                code: "invalid_arguments",
-                category: ErrorCategory::Usage.as_str(),
-                message,
-                exit_code: ErrorCategory::Usage.exit_code(),
-                outcome: "not_performed",
-                details: Some(serde_json::json!({ "kind": kind })),
-            },
-            context: None,
-            partial_result: None,
         },
     )
 }
