@@ -32,9 +32,7 @@ venmo --help
 
 On macOS, `cargo run` development-signs the `venmo` executable immediately before running it so
 Keychain approval can persist across rebuilds. Another Cargo command that relinks the executable
-can leave it ad-hoc signed until the next `cargo run`. See
-[macOS code signing](docs/macos-code-signing.md) for one-time setup, identity overrides,
-limitations, and signature inspection.
+can leave it ad-hoc signed until the next `cargo run`.
 
 All `cargo run -- ...` examples below run from the repository root. After installation, use the same arguments after `venmo` instead.
 
@@ -333,17 +331,3 @@ The Linux fallback is `$XDG_STATE_HOME/venmo-cli/credential.json`, or `$HOME/.lo
 Backend selection is fixed for one command. If an old XDG credential exists and Secret Service later becomes available, ordinary commands stop and require a fresh `venmo auth login`; they never silently use or migrate the file. After a new keyring credential is saved and read back exactly, login removes the superseded file. Logout deletes the selected keyring entry first and then any fallback, and never removes only the fallback after a keyring deletion failure.
 
 `venmo auth status` validates the stored session and account and prints `Credential store: keyring` or `Credential store: xdg`. `venmo auth logout` removes local credential state; it does not contact Venmo or revoke the remote bearer token, and it reports that consequence truthfully.
-
-## Contributor documentation
-
-Routine contributor verification is service-free. Do not run ignored/manual tests or live probes,
-load the production credential for tests, or run a real financial command—including a transfer—as a development check.
-The user-facing command descriptions above are not contributor test instructions.
-
-- [Contributing and required verification](CONTRIBUTING.md)
-- [Architecture and dependency boundaries](docs/architecture.md)
-- [Testing strategy](docs/testing.md)
-- [Retained integration/manual contracts](docs/retained-test-contracts.md)
-- [Evidence-gated follow-ups](docs/evidence-gated-follow-ups.md)
-- [CLI-to-Venmo private API contract inventory](API.md)
-- [Public facade inventory and compatibility](docs/public-api.md)
