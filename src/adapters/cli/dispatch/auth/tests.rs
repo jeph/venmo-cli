@@ -97,6 +97,18 @@ impl CurrentAccountApi for FakeApi {
     }
 }
 
+struct FailingWriter;
+
+impl std::io::Write for FailingWriter {
+    fn write(&mut self, _buffer: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("synthetic output failure"))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::other("synthetic output failure"))
+    }
+}
+
 #[test]
 fn replacement_login_output_warns_that_the_previous_remote_token_remains() -> TestResult {
     let report = auth::PasswordLoginReport::new(
@@ -275,6 +287,33 @@ async fn auth_status_preserves_authentication_failure_classification() -> TestRe
     );
     assert!(error.requires_login());
     assert!(stdout.is_empty());
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn auth_status_output_failure_is_an_ordinary_command_error() -> TestResult {
+    let store = FakeStore {
+        credential: Some(credential()?),
+        backend: CredentialBackend::Keyring,
+        delete: Ok(CredentialDeleteOutcome::Deleted),
+        calls: RefCell::new(Vec::new()),
+    };
+    let api = FakeApi(Ok(account()?));
+    let timestamps = output::TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+    let mut stdout = FailingWriter;
+    let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::AuthStatus,
+        &mut stdout,
+        &mut stderr,
+    );
+
+    let error = run_auth_status_with(&store, &api, &timestamps, &mut output)
+        .await
+        .err()
+        .ok_or("expected auth status output failure")?;
+
+    assert!(matches!(error, AppError::CommandOutput { .. }));
     Ok(())
 }
 

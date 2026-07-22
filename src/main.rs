@@ -4,8 +4,6 @@ use std::io;
 use std::process::ExitCode;
 
 use clap::Parser;
-#[cfg(test)]
-use venmo_cli::cli::{AppError, write_error};
 use venmo_cli::cli::{
     Cli, CliFailure, handle_runtime_initialization_failure, run, write_cli_failure,
 };
@@ -38,13 +36,6 @@ fn render_failure(stderr: &mut impl io::Write, failure: &CliFailure) -> ExitCode
 }
 
 #[cfg(test)]
-fn render_error(stderr: &mut impl io::Write, error: &AppError) -> ExitCode {
-    let exit_code = error.exit_code();
-    let _ = write_error(stderr, error);
-    ExitCode::from(exit_code)
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -61,12 +52,24 @@ mod tests {
     }
 
     #[test]
-    fn error_exit_code_survives_stderr_failure() {
-        let exit = render_error(
-            &mut FailingWriter,
-            &AppError::FinancialWriteInterruptedUnknown,
-        );
+    fn failure_exit_code_survives_stderr_failure() -> Result<(), Box<dyn std::error::Error>> {
+        let cli = Cli::try_parse_from(["venmo", "--json", "balance"])?;
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let failure = handle_runtime_initialization_failure(
+            cli,
+            &mut stdout,
+            &mut stderr,
+            io::Error::other("synthetic runtime failure"),
+        )
+        .err()
+        .ok_or("expected runtime initialization failure")?;
+        let expected = ExitCode::from(failure.exit_code());
 
-        assert_eq!(exit, ExitCode::from(3));
+        let exit = render_failure(&mut FailingWriter, &failure);
+
+        assert_eq!(expected, ExitCode::from(1));
+        assert_eq!(exit, expected);
+        Ok(())
     }
 }

@@ -98,7 +98,7 @@ where
     let response = response::auth_status(&status)?;
     output.write_success(
         &response,
-        output::OutputClass::AuthState,
+        output::OutputClass::Ordinary,
         |stdout, _stderr, response| output::write_auth_status(stdout, response, timestamps),
     )?;
     Ok(())

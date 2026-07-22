@@ -142,6 +142,8 @@ mod tests {
 
     #[test]
     fn all_command_ids_are_unique_stable_dotted_names() {
+        // Keep this list synchronized with `CommandId`; unlike the exhaustive `as_str` match, it
+        // is responsible for checking uniqueness across variants.
         let ids = [
             CommandId::AuthLogin,
             CommandId::AuthLogout,
