@@ -25,11 +25,11 @@ jobs:
             platform: macos
             artifact: unsigned/venmo-*
           - runner: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
+            target: aarch64-unknown-linux-musl
             platform: linux
             artifact: dist/venmo-v*.tar.gz
           - runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             platform: linux
             artifact: dist/venmo-v*.tar.gz
     runs-on: ${{ matrix.runner }}
@@ -70,21 +70,47 @@ jobs:
           lock_path.write_text(lock_text)
           PY
 
+      - name: Install musl toolchain
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-dev musl-tools
+          rustup target add "${{ matrix.target }}"
+
       - name: Build production binary
-        run: cargo build --release --locked --bin venmo
+        env:
+          AWS_LC_SYS_USE_SYSTEM: "0"
+          CC_aarch64_unknown_linux_musl: musl-gcc
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: cargo build --release --locked --bin venmo --target "${{ matrix.target }}"
 
       - name: Verify production binary
         run: |
-          test "$(target/release/venmo --version)" = "venmo $VERSION"
+          binary="target/${{ matrix.target }}/release/venmo"
+          test "$("$binary" --version)" = "venmo $VERSION"
+
+          if [ "${{ matrix.platform }}" = linux ]; then
+            if readelf -lW "$binary" | grep INTERP >/dev/null; then
+              echo "Linux binary has a dynamic interpreter" >&2
+              exit 1
+            fi
+            if readelf -dW "$binary" | grep NEEDED >/dev/null; then
+              echo "Linux binary has dynamic library dependencies" >&2
+              exit 1
+            fi
+          fi
 
       - name: Prepare release artifact
         run: |
+          binary="target/${{ matrix.target }}/release/venmo"
           if [ "${{ matrix.platform }}" = macos ]; then
             mkdir unsigned
-            cp target/release/venmo "unsigned/venmo-${{ matrix.target }}"
+            cp "$binary" "unsigned/venmo-${{ matrix.target }}"
           else
             mkdir package dist
-            cp target/release/venmo package/venmo
+            cp "$binary" package/venmo
             tar -czf "dist/venmo-v$VERSION-${{ matrix.target }}.tar.gz" -C package venmo
           fi
 
@@ -193,7 +219,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: "*-unknown-linux-gnu"
+          pattern: "*-unknown-linux-musl"
           path: dist
           merge-multiple: true
 
@@ -218,8 +244,8 @@ jobs:
         run: |
           arm_sha=$(sha256sum "dist/venmo-v$VERSION-aarch64-apple-darwin.tar.gz" | cut -d ' ' -f 1)
           intel_sha=$(sha256sum "dist/venmo-v$VERSION-x86_64-apple-darwin.tar.gz" | cut -d ' ' -f 1)
-          linux_arm_sha=$(sha256sum "dist/venmo-v$VERSION-aarch64-unknown-linux-gnu.tar.gz" | cut -d ' ' -f 1)
-          linux_intel_sha=$(sha256sum "dist/venmo-v$VERSION-x86_64-unknown-linux-gnu.tar.gz" | cut -d ' ' -f 1)
+          linux_arm_sha=$(sha256sum "dist/venmo-v$VERSION-aarch64-unknown-linux-musl.tar.gz" | cut -d ' ' -f 1)
+          linux_intel_sha=$(sha256sum "dist/venmo-v$VERSION-x86_64-unknown-linux-musl.tar.gz" | cut -d ' ' -f 1)
           mkdir -p tap/Formula
           cat > tap/Formula/venmo.rb <<EOF
           class Venmo < Formula
@@ -244,12 +270,12 @@ jobs:
 
             on_linux do
               on_arm do
-                url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/venmo-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/venmo-v#{version}-aarch64-unknown-linux-musl.tar.gz"
                 sha256 "$linux_arm_sha"
               end
 
               on_intel do
-                url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/venmo-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/venmo-v#{version}-x86_64-unknown-linux-musl.tar.gz"
                 sha256 "$linux_intel_sha"
               end
             end

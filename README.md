@@ -22,9 +22,10 @@ experience from the terminal:
   activity, manage friendships, like or unlike activity, and list, add, or remove comments.
 - **Balance and cash-out.** Check your wallet balance, inspect transfer eligibility, and transfer a
   fixed amount or all available funds to the selected standard bank destination.
-- **Native and security-conscious.** Prebuilt arm64 and x86_64 binaries require no runtime. macOS
-  releases are signed and notarized, credentials use the platform keyring when available, and
-  uncertain API outcomes fail closed instead of being guessed.
+- **Native and security-conscious.** Prebuilt arm64 and x86_64 binaries require no language runtime.
+  Linux releases are standalone, fully static musl binaries with no glibc dependency. macOS releases
+  are signed and notarized, credentials use the platform keyring when available, and uncertain API
+  outcomes fail closed instead of being guessed.
 
 ## Installation
 
