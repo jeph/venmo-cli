@@ -21,6 +21,9 @@ Options:
       --debug
           Write bounded debug diagnostics to stderr
 
+      --json
+          Write the final command result as compact JSON
+
   -h, --help
           Print help (see a summary with '-h')
 

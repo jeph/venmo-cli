@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::Write;
 
 use crate::adapters::credentials::CredentialAccessPurpose;
 use crate::adapters::system::SystemClock;
@@ -9,14 +9,13 @@ use crate::shared::{CredentialDeleter, CredentialReader};
 use super::super::args::{AuthArgs, AuthOperation};
 use super::super::error::AppError;
 use super::super::output;
+use super::super::response;
 use super::composition::ProductionProvider;
-use super::write_and_flush;
 
 pub(super) async fn run_production<W, E>(
     args: AuthArgs,
     provider: ProductionProvider,
-    stdout: &mut W,
-    stderr: &mut E,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     W: Write,
@@ -27,23 +26,26 @@ where
             let store = provider.credential_store(CredentialAccessPurpose::Login)?;
             let api = provider.api()?;
             let prompt = provider.prompt();
-            confirm_plaintext_fallback_if_needed(store.backend(), &prompt, stderr)?;
+            confirm_plaintext_fallback_if_needed(store.backend(), &prompt, output.stderr())?;
             let report = auth::login_with_password(&store, &prompt, &api, &SystemClock).await?;
+            let response = response::password_login(&report)
+                .map_err(|source| AppError::AuthStateOutput { source })?;
+            output.record_partial(&response);
             store
                 .retire_fallback_after_verified_login()
                 .map_err(|source| AppError::CredentialFallbackCleanup {
                     source: Box::new(source),
                 })?;
-            finish_password_login(stdout, stderr, &report)
+            finish_password_login(output, &response)
         }
         AuthOperation::Status => {
             let (store, api) = provider.credential_store_and_api()?;
             let timestamps = provider.timestamps();
-            run_auth_status_with(&store, &api, &timestamps, stdout).await
+            run_auth_status_with(&store, &api, &timestamps, output).await
         }
         AuthOperation::Logout => {
             let store = provider.credential_store(CredentialAccessPurpose::Logout)?;
-            run_logout_local_with(&store, stdout, stderr)
+            run_logout_local_with(&store, output)
         }
     }
 }
@@ -80,28 +82,31 @@ where
     Ok(())
 }
 
-async fn run_auth_status_with<R, A, W>(
+async fn run_auth_status_with<R, A, W, E>(
     store: &R,
     api: &A,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: CurrentAccountApi,
     W: Write,
+    E: Write,
 {
     let status = auth::status(store, api).await?;
-    write_and_flush(stdout, &status, |writer, status| {
-        output::write_auth_status(writer, status, timestamps)
-    })?;
+    let response = response::auth_status(&status)?;
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_auth_status(stdout, response, timestamps),
+    )?;
     Ok(())
 }
 
 pub(super) fn run_logout_local_with<S, W, E>(
     store: &S,
-    stdout: &mut W,
-    stderr: &mut E,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     S: CredentialDeleter,
@@ -109,18 +114,34 @@ where
     E: Write,
 {
     let report = auth::logout_local(store);
-    finish_logout(stdout, stderr, &report)
+    let response = response::logout(&report);
+    finish_logout(output, &response)
 }
 
-fn finish_password_login(
-    stdout: &mut impl Write,
-    stderr: &mut impl Write,
-    report: &auth::PasswordLoginReport,
+fn finish_password_login<W: Write, E: Write>(
+    output: &mut output::OutputSession<'_, W, E>,
+    response: &response::Response<'_, auth::PasswordLoginReport>,
 ) -> Result<(), AppError> {
-    write_and_flush_auth_output(stdout, stderr, |stdout, stderr| {
-        output::write_password_login_report(stdout, stderr, report)
-    })?;
-    ensure_login_complete(report)
+    let report = response.source();
+    match ensure_login_complete(report) {
+        Ok(()) => {
+            output.clear_partial();
+            output.mark_completed();
+            output.write_success(
+                response,
+                output::OutputClass::AuthState,
+                |stdout, stderr, response| {
+                    output::write_password_login_report(stdout, stderr, response)
+                },
+            )
+        }
+        Err(error) => {
+            output.write_partial(response, |stdout, stderr, response| {
+                output::write_password_login_report(stdout, stderr, response)
+            })?;
+            Err(error)
+        }
+    }
 }
 
 fn ensure_login_complete(report: &auth::PasswordLoginReport) -> Result<(), AppError> {
@@ -132,36 +153,27 @@ fn ensure_login_complete(report: &auth::PasswordLoginReport) -> Result<(), AppEr
     }
 }
 
-fn finish_logout(
-    stdout: &mut impl Write,
-    stderr: &mut impl Write,
-    report: &auth::LogoutReport,
+fn finish_logout<W: Write, E: Write>(
+    output: &mut output::OutputSession<'_, W, E>,
+    response: &response::Response<'_, auth::LogoutReport>,
 ) -> Result<(), AppError> {
-    write_and_flush_auth_output(stdout, stderr, |stdout, stderr| {
-        output::write_logout_report(stdout, stderr, report)
-    })?;
+    let report = response.source();
     match report.failure_kind() {
-        None => Ok(()),
-        Some(kind) => Err(AppError::AuthLogoutIncomplete { kind }),
+        None => {
+            output.mark_completed();
+            output.write_success(
+                response,
+                output::OutputClass::AuthState,
+                |stdout, stderr, response| output::write_logout_report(stdout, stderr, response),
+            )
+        }
+        Some(kind) => {
+            output.write_partial(response, |stdout, stderr, response| {
+                output::write_logout_report(stdout, stderr, response)
+            })?;
+            Err(AppError::AuthLogoutIncomplete { kind })
+        }
     }
-}
-
-fn write_and_flush_auth_output<W, E>(
-    stdout: &mut W,
-    stderr: &mut E,
-    write_output: impl FnOnce(&mut W, &mut E) -> io::Result<()>,
-) -> Result<(), AppError>
-where
-    W: Write,
-    E: Write,
-{
-    write_output(stdout, stderr).map_err(|source| AppError::AuthStateOutput { source })?;
-
-    let stdout_result = stdout.flush();
-    let stderr_result = stderr.flush();
-    stdout_result
-        .and(stderr_result)
-        .map_err(|source| AppError::AuthStateOutput { source })
 }
 
 #[cfg(test)]

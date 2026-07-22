@@ -53,6 +53,22 @@ impl ErrorCategory {
             | Self::Internal => 1,
         }
     }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Usage => "usage",
+            Self::Cancelled => "cancelled",
+            Self::Credential => "credential",
+            Self::Authentication => "authentication",
+            Self::Network => "network",
+            Self::Timeout => "timeout",
+            Self::Api => "api",
+            Self::ApiContract => "api_contract",
+            Self::AmbiguousWrite => "ambiguous_write",
+            Self::Internal => "internal",
+        }
+    }
 }
 
 #[derive(Debug, Error)]

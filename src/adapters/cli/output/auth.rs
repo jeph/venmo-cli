@@ -6,6 +6,7 @@ use crate::features::auth::{
 };
 use crate::shared::CredentialFormat;
 
+use super::super::response::HumanSource;
 use super::TimestampFormatter;
 use super::shared::sanitize_terminal_text;
 
@@ -20,8 +21,9 @@ pub(crate) fn write_login_result<W: Write>(writer: &mut W, result: &LoginResult)
 pub(crate) fn write_password_login_report<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
-    report: &PasswordLoginReport,
+    response: &impl HumanSource<PasswordLoginReport>,
 ) -> io::Result<()> {
+    let report = response.human_source();
     write_login_result(stdout, report.login())?;
     if report.login().disposition() == LoginDisposition::ReplacedExistingCredential {
         writeln!(
@@ -44,9 +46,10 @@ pub(crate) fn write_password_login_report<W: Write, E: Write>(
 
 pub(crate) fn write_auth_status<W: Write>(
     writer: &mut W,
-    status: &AuthStatus,
+    response: &impl HumanSource<AuthStatus>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    let status = response.human_source();
     let saved_at = timestamps.format(status.saved_at())?;
     let display_name = status.account().display_name().unwrap_or("(not provided)");
     let format = match status.credential_format() {
@@ -77,8 +80,9 @@ pub(crate) fn write_auth_status<W: Write>(
 pub(crate) fn write_logout_report<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
-    report: &LogoutReport,
+    response: &impl HumanSource<LogoutReport>,
 ) -> io::Result<()> {
+    let report = response.human_source();
     match report.local() {
         LocalDeletionOutcome::Deleted => {
             writeln!(stdout, "Removed the local Venmo credential.")?;

@@ -3,16 +3,17 @@ use std::io::{self, Write};
 use tabled::builder::Builder;
 
 use crate::features::activity::comment_remove::{
-    ActivityCommentRemovalResult, PreparedActivityCommentRemoval,
+    ActivityCommentRemovalPlan, ActivityCommentRemovalResult,
 };
 use crate::features::activity::social::{
-    ActivitySocialAction, ActivitySocialMutationResult, PreparedActivitySocialMutation,
+    ActivitySocialAction, ActivitySocialMutationResult, ActivitySocialPlan,
 };
 use crate::features::activity::{
     ActivityBeforeId, ActivityComment, ActivityCommentListResult, ActivityCounterparty,
     ActivityInfoResult, ActivityLikeState, ActivityListResult,
 };
 
+use super::super::response::HumanSource;
 use super::TimestampFormatter;
 use super::shared::{sanitize_terminal_text, user_label, write_table};
 
@@ -21,9 +22,10 @@ const ACTIVITY_INFO_COMMENT_LIMIT: usize = 5;
 pub(crate) fn write_activity_list<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
-    result: &ActivityListResult,
+    response: &impl HumanSource<ActivityListResult>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    let result = response.human_source();
     if let Some(subject) = result.subject() {
         writeln!(stdout, "Activity for {}", subject.username())?;
         writeln!(
@@ -103,9 +105,10 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
 
 pub(crate) fn write_activity_info<W: Write>(
     writer: &mut W,
-    result: &ActivityInfoResult,
+    response: &impl HumanSource<ActivityInfoResult>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    let result = response.human_source();
     let activity = result.activity();
     let timestamp = timestamps.format(activity.occurred_at())?;
     writeln!(
@@ -236,9 +239,10 @@ pub(crate) fn write_activity_info<W: Write>(
 pub(crate) fn write_activity_comments<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
-    result: &ActivityCommentListResult,
+    response: &impl HumanSource<ActivityCommentListResult>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(
         stdout,
         "Comments for activity {}",
@@ -289,10 +293,10 @@ fn write_activity_comment(
 
 pub(crate) fn write_activity_social_details(
     writer: &mut impl Write,
-    prepared: &PreparedActivitySocialMutation,
+    response: &impl HumanSource<ActivitySocialPlan>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
-    let plan = prepared.plan();
+    let plan = response.human_source();
     let activity = plan.activity();
     writeln!(writer, "Activity social details:")?;
     writeln!(writer, "  Action: {}", plan.action().label())?;
@@ -334,14 +338,15 @@ pub(crate) fn write_activity_social_details(
 
 pub(crate) fn write_activity_comment_removal_details(
     writer: &mut impl Write,
-    prepared: &PreparedActivityCommentRemoval,
+    response: &impl HumanSource<ActivityCommentRemovalPlan>,
 ) -> io::Result<()> {
+    let plan = response.human_source();
     writeln!(writer, "Activity comment removal details:")?;
     writeln!(writer, "  Action: remove activity comment")?;
     writeln!(
         writer,
         "  Comment ID: {}",
-        sanitize_terminal_text(prepared.plan().comment_id().as_str())
+        sanitize_terminal_text(plan.comment_id().as_str())
     )?;
     writeln!(
         writer,
@@ -356,8 +361,9 @@ pub(crate) fn write_activity_comment_removal_details(
 
 pub(crate) fn write_activity_comment_removal_result(
     writer: &mut impl Write,
-    result: &ActivityCommentRemovalResult,
+    response: &impl HumanSource<ActivityCommentRemovalResult>,
 ) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(writer, "Action: remove activity comment")?;
     writeln!(
         writer,
@@ -373,8 +379,9 @@ pub(crate) fn write_activity_comment_removal_result(
 
 pub(crate) fn write_activity_social_result(
     writer: &mut impl Write,
-    result: &ActivitySocialMutationResult,
+    response: &impl HumanSource<ActivitySocialMutationResult>,
 ) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(writer, "Action: {}", result.plan().action().label())?;
     writeln!(
         writer,

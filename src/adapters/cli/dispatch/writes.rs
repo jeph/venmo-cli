@@ -29,8 +29,7 @@ use super::super::args::{
     AcceptArgs, CancelArgs, DeclineArgs, FriendAddArgs, FriendRemoveArgs, PayUserArgs, RequestArgs,
     TransferOutArgs,
 };
-use super::super::{error::AppError, output};
-use super::write_and_flush;
+use super::super::{error::AppError, output, response};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_pay_with<R, A, G, P, W, E, M, S>(
@@ -39,8 +38,7 @@ pub(super) async fn run_pay_with<R, A, G, P, W, E, M, S>(
     api: &A,
     generator: &G,
     prompt: &P,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -73,17 +71,30 @@ where
         options,
     )
     .await?;
-    write_and_flush(stderr, &prepared, output::write_pay_details)?;
-    if args.dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::pay_plan(prepared.plan());
+        session.write_preflight(
+            &plan,
+            preflight_mode(args.yes, args.dry_run),
+            |stderr, plan| output::write_pay_details(stderr, plan),
+        )?;
+        if args.dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = pay::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result =
         protect_with_interruption(pay::execute(api, prompt, authorized), interruption).await??;
-    write_and_flush(stdout, &result, output::write_pay_result)
-        .map_err(|source| AppError::FinancialResultOutput { source })?;
-    Ok(())
+    session.mark_completed();
+    let response = response::pay_result(&result);
+    session.write_success(
+        &response,
+        output::OutputClass::FinancialMutation,
+        |stdout, _stderr, response| output::write_pay_result(stdout, response),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -93,8 +104,7 @@ pub(super) async fn run_request_create<R, A, G, P, W, E, M, S>(
     api: &A,
     generator: &G,
     prompt: &P,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -118,20 +128,33 @@ where
         args.visibility.into(),
     )
     .await?;
-    write_and_flush(stderr, &prepared, output::write_request_create_details)?;
-    if args.dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::request_create_plan(prepared.plan());
+        session.write_preflight(
+            &plan,
+            preflight_mode(args.yes, args.dry_run),
+            |stderr, plan| output::write_request_create_details(stderr, plan),
+        )?;
+        if args.dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = request_create::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result = protect_with_interruption(
         request_create::execute(api, prompt, authorized),
         interruption,
     )
     .await??;
-    write_and_flush(stdout, &result, output::write_request_create_result)
-        .map_err(|source| AppError::FinancialResultOutput { source })?;
-    Ok(())
+    session.mark_completed();
+    let response = response::request_create_result(&result);
+    session.write_success(
+        &response,
+        output::OutputClass::FinancialMutation,
+        |stdout, _stderr, response| output::write_request_create_result(stdout, response),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -141,8 +164,7 @@ pub(super) async fn run_accept_with<R, A, P, W, E, M, S>(
     api: &A,
     prompt: &P,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -171,19 +193,31 @@ where
         args.protect,
     )
     .await?;
-    write_and_flush(stderr, &prepared, |writer, prepared| {
-        output::write_accept_details(writer, prepared, timestamps)
-    })?;
-    if args.dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::accept_plan(prepared.plan())?;
+        session.write_preflight(
+            &plan,
+            preflight_mode(args.yes, args.dry_run),
+            |stderr, plan| output::write_accept_details(stderr, plan, timestamps),
+        )?;
+        if args.dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = accept::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result =
         protect_with_interruption(accept::execute(api, prompt, authorized), interruption).await??;
-    write_and_flush(stdout, &result, output::write_accept_result)
+    session.mark_completed();
+    let response = response::accept_result(&result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
-    Ok(())
+    session.write_success(
+        &response,
+        output::OutputClass::FinancialMutation,
+        |stdout, _stderr, response| output::write_accept_result(stdout, response),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -193,8 +227,7 @@ pub(super) async fn run_decline_with<R, A, P, W, E, M, S>(
     api: &A,
     prompt: &P,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -208,19 +241,31 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = decline::prepare(store, api, &args.request_id).await?;
-    write_and_flush(stderr, &prepared, |writer, prepared| {
-        output::write_decline_details(writer, prepared, timestamps)
-    })?;
-    if args.dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::decline_plan(prepared.plan())?;
+        session.write_preflight(
+            &plan,
+            preflight_mode(args.yes, args.dry_run),
+            |stderr, plan| output::write_decline_details(stderr, plan, timestamps),
+        )?;
+        if args.dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = decline::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result =
         protect_with_interruption(decline::execute(api, authorized), interruption).await??;
-    write_and_flush(stdout, &result, output::write_decline_result)
+    session.mark_completed();
+    let response = response::decline_result(&result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
-    Ok(())
+    session.write_success(
+        &response,
+        output::OutputClass::FinancialMutation,
+        |stdout, _stderr, response| output::write_decline_result(stdout, response),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -230,8 +275,7 @@ pub(super) async fn run_cancel_with<R, A, P, W, E, M, S>(
     api: &A,
     prompt: &P,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -245,19 +289,31 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = cancel::prepare(store, api, &args.request_id).await?;
-    write_and_flush(stderr, &prepared, |writer, prepared| {
-        output::write_cancel_details(writer, prepared, timestamps)
-    })?;
-    if args.dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::cancel_plan(prepared.plan())?;
+        session.write_preflight(
+            &plan,
+            preflight_mode(args.yes, args.dry_run),
+            |stderr, plan| output::write_cancel_details(stderr, plan, timestamps),
+        )?;
+        if args.dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = cancel::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result =
         protect_with_interruption(cancel::execute(api, authorized), interruption).await??;
-    write_and_flush(stdout, &result, output::write_cancel_result)
+    session.mark_completed();
+    let response = response::cancel_result(&result)
         .map_err(|source| AppError::FinancialResultOutput { source })?;
-    Ok(())
+    session.write_success(
+        &response,
+        output::OutputClass::FinancialMutation,
+        |stdout, _stderr, response| output::write_cancel_result(stdout, response),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -267,8 +323,7 @@ pub(super) async fn run_transfer_out_with<R, A, P, W, E, M, S>(
     api: &A,
     prompt: &P,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -282,19 +337,31 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = transfer_out::prepare(store, api, args.amount.into(), args.speed.into()).await?;
-    write_and_flush(stderr, &prepared, output::write_transfer_out_details)?;
-    if args.dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::transfer_out_plan(prepared.plan());
+        session.write_preflight(
+            &plan,
+            preflight_mode(args.yes, args.dry_run),
+            |stderr, plan| output::write_transfer_out_details(stderr, plan),
+        )?;
+        if args.dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = transfer_out::authorize(prompt, prepared, args.yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result =
         protect_with_interruption(transfer_out::execute(api, authorized), interruption).await??;
-    write_and_flush(stdout, &result, |writer, result| {
-        output::write_transfer_out_result(writer, result, timestamps)
-    })
-    .map_err(|source| AppError::FinancialResultOutput { source })?;
-    Ok(())
+    session.mark_completed();
+    let response = response::transfer_out_result(&result)
+        .map_err(|source| AppError::FinancialResultOutput { source })?;
+    session.write_success(
+        &response,
+        output::OutputClass::FinancialMutation,
+        |stdout, _stderr, response| output::write_transfer_out_result(stdout, response, timestamps),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -303,8 +370,7 @@ pub(super) async fn run_friend_add_with<R, A, P, W, E, M, S>(
     store: &R,
     api: &A,
     prompt: &P,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -325,8 +391,7 @@ where
         store,
         api,
         prompt,
-        stdout,
-        stderr,
+        session,
         make_interruption,
     )
     .await
@@ -342,8 +407,7 @@ pub(super) async fn run_activity_social_with<R, A, P, W, E, M, S>(
     api: &A,
     prompt: &P,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -356,20 +420,32 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = activity_social::prepare(store, api, activity_id, intent).await?;
-    write_and_flush(stderr, &prepared, |writer, prepared| {
-        output::write_activity_social_details(writer, prepared, timestamps)
-    })?;
-    if dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::activity_social_plan(prepared.plan())?;
+        session.write_preflight(
+            &plan,
+            preflight_mode(assume_yes, dry_run),
+            |stderr, plan| output::write_activity_social_details(stderr, plan, timestamps),
+        )?;
+        if dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = activity_social::authorize(prompt, prepared, assume_yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result =
         protect_state_with_interruption(activity_social::execute(api, authorized), interruption)
             .await??;
-    write_and_flush(stdout, &result, output::write_activity_social_result)
+    session.mark_completed();
+    let response = response::activity_social_result(&result)
         .map_err(|source| AppError::StateMutationResultOutput { source })?;
-    Ok(())
+    session.write_success(
+        &response,
+        output::OutputClass::StateMutation,
+        |stdout, _stderr, response| output::write_activity_social_result(stdout, response),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -380,8 +456,7 @@ pub(super) async fn run_activity_comment_remove_with<R, A, P, W, E, M, S>(
     store: &R,
     api: &A,
     prompt: &P,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -394,26 +469,33 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = activity_comment_remove::prepare(store, comment_id)?;
-    write_and_flush(stderr, &prepared, |writer, prepared| {
-        output::write_activity_comment_removal_details(writer, prepared)
-    })?;
-    if dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::activity_comment_removal_plan(prepared.plan());
+        session.write_preflight(
+            &plan,
+            preflight_mode(assume_yes, dry_run),
+            |stderr, plan| output::write_activity_comment_removal_details(stderr, plan),
+        )?;
+        if dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = activity_comment_remove::authorize(prompt, prepared, assume_yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result = protect_state_with_interruption(
         activity_comment_remove::execute(api, authorized),
         interruption,
     )
     .await??;
-    write_and_flush(
-        stdout,
-        &result,
-        output::write_activity_comment_removal_result,
+    session.mark_completed();
+    let response = response::activity_comment_removal_result(&result);
+    session.write_success(
+        &response,
+        output::OutputClass::StateMutation,
+        |stdout, _stderr, response| output::write_activity_comment_removal_result(stdout, response),
     )
-    .map_err(|source| AppError::StateMutationResultOutput { source })?;
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -422,8 +504,7 @@ pub(super) async fn run_friend_remove_with<R, A, P, W, E, M, S>(
     store: &R,
     api: &A,
     prompt: &P,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -444,8 +525,7 @@ where
         store,
         api,
         prompt,
-        stdout,
-        stderr,
+        session,
         make_interruption,
     )
     .await
@@ -460,8 +540,7 @@ async fn run_friendship_mutation_with<R, A, P, W, E, M, S>(
     store: &R,
     api: &A,
     prompt: &P,
-    stdout: &mut W,
-    stderr: &mut E,
+    session: &mut output::OutputSession<'_, W, E>,
     make_interruption: M,
 ) -> Result<(), AppError>
 where
@@ -475,23 +554,52 @@ where
     S: Future<Output = Result<(), AppError>>,
 {
     let prepared = friendship::prepare(store, api, username, intent).await?;
-    write_and_flush(stderr, &prepared, output::write_friendship_details)?;
-    if dry_run {
-        return write_dry_run_complete(stdout);
+    {
+        let plan = response::friendship_plan(prepared.plan());
+        session.write_preflight(
+            &plan,
+            preflight_mode(assume_yes, dry_run),
+            |stderr, plan| output::write_friendship_details(stderr, plan),
+        )?;
+        if dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
     }
     let authorized = friendship::authorize(prompt, prepared, assume_yes)?;
     let interruption = make_interruption()?;
+    session.mark_write_started();
     let result =
         protect_state_with_interruption(friendship::execute(api, authorized), interruption)
             .await??;
-    write_and_flush(stdout, &result, output::write_friendship_result)
-        .map_err(|source| AppError::StateMutationResultOutput { source })?;
-    Ok(())
+    session.mark_completed();
+    let response = response::friendship_result(&result);
+    session.write_success(
+        &response,
+        output::OutputClass::StateMutation,
+        |stdout, _stderr, response| output::write_friendship_result(stdout, response),
+    )
 }
 
-fn write_dry_run_complete(writer: &mut impl Write) -> Result<(), AppError> {
-    write_and_flush(writer, &(), output::write_dry_run_complete)
-        .map_err(|source| AppError::CommandOutput { source })
+fn write_dry_run_complete<W: Write, E: Write, T: ?Sized>(
+    session: &mut output::OutputSession<'_, W, E>,
+    response: &response::Response<'_, T>,
+) -> Result<(), AppError> {
+    session.write_success(
+        response,
+        output::OutputClass::DryRun,
+        |stdout, _stderr, response| output::write_dry_run_complete(stdout, response),
+    )
+}
+
+const fn preflight_mode(assume_yes: bool, dry_run: bool) -> output::PreflightMode {
+    if dry_run {
+        output::PreflightMode::DryRun
+    } else if assume_yes {
+        output::PreflightMode::AssumeYes
+    } else {
+        output::PreflightMode::Prompt
+    }
 }
 
 #[cfg(unix)]
@@ -590,6 +698,21 @@ where
         },
         outcome = &mut future => Ok(outcome),
     }
+}
+
+#[cfg(test)]
+fn human_output<'a, W: Write, E: Write>(
+    command: super::super::CommandId,
+    stdout: &'a mut W,
+    stderr: &'a mut E,
+) -> output::OutputSession<'a, W, E> {
+    output::OutputSession::new(
+        super::super::OutputFormat::Human,
+        command,
+        false,
+        stdout,
+        stderr,
+    )
 }
 
 #[cfg(test)]

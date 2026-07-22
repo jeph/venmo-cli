@@ -347,16 +347,31 @@ impl RequestHarness {
     }
 
     async fn execute_with_stderr<E: Write>(&mut self, stderr: &mut E) -> Result<(), AppError> {
+        self.execute_with_format(stderr, super::super::OutputFormat::Human)
+            .await
+    }
+
+    async fn execute_with_format<E: Write>(
+        &mut self,
+        stderr: &mut E,
+        format: super::super::OutputFormat,
+    ) -> Result<(), AppError> {
         let transcript = Rc::clone(&self.transcript);
         let interruption = self.interruption;
+        let mut output = output::OutputSession::new(
+            format,
+            crate::adapters::cli::CommandId::RequestsCreate,
+            false,
+            &mut self.stdout,
+            stderr,
+        );
         run_request_create(
             self.args.clone(),
             &self.reader,
             &self.api,
             &FixedRequestIdGenerator,
             &UnusedRequestPrompt,
-            &mut self.stdout,
-            stderr,
+            &mut output,
             move || {
                 transcript
                     .borrow_mut()
@@ -388,6 +403,50 @@ impl RequestHarness {
     fn output_text(&self) -> String {
         String::from_utf8_lossy(&self.stdout.state.bytes).into_owned()
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn request_json_completed_and_dry_run_outputs_are_safe_and_explicit() -> TestResult {
+    let mut completed = RequestHarness::new(RequestSetup::successful()?, RequestState::default())?;
+    let mut completed_stderr = Vec::new();
+    completed
+        .execute_with_format(&mut completed_stderr, super::super::OutputFormat::Json)
+        .await?;
+    assert!(completed_stderr.is_empty());
+    let completed_text = String::from_utf8(completed.stdout.state.bytes.clone())?;
+    assert!(!completed_text.contains("synthetic-token"));
+    assert!(!completed_text.contains("synthetic-device"));
+    let completed_json: serde_json::Value = serde_json::from_str(&completed_text)?;
+    assert_eq!(completed_json["command"], "requests.create");
+    assert_eq!(completed_json["ok"], true);
+    assert_eq!(completed_json["data"]["outcome"], "completed");
+    assert_eq!(completed_json["data"]["performed"], true);
+    assert_eq!(completed_json["data"]["plan"]["amount"]["amount"], "0.01");
+    assert_eq!(completed_json["data"]["plan"]["amount"]["currency"], "USD");
+    assert_eq!(completed_json["data"]["plan"]["visibility"], "private");
+    assert_eq!(completed_json["data"]["plan"]["automatic_retries"], false);
+    assert_eq!(completed_json["data"]["result"]["id"], "request-1");
+
+    let mut dry_setup = RequestSetup::successful()?;
+    dry_setup.args.yes = false;
+    dry_setup.args.dry_run = true;
+    let mut dry_run = RequestHarness::new(dry_setup, RequestState::default())?;
+    let mut dry_stderr = Vec::new();
+    dry_run
+        .execute_with_format(&mut dry_stderr, super::super::OutputFormat::Json)
+        .await?;
+    assert!(dry_stderr.is_empty());
+    assert!(!dry_run.transcript.borrow().iter().any(|call| matches!(
+        call,
+        RequestCall::InstallInterruption | RequestCall::CreateRequest { .. }
+    )));
+    let dry_json: serde_json::Value = serde_json::from_slice(&dry_run.stdout.state.bytes)?;
+    assert_eq!(dry_json["command"], "requests.create");
+    assert_eq!(dry_json["data"]["outcome"], "dry_run");
+    assert_eq!(dry_json["data"]["performed"], false);
+    assert_eq!(dry_json["data"]["result"], serde_json::Value::Null);
+    assert_eq!(dry_json["data"]["plan"]["amount"]["amount"], "0.01");
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

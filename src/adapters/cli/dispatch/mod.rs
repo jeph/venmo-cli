@@ -1,12 +1,12 @@
 use std::future::Future;
 use std::io::{self, Write};
 
-use super::args::{
-    ActivityCommentsOperation, ActivityOperation, AuthArgs, AuthOperation, Cli, Command,
-    FriendsOperation, PayOperation, RequestsOperation, TransferOperation, UsersOperation,
-};
+use super::args::{AuthArgs, AuthOperation, Cli, Command};
+use super::command::OutputFormat;
 use super::error::AppError;
+use super::failure::CliFailure;
 use super::logging::InitializationError;
+use super::output::OutputSession;
 use super::prompt::TerminalCapabilities;
 use crate::adapters::credentials::{CredentialAccessPurpose, CredentialStore};
 use crate::features::auth::{LoginError, PromptError};
@@ -17,7 +17,7 @@ mod reads;
 mod writes;
 
 /// Runs production command composition with process terminal state.
-pub async fn run<W, E>(cli: Cli, stdout: &mut W, stderr: &mut E) -> Result<(), AppError>
+pub async fn run<W, E>(cli: Cli, stdout: &mut W, stderr: &mut E) -> Result<(), CliFailure>
 where
     W: Write,
     E: Write,
@@ -29,8 +29,8 @@ where
         stderr,
         terminal_capabilities,
         super::logging::initialize,
-        move |command, stdout, stderr| {
-            composition::run_production(command, stdout, stderr, terminal_capabilities)
+        move |command, format, stdout, stderr| {
+            composition::run_production(command, format, stdout, stderr, terminal_capabilities)
         },
     )
     .await
@@ -43,22 +43,31 @@ async fn run_production_with<'a, W, E, I, X, F>(
     terminal_capabilities: TerminalCapabilities,
     initialize_logging: I,
     execute: X,
-) -> Result<(), AppError>
+) -> Result<(), CliFailure>
 where
     W: Write + 'a,
     E: Write + 'a,
     I: FnOnce(bool) -> Result<(), InitializationError> + 'a,
-    X: FnOnce(Command, &'a mut W, &'a mut E) -> F + 'a,
-    F: Future<Output = Result<(), AppError>> + 'a,
+    X: FnOnce(Command, OutputFormat, &'a mut W, &'a mut E) -> F + 'a,
+    F: Future<Output = Result<(), CliFailure>> + 'a,
 {
     let debug = cli.debug;
+    let format = cli.output_format();
     run_with(
         cli,
         stdout,
         stderr,
         terminal_capabilities,
         move |command, stdout, stderr| {
-            execute_after_logging(debug, command, stdout, stderr, initialize_logging, execute)
+            execute_after_logging(
+                debug,
+                format,
+                command,
+                stdout,
+                stderr,
+                initialize_logging,
+                execute,
+            )
         },
     )
     .await
@@ -66,23 +75,31 @@ where
 
 async fn execute_after_logging<'a, W, E, I, X, F>(
     debug: bool,
+    format: OutputFormat,
     command: Command,
     stdout: &'a mut W,
     stderr: &'a mut E,
     initialize_logging: I,
     execute: X,
-) -> Result<(), AppError>
+) -> Result<(), CliFailure>
 where
     W: Write + 'a,
     E: Write + 'a,
     I: FnOnce(bool) -> Result<(), InitializationError> + 'a,
-    X: FnOnce(Command, &'a mut W, &'a mut E) -> F + 'a,
-    F: Future<Output = Result<(), AppError>> + 'a,
+    X: FnOnce(Command, OutputFormat, &'a mut W, &'a mut E) -> F + 'a,
+    F: Future<Output = Result<(), CliFailure>> + 'a,
 {
-    initialize_logging(debug).map_err(|source| AppError::LoggingInitialization { source })?;
+    let command_id = command.id();
+    initialize_logging(debug).map_err(|source| {
+        CliFailure::plain(
+            AppError::LoggingInitialization { source },
+            command_id,
+            format,
+        )
+    })?;
     let command_name = debug_command_name(&command);
     trace_command_started(command_name);
-    let result = execute(command, stdout, stderr).await;
+    let result = execute(command, format, stdout, stderr).await;
     trace_command_result(command_name, &result);
     result
 }
@@ -97,18 +114,24 @@ async fn run_with<'a, W, E, X, F>(
     stderr: &'a mut E,
     terminal_capabilities: TerminalCapabilities,
     execute: X,
-) -> Result<(), AppError>
+) -> Result<(), CliFailure>
 where
     W: Write + 'a,
     E: Write + 'a,
     X: FnOnce(Command, &'a mut W, &'a mut E) -> F,
-    F: Future<Output = Result<(), AppError>> + 'a,
+    F: Future<Output = Result<(), CliFailure>> + 'a,
 {
+    let format = cli.output_format();
     match cli.command {
         Command::Auth(args)
             if auth_requires_interactive_terminal(&args) && !terminal_capabilities.can_prompt() =>
         {
-            Err(LoginError::Prompt(PromptError::NotInteractive).into())
+            let command = Command::Auth(args);
+            Err(CliFailure::plain(
+                LoginError::Prompt(PromptError::NotInteractive).into(),
+                command.id(),
+                format,
+            ))
         }
         command => execute(command, stdout, stderr).await,
     }
@@ -125,7 +148,7 @@ pub fn handle_runtime_initialization_failure<W, E>(
     stdout: &mut W,
     stderr: &mut E,
     source: io::Error,
-) -> Result<(), AppError>
+) -> Result<(), CliFailure>
 where
     W: Write,
     E: Write,
@@ -147,39 +170,57 @@ fn handle_runtime_initialization_failure_with<W, E, I>(
     terminal_capabilities: TerminalCapabilities,
     source: io::Error,
     initialize_logging: I,
-) -> Result<(), AppError>
+) -> Result<(), CliFailure>
 where
     W: Write,
     E: Write,
     I: FnOnce(bool) -> Result<(), InitializationError>,
 {
+    let format = cli.output_format();
     let command = match cli.command {
         Command::Auth(args)
             if auth_requires_interactive_terminal(&args) && !terminal_capabilities.can_prompt() =>
         {
-            return Err(LoginError::Prompt(PromptError::NotInteractive).into());
+            let command = Command::Auth(args);
+            return Err(CliFailure::plain(
+                LoginError::Prompt(PromptError::NotInteractive).into(),
+                command.id(),
+                format,
+            ));
         }
         command => command,
     };
 
-    initialize_logging(cli.debug).map_err(|source| AppError::LoggingInitialization { source })?;
+    let command_id = command.id();
+    initialize_logging(cli.debug).map_err(|source| {
+        CliFailure::plain(
+            AppError::LoggingInitialization { source },
+            command_id,
+            format,
+        )
+    })?;
     let command_name = debug_command_name(&command);
     trace_command_started(command_name);
     let failure = AppError::RuntimeInitialization { source };
+    let mut output = OutputSession::new(
+        format,
+        command_id,
+        terminal_capabilities.can_prompt(),
+        stdout,
+        stderr,
+    );
     let result = match command {
         Command::Auth(AuthArgs {
             operation: AuthOperation::Logout,
-        }) => {
-            let store =
-                CredentialStore::production(CredentialAccessPurpose::Logout).map_err(|source| {
-                    AppError::CredentialStoreInitialization {
-                        source: Box::new(source),
-                    }
-                })?;
-            auth::run_logout_local_with(&store, stdout, stderr)
-        }
+        }) => match CredentialStore::production(CredentialAccessPurpose::Logout) {
+            Ok(store) => auth::run_logout_local_with(&store, &mut output),
+            Err(source) => Err(AppError::CredentialStoreInitialization {
+                source: Box::new(source),
+            }),
+        },
         _ => Err(failure),
     };
+    let result = result.map_err(|error| output.into_failure(error));
     trace_command_result(command_name, &result);
     result
 }
@@ -188,75 +229,20 @@ fn trace_command_started(command_name: &'static str) {
     tracing::debug!(cli.command = command_name, "CLI command started");
 }
 
-fn trace_command_result(command_name: &'static str, result: &Result<(), AppError>) {
+fn trace_command_result(command_name: &'static str, result: &Result<(), CliFailure>) {
     match result {
         Ok(()) => tracing::debug!(cli.command = command_name, "CLI command completed"),
-        Err(error) => tracing::debug!(
+        Err(failure) => tracing::debug!(
             cli.command = command_name,
-            error.category = ?error.category(),
-            error.exit_code = error.exit_code(),
+            error.category = ?failure.error().category(),
+            error.exit_code = failure.exit_code(),
             "CLI command failed"
         ),
     }
 }
 
 fn debug_command_name(command: &Command) -> &'static str {
-    match command {
-        Command::Auth(args) => match args.operation {
-            AuthOperation::Login => "auth.login",
-            AuthOperation::Logout => "auth.logout",
-            AuthOperation::Status => "auth.status",
-        },
-        Command::Pay(args) => match args.operation {
-            PayOperation::Options => "pay.options",
-            PayOperation::User(_) => "pay.user",
-        },
-        Command::Friends(args) => match args.operation {
-            FriendsOperation::List(_) => "friends.list",
-            FriendsOperation::Add(_) => "friends.add",
-            FriendsOperation::Remove(_) => "friends.remove",
-        },
-        Command::Users(args) => match args.operation {
-            UsersOperation::Search(_) => "users.search",
-            UsersOperation::Info(_) => "users.info",
-        },
-        Command::Balance => "balance",
-        Command::Activity(args) => match &args.operation {
-            ActivityOperation::List(_) => "activity.list",
-            ActivityOperation::Info(_) => "activity.info",
-            ActivityOperation::Like(_) => "activity.like",
-            ActivityOperation::Unlike(_) => "activity.unlike",
-            ActivityOperation::Comments(args) => match args.operation {
-                ActivityCommentsOperation::List(_) => "activity.comments.list",
-                ActivityCommentsOperation::Add(_) => "activity.comments.add",
-                ActivityCommentsOperation::Remove(_) => "activity.comments.remove",
-            },
-        },
-        Command::Requests(args) => match args.operation {
-            RequestsOperation::List(_) => "requests.list",
-            RequestsOperation::Create(_) => "requests.create",
-            RequestsOperation::Accept(_) => "requests.accept",
-            RequestsOperation::Decline(_) => "requests.decline",
-            RequestsOperation::Cancel(_) => "requests.cancel",
-            RequestsOperation::Info(_) => "requests.info",
-        },
-        Command::Transfer(args) => match args.operation {
-            TransferOperation::Options => "transfer.options",
-            TransferOperation::Out(_) => "transfer.out",
-        },
-    }
-}
-
-fn write_and_flush<W, T>(
-    writer: &mut W,
-    value: &T,
-    write_output: impl FnOnce(&mut W, &T) -> io::Result<()>,
-) -> io::Result<()>
-where
-    W: Write,
-{
-    write_output(writer, value)?;
-    writer.flush()
+    command.id().as_str()
 }
 
 #[cfg(test)]

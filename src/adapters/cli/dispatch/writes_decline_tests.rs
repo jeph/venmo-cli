@@ -28,7 +28,7 @@ use crate::shared::{
     LoadedCredential, Money, UserId, Username,
 };
 
-use super::run_decline_with;
+use super::{human_output, run_decline_with};
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 type Transcript = Rc<RefCell<Vec<DeclineCall>>>;
@@ -543,14 +543,18 @@ impl DeclineHarness {
         let script = Rc::clone(&self.script);
         let transcript = Rc::clone(&self.transcript);
         let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+        let mut output = human_output(
+            crate::adapters::cli::CommandId::RequestsDecline,
+            &mut self.stdout,
+            &mut self.stderr,
+        );
         run_decline_with(
             self.args.clone(),
             &self.reader,
             &self.api,
             &self.prompt,
             &timestamps,
-            &mut self.stdout,
-            &mut self.stderr,
+            &mut output,
             move || {
                 transcript
                     .borrow_mut()

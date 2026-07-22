@@ -1,8 +1,8 @@
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
-    ActivityCommentsOperation, ActivityOperation, AuthOperation, Cli, Command, PayOperation,
-    RequestDirectionArg, RequestsOperation, TransferAmountArg, TransferOperation, TransferSpeedArg,
-    UsersOperation, VisibilityArg,
+    ActivityCommentsOperation, ActivityOperation, AuthOperation, Cli, Command, OutputFormat,
+    PayOperation, RequestDirectionArg, RequestsOperation, TransferAmountArg, TransferOperation,
+    TransferSpeedArg, UsersOperation, VisibilityArg,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -410,6 +410,31 @@ fn optional_at_usernames_and_global_option_placement_are_supported() {
 
     let accept = Cli::try_parse_from(["venmo", "--debug", "requests", "accept", "request-123"]);
     assert!(accept.is_ok_and(|cli| cli.debug));
+
+    for arguments in [
+        &["venmo", "--json", "activity", "comments", "list", "story-1"][..],
+        &["venmo", "activity", "--json", "comments", "list", "story-1"][..],
+        &["venmo", "activity", "comments", "--json", "list", "story-1"][..],
+        &["venmo", "activity", "comments", "list", "story-1", "--json"][..],
+    ] {
+        let parsed = Cli::try_parse_from(arguments);
+        assert!(parsed.is_ok_and(|cli| {
+            cli.json
+                && cli.output_format() == OutputFormat::Json
+                && matches!(
+                    cli.command,
+                    Command::Activity(args)
+                        if matches!(
+                            &args.operation,
+                            ActivityOperation::Comments(comments)
+                                if matches!(
+                                    &comments.operation,
+                                    ActivityCommentsOperation::List(_)
+                                )
+                        )
+                )
+        }));
+    }
 }
 
 #[test]

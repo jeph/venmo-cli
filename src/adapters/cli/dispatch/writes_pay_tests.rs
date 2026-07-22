@@ -37,7 +37,7 @@ use crate::shared::{
     Username, Visibility,
 };
 
-use super::run_pay_with;
+use super::{human_output, run_pay_with};
 
 #[path = "writes_pay_tests/expectations.rs"]
 mod expectations;
@@ -716,14 +716,18 @@ impl PayHarness {
     async fn execute(&mut self) -> Result<(), AppError> {
         let script = Rc::clone(&self.script);
         let transcript = Rc::clone(&self.transcript);
+        let mut output = human_output(
+            crate::adapters::cli::CommandId::PayUser,
+            &mut self.stdout,
+            &mut self.stderr,
+        );
         run_pay_with(
             self.args.clone(),
             &self.reader,
             &self.api,
             &self.generator,
             &self.prompt,
-            &mut self.stdout,
-            &mut self.stderr,
+            &mut output,
             move || {
                 transcript.borrow_mut().push(PayCall::InstallInterruption);
                 let step = script

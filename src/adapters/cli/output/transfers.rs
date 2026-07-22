@@ -2,17 +2,19 @@ use std::io::{self, Write};
 
 use tabled::builder::Builder;
 
-use crate::features::transfers::model::{TransferOutAmount, TransferSpeed};
+use crate::features::transfers::model::{TransferOutAmount, TransferOutPlan, TransferSpeed};
 use crate::features::transfers::options::TransferOptionsResult;
-use crate::features::transfers::out::{PreparedTransferOut, TransferOutResult};
+use crate::features::transfers::out::TransferOutResult;
 
+use super::super::response::HumanSource;
 use super::TimestampFormatter;
 use super::shared::{sanitize_terminal_text, write_table};
 
 pub(crate) fn write_transfer_options<W: Write>(
     writer: &mut W,
-    result: &TransferOptionsResult,
+    response: &impl HumanSource<TransferOptionsResult>,
 ) -> io::Result<()> {
+    let result = response.human_source();
     let options = result.options();
     let mut builder = Builder::default();
     builder.push_record([
@@ -57,9 +59,9 @@ pub(crate) fn write_transfer_options<W: Write>(
 
 pub(crate) fn write_transfer_out_details<W: Write>(
     writer: &mut W,
-    prepared: &PreparedTransferOut,
+    response: &impl HumanSource<TransferOutPlan>,
 ) -> io::Result<()> {
-    let plan = prepared.plan();
+    let plan = response.human_source();
     let destination = plan.destination();
     writeln!(writer, "Transfer details:")?;
     writeln!(
@@ -99,9 +101,10 @@ pub(crate) fn write_transfer_out_details<W: Write>(
 
 pub(crate) fn write_transfer_out_result<W: Write>(
     writer: &mut W,
-    result: &TransferOutResult,
+    response: &impl HumanSource<TransferOutResult>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    let result = response.human_source();
     let requested_at = timestamps.format(result.created().requested_at())?;
     writeln!(
         writer,

@@ -38,7 +38,7 @@ use crate::shared::{
     LoadedCredential, Money, UserId, Username,
 };
 
-use super::run_accept_with;
+use super::{human_output, run_accept_with};
 
 #[path = "writes_accept_tests/expectations.rs"]
 mod expectations;
@@ -653,14 +653,18 @@ impl AcceptHarness {
         let script = Rc::clone(&self.script);
         let transcript = Rc::clone(&self.transcript);
         let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+        let mut output = human_output(
+            crate::adapters::cli::CommandId::RequestsAccept,
+            &mut self.stdout,
+            &mut self.stderr,
+        );
         run_accept_with(
             self.args.clone(),
             &self.reader,
             &self.api,
             &self.prompt,
             &timestamps,
-            &mut self.stdout,
-            &mut self.stderr,
+            &mut output,
             move || {
                 transcript
                     .borrow_mut()

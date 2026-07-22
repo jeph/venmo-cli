@@ -41,7 +41,9 @@ async fn payment_methods_handler_has_exact_typed_call_output_and_zero_flushes() 
     );
 
     // Execute once.
-    let result = run_payment_methods(&reader, &api, &mut stdout).await;
+    let mut stderr = Vec::new();
+    let mut output = human_output(CommandId::PayOptions, &mut stdout, &mut stderr);
+    let result = run_payment_methods(&reader, &api, &mut output).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {
@@ -91,7 +93,9 @@ async fn balance_handler_has_exact_typed_call_output_and_zero_flushes() -> TestR
     );
 
     // Execute once.
-    let result = run_balance(&reader, &api, &mut stdout).await;
+    let mut stderr = Vec::new();
+    let mut output = human_output(CommandId::Balance, &mut stdout, &mut stderr);
+    let result = run_balance(&reader, &api, &mut output).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {
@@ -104,5 +108,49 @@ async fn balance_handler_has_exact_typed_call_output_and_zero_flushes() -> TestR
     );
 
     assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn balance_json_is_exact_valid_and_contains_no_credentials() -> TestResult {
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::standard(Rc::clone(&transcript));
+    let api = BalanceFake {
+        responses: ResponseQueue::successful(Balance::new(
+            SignedUsdAmount::from_cents(1_234),
+            SignedUsdAmount::from_cents(-5),
+        )),
+        transcript: Rc::clone(&transcript),
+    };
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut output = OutputSession::new(
+        OutputFormat::Json,
+        CommandId::Balance,
+        false,
+        &mut stdout,
+        &mut stderr,
+    );
+
+    run_balance(&reader, &api, &mut output).await?;
+
+    assert!(stderr.is_empty());
+    assert_eq!(stdout.iter().filter(|byte| **byte == b'\n').count(), 1);
+    let text = String::from_utf8(stdout.clone())?;
+    assert!(!text.contains(TOKEN));
+    assert!(!text.contains(DEVICE));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&stdout)?,
+        serde_json::json!({
+            "command": "balance",
+            "ok": true,
+            "data": {
+                "balance": {
+                    "available": { "amount": "12.34", "currency": "USD" },
+                    "on_hold": { "amount": "-0.05", "currency": "USD" },
+                }
+            }
+        })
+    );
     Ok(())
 }

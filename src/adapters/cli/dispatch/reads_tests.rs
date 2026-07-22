@@ -14,7 +14,8 @@ use crate::adapters::cli::args::{
     FriendsListArgs, FriendsOperation, RequestsOperation, UsersOperation,
 };
 use crate::adapters::cli::error::ErrorCategory;
-use crate::adapters::cli::output::TimestampFormatter;
+use crate::adapters::cli::output::{OutputSession, TimestampFormatter};
+use crate::adapters::cli::{CommandId, OutputFormat};
 use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
     ActivityCounterparty, ActivityDetail, ActivityDirection, ActivityFeedKind, ActivityFeedScope,
@@ -59,6 +60,14 @@ const DEVICE: &str = "synthetic-read-device";
 
 fn timestamps() -> TimestampFormatter {
     TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC)
+}
+
+fn human_output<'a, W: io::Write, E: io::Write>(
+    command: CommandId,
+    stdout: &'a mut W,
+    stderr: &'a mut E,
+) -> OutputSession<'a, W, E> {
+    OutputSession::new(OutputFormat::Human, command, false, stdout, stderr)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

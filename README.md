@@ -224,6 +224,26 @@ Debug diagnostics are written to stderr and include bounded request timing, rout
 response-size, and sanitized error information. Credentials, raw request and response bodies,
 dynamic identifiers, usernames, notes, and amounts are omitted.
 
+### JSON output
+
+Pass the global `--json` flag before or after a subcommand to receive one compact, newline-terminated
+JSON object:
+
+```sh
+venmo --json balance
+venmo activity list --json
+venmo requests create @alice 12.50 "Dinner" --dry-run --json
+```
+
+Example:
+
+```console
+$ venmo balance --json
+{"command":"balance","ok":true,"data":{"balance":{"available":{"amount":"12.34","currency":"USD"},"on_hold":{"amount":"0.00","currency":"USD"}}}}
+```
+
+Successful results go to stdout. Failures go to stderr.
+
 ## Roadmap
 
 This project is currently **alpha** and will probably remain there for a while. The commands are
@@ -240,8 +260,6 @@ Planned work includes:
   users to retrieve and enter a browser `v_id` manually.
 - **Non-interactive OTP challenges.** Design a secure structured flow that lets scripts and
   LLM-based tools respond to SMS OTP challenges without an interactive terminal prompt.
-- **Structured output.** Add a `--json` flag to each command so output can be chained reliably by
-  scripts, automation, and LLM-based tools.
 - **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
   easier to scan while preserving important safety and recovery information.
 - **Windows support.** Add and validate native Windows builds, credential storage, terminal prompts,
