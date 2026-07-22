@@ -22,8 +22,8 @@ experience from the terminal:
   activity, manage friendships, like or unlike activity, and list, add, or remove comments.
 - **Balance and cash-out.** Check your wallet balance, inspect transfer eligibility, and transfer a
   fixed amount or all available funds to the selected standard bank destination.
-- **Native and security-conscious.** Prebuilt arm64 and x86_64 binaries require no runtime;
-  macOS releases are signed and notarized, credentials use the platform keyring when available, and
+- **Native and security-conscious.** Prebuilt arm64 and x86_64 binaries require no runtime. macOS
+  releases are signed and notarized, credentials use the platform keyring when available, and
   uncertain API outcomes fail closed instead of being guessed.
 
 ## Installation
@@ -127,7 +127,7 @@ venmo activity info <ACTIVITY_ID>
 ```
 
 `activity list` defaults to the active account. Pass `--user <USERNAME>` to list the activity
-visible to you for another personal profile; the username may include a leading `@`. Venmo privacy
+visible to you for another personal profile. The username may include a leading `@`. Venmo privacy
 settings determine which records are visible, and amounts are omitted from other-user activity.
 
 Like, unlike, and manage comments on visible activity:
@@ -141,7 +141,7 @@ venmo activity comments remove <COMMENT_ID>
 ```
 
 List commands print a continuation when another page is available. Pass that value back through
-the matching `--before-id` or `--offset` option; continuation types are not interchangeable.
+the matching `--before-id` or `--offset` option. Continuation types are not interchangeable.
 
 ### Transferring funds
 
@@ -154,7 +154,7 @@ venmo transfer out <AMOUNT_OR_ALL> [--speed standard]
 ```
 
 Use a positive dollar amount or the exact value `all`. The CLI supports standard cash-out to the
-unique eligible bank destination; instant transfers and manual destination selection are not
+unique eligible bank destination. Instant transfers and manual destination selection are not
 supported.
 
 ### Social features
@@ -168,7 +168,7 @@ venmo friends list [--user <USERNAME>] [--limit <N>] [--offset <N>]
 ```
 
 `friends list` defaults to the active account. Pass `--user <USERNAME>` to list the friends visible
-to you for another personal profile; the username may include a leading `@`. Venmo privacy settings
+to you for another personal profile. The username may include a leading `@`. Venmo privacy settings
 may hide some or all of that profile's friends.
 
 Manage friendships by exact username:
@@ -179,13 +179,13 @@ venmo friends remove <USERNAME>
 ```
 
 `friends add` sends a new request or accepts an incoming request according to the current
-relationship. `friends remove` removes an existing friend or cancels an outgoing request; it does
+relationship. `friends remove` removes an existing friend or cancels an outgoing request. It does
 not decline an incoming request.
 
 ### Mutating commands
 
 Every financial or social mutation displays its action details and requires confirmation that
-defaults to No. Pass `--yes` to skip only the final confirmation; validation and any available
+defaults to No. Pass `--yes` to skip only the final confirmation. Validation and any available
 preflight still run. Pass `--dry-run` instead to preview the action without performing the mutation
 or asking for confirmation. The two flags are mutually exclusive.
 
@@ -213,3 +213,30 @@ venmo activity list --debug
 Debug diagnostics are written to stderr and include bounded request timing, route, status, retry,
 response-size, and sanitized error information. Credentials, raw request and response bodies,
 dynamic identifiers, usernames, notes, and amounts are omitted.
+
+## Roadmap
+
+This project is currently **alpha** and will probably remain there for a while. The commands are
+tested to a reasonable degree, but broader user testing and issue reports are needed before the
+implementation can be considered stable. The OTP challenge (2FA) flows especially need more
+real-world validation.
+
+Planned work includes:
+
+- **Transfer in.** Add a command for moving money into Venmo once the private API contract can be
+  reverse engineered and validated with enough confidence. That endpoint has not yet been reliably
+  established.
+- **Simpler login.** Investigate a reliable way to establish a trusted device without requiring
+  users to retrieve and enter a browser `v_id` manually.
+- **Structured output.** Add a `--json` flag to each command so output can be chained reliably by
+  scripts, automation, and LLM-based tools.
+- **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
+  easier to scan while preserving important safety and recovery information.
+- **Beta stabilization.** Move to beta after enough users have exercised the CLI and reported issues.
+  The beta phase will focus especially on making the `--json` output shapes consistent and stable.
+
+## Contributing
+
+Pull requests are welcome. If you run into a bug, unexpected behavior, unclear output, or a
+platform-specific problem, please [open an issue](https://github.com/jeph/venmo-cli/issues). Reports
+from real-world usage are especially helpful while the project is in alpha.
