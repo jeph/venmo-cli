@@ -235,14 +235,14 @@ venmo activity list --json
 venmo requests create @alice 12.50 "Dinner" --dry-run --json
 ```
 
-Successful results go to stdout. Failures go to stderr.
-
-For example, using dummy balance values:
+Example:
 
 ```console
 $ venmo balance --json
 {"command":"balance","ok":true,"data":{"balance":{"available":{"amount":"12.34","currency":"USD"},"on_hold":{"amount":"0.00","currency":"USD"}}}}
 ```
+
+Successful results go to stdout. Failures go to stderr.
 
 ## Roadmap
 
