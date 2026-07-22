@@ -228,6 +228,8 @@ Planned work includes:
   established.
 - **Simpler login.** Investigate a reliable way to establish a trusted device without requiring
   users to retrieve and enter a browser `v_id` manually.
+- **Non-interactive OTP challenges.** Design a secure structured flow that lets scripts and
+  LLM-based tools respond to SMS OTP challenges without an interactive terminal prompt.
 - **Structured output.** Add a `--json` flag to each command so output can be chained reliably by
   scripts, automation, and LLM-based tools.
 - **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
