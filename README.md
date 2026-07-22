@@ -242,3 +242,14 @@ Planned work includes:
 Pull requests are welcome. If you run into a bug, unexpected behavior, unclear output, or a
 platform-specific problem, please [open an issue](https://github.com/jeph/venmo-cli/issues). Reports
 from real-world usage are especially helpful while the project is in alpha.
+
+## Donations
+
+If this project is useful to you and you would like to support its development, donations are
+welcome on Venmo at **@Jephrey**.
+
+I'd encourage you to use the CLI if donating 😊
+
+```sh
+venmo pay user @Jephrey 5.00 "Supporting venmo-cli"
+```
