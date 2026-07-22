@@ -82,8 +82,6 @@ jobs:
           AWS_LC_SYS_USE_SYSTEM: "0"
           CC_aarch64_unknown_linux_musl: musl-gcc
           CC_x86_64_unknown_linux_musl: musl-gcc
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         run: cargo build --release --locked --bin venmo --target "${{ matrix.target }}"
 
       - name: Verify production binary
