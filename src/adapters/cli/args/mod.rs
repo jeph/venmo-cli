@@ -40,6 +40,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub debug: bool,
 
+    /// Write the final command result as compact JSON.
+    #[arg(long, global = true)]
+    pub json: bool,
+
     #[command(subcommand)]
     pub command: Command,
 }

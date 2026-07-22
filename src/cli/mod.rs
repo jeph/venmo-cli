@@ -25,5 +25,7 @@ pub use crate::adapters::cli::args::{
     TransferSpeedArg, UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation, VisibilityArg,
 };
 pub use crate::adapters::cli::{
-    AppError, ErrorCategory, handle_runtime_initialization_failure, run, write_error,
+    AppError, CliFailure, CommandId, ErrorCategory, OutputFormat,
+    handle_runtime_initialization_failure, run, write_cli_failure, write_error,
+    write_parse_error_json,
 };

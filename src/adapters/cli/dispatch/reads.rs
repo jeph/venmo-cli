@@ -15,14 +15,13 @@ use super::super::args::{
     ActivityCommentListArgs, ActivityInfoArgs, ActivityListArgs, FriendsListArgs, RequestInfoArgs,
     RequestsListArgs, UserInfoArgs, UserSearchArgs,
 };
-use super::super::{error::AppError, output};
+use super::super::{error::AppError, output, response};
 
 pub(super) async fn run_friends_list<R, A, W, E>(
     args: FriendsListArgs,
     store: &R,
     api: &A,
-    stdout: &mut W,
-    stderr: &mut E,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
@@ -36,18 +35,33 @@ where
         }
         None => friends::list(store, api, args.limit, args.offset).await?,
     };
-    output::write_friends(stdout, stderr, &result)?;
+    let response = response::friends(&result);
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, stderr, response| output::write_friends(stdout, stderr, response),
+    )?;
     Ok(())
 }
 
-pub(super) async fn run_balance<R, A, W>(store: &R, api: &A, stdout: &mut W) -> Result<(), AppError>
+pub(super) async fn run_balance<R, A, W, E>(
+    store: &R,
+    api: &A,
+    output: &mut output::OutputSession<'_, W, E>,
+) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: BalanceApi,
     W: Write,
+    E: Write,
 {
     let result = balance::get(store, api).await?;
-    output::write_balance(stdout, &result)?;
+    let response = response::balance(&result);
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_balance(stdout, response),
+    )?;
     Ok(())
 }
 
@@ -56,8 +70,7 @@ pub(super) async fn run_activity_list<R, A, W, E>(
     store: &R,
     api: &A,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
@@ -72,24 +85,37 @@ where
         }
         None => activity::list(store, api, args.limit, args.before_id.as_ref()).await?,
     };
-    output::write_activity_list(stdout, stderr, &result, timestamps)?;
+    let response = response::activity_list(&result)?;
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, stderr, response| {
+            output::write_activity_list(stdout, stderr, response, timestamps)
+        },
+    )?;
     Ok(())
 }
 
-pub(super) async fn run_activity_info<R, A, W>(
+pub(super) async fn run_activity_info<R, A, W, E>(
     args: ActivityInfoArgs,
     store: &R,
     api: &A,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: ActivityDetailApi,
     W: Write,
+    E: Write,
 {
     let result = activity::info(store, api, &args.activity_id).await?;
-    output::write_activity_info(stdout, &result, timestamps)?;
+    let response = response::activity_info(&result)?;
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_activity_info(stdout, response, timestamps),
+    )?;
     Ok(())
 }
 
@@ -98,8 +124,7 @@ pub(super) async fn run_activity_comment_list<R, A, W, E>(
     store: &R,
     api: &A,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
@@ -110,7 +135,14 @@ where
     let result =
         activity::comment_list::list(store, api, &args.activity_id, args.limit, args.offset)
             .await?;
-    output::write_activity_comments(stdout, stderr, &result, timestamps)?;
+    let response = response::activity_comment_list(&result)?;
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, stderr, response| {
+            output::write_activity_comments(stdout, stderr, response, timestamps)
+        },
+    )?;
     Ok(())
 }
 
@@ -119,8 +151,7 @@ pub(super) async fn run_requests_list<R, A, W, E>(
     store: &R,
     api: &A,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
-    stderr: &mut E,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
@@ -136,24 +167,35 @@ where
         args.before.as_ref(),
     )
     .await?;
-    output::write_requests(stdout, stderr, &result, timestamps)?;
+    let response = response::requests(&result)?;
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, stderr, response| output::write_requests(stdout, stderr, response, timestamps),
+    )?;
     Ok(())
 }
 
-pub(super) async fn run_request_info<R, A, W>(
+pub(super) async fn run_request_info<R, A, W, E>(
     args: RequestInfoArgs,
     store: &R,
     api: &A,
     timestamps: &output::TimestampFormatter,
-    stdout: &mut W,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: RequestLookupApi,
     W: Write,
+    E: Write,
 {
     let result = requests::info(store, api, &args.request_id).await?;
-    output::write_request_info(stdout, &result, timestamps)?;
+    let response = response::request_info(&result)?;
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_request_info(stdout, response, timestamps),
+    )?;
     Ok(())
 }
 
@@ -161,8 +203,7 @@ pub(super) async fn run_user_search<R, A, W, E>(
     args: UserSearchArgs,
     store: &R,
     api: &A,
-    stdout: &mut W,
-    stderr: &mut E,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
@@ -171,53 +212,76 @@ where
     E: Write,
 {
     let result = users::search(store, api, &args.query, args.limit, args.offset).await?;
-    output::write_user_search(stdout, stderr, &result)?;
+    let response = response::user_search(&result);
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, stderr, response| output::write_user_search(stdout, stderr, response),
+    )?;
     Ok(())
 }
 
-pub(super) async fn run_user_info<R, A, W>(
+pub(super) async fn run_user_info<R, A, W, E>(
     args: UserInfoArgs,
     store: &R,
     api: &A,
-    stdout: &mut W,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: UserLookupApi + UserSearchApi,
     W: Write,
+    E: Write,
 {
     let result = people::info(store, api, &args.username).await?;
-    output::write_user_info(stdout, &result)?;
+    let response = response::user_info(&result);
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_user_info(stdout, response),
+    )?;
     Ok(())
 }
 
-pub(super) async fn run_payment_methods<R, A, W>(
+pub(super) async fn run_payment_methods<R, A, W, E>(
     store: &R,
     api: &A,
-    stdout: &mut W,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: PaymentMethodsApi,
     W: Write,
+    E: Write,
 {
     let result = payment_methods::list(store, api).await?;
-    output::write_payment_methods(stdout, &result)?;
+    let response = response::payment_methods(&result);
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_payment_methods(stdout, response),
+    )?;
     Ok(())
 }
 
-pub(super) async fn run_transfer_options<R, A, W>(
+pub(super) async fn run_transfer_options<R, A, W, E>(
     store: &R,
     api: &A,
-    stdout: &mut W,
+    output: &mut output::OutputSession<'_, W, E>,
 ) -> Result<(), AppError>
 where
     R: CredentialReader,
     A: TransferOptionsApi,
     W: Write,
+    E: Write,
 {
     let result = transfer_options::get(store, api).await?;
-    output::write_transfer_options(stdout, &result)?;
+    let response = response::transfer_options(&result);
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_transfer_options(stdout, response),
+    )?;
     Ok(())
 }
 

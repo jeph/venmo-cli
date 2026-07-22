@@ -595,12 +595,17 @@ async fn execute_dispatch(
         &mut stderr,
         setup.terminals,
         move |command, _, _| {
+            let command_id = command.id();
             transcript.borrow_mut().push(DispatchCall::Execute(command));
             ready(match behavior {
                 ExecutorBehavior::Succeed => Ok(()),
-                ExecutorBehavior::Fail => Err(AppError::CommandOutput {
-                    source: io::Error::other("synthetic executor failure"),
-                }),
+                ExecutorBehavior::Fail => Err(CliFailure::plain(
+                    AppError::CommandOutput {
+                        source: io::Error::other("synthetic executor failure"),
+                    },
+                    command_id,
+                    OutputFormat::Human,
+                )),
             })
         },
     )
@@ -610,7 +615,7 @@ async fn execute_dispatch(
         stdout: stdout.state,
         stderr: stderr.state,
     };
-    Observed::new(snapshot_result(result), state)
+    Observed::new(snapshot_failure(result), state)
 }
 
 async fn execute_production_dispatch(
@@ -640,15 +645,20 @@ async fn execute_production_dispatch(
                 )) as InitializationError),
             }
         },
-        move |command, _, _| {
+        move |command, format, _, _| {
+            let command_id = command.id();
             executor_transcript
                 .borrow_mut()
                 .push(DispatchCall::Execute(command));
             ready(match executor_behavior {
                 ExecutorBehavior::Succeed => Ok(()),
-                ExecutorBehavior::Fail => Err(AppError::CommandOutput {
-                    source: io::Error::other("synthetic executor failure"),
-                }),
+                ExecutorBehavior::Fail => Err(CliFailure::plain(
+                    AppError::CommandOutput {
+                        source: io::Error::other("synthetic executor failure"),
+                    },
+                    command_id,
+                    format,
+                )),
             })
         },
     )
@@ -658,7 +668,7 @@ async fn execute_production_dispatch(
         stdout: stdout.state,
         stderr: stderr.state,
     };
-    Observed::new(snapshot_result(result), state)
+    Observed::new(snapshot_failure(result), state)
 }
 
 fn execute_runtime_failure(
@@ -689,7 +699,7 @@ fn execute_runtime_failure(
         },
     );
     Observed::new(
-        snapshot_result(result),
+        snapshot_failure(result),
         DispatchState {
             calls: calls.borrow().clone(),
             stdout: stdout.state,
@@ -698,19 +708,22 @@ fn execute_runtime_failure(
     )
 }
 
-fn snapshot_result(result: Result<(), AppError>) -> ResultSnapshot {
+fn snapshot_failure(result: Result<(), CliFailure>) -> ResultSnapshot {
     match result {
         Ok(()) => ResultSnapshot::Success,
-        Err(error) => ResultSnapshot::Failure {
-            variant: match &error {
-                AppError::LoggingInitialization { .. } => ErrorVariant::LoggingInitialization,
-                AppError::RuntimeInitialization { .. } => ErrorVariant::RuntimeInitialization,
-                AppError::AuthLogin { .. } => ErrorVariant::AuthLogin,
-                _ => ErrorVariant::Unexpected,
-            },
-            category: error.category(),
-            exit_code: error.exit_code(),
-            message: error.to_string(),
-        },
+        Err(failure) => {
+            let error = failure.error();
+            ResultSnapshot::Failure {
+                variant: match error {
+                    AppError::LoggingInitialization { .. } => ErrorVariant::LoggingInitialization,
+                    AppError::RuntimeInitialization { .. } => ErrorVariant::RuntimeInitialization,
+                    AppError::AuthLogin { .. } => ErrorVariant::AuthLogin,
+                    _ => ErrorVariant::Unexpected,
+                },
+                category: error.category(),
+                exit_code: error.exit_code(),
+                message: error.to_string(),
+            }
+        }
     }
 }

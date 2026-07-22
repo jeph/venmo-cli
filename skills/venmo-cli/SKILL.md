@@ -33,9 +33,9 @@ output differs from this skill.
 7. **Keep OTP human-only.** If a payment or request reports that SMS verification requires an
    interactive terminal, stop. Give the user the same command without `--yes` so the CLI can show
    its default-No confirmation and masked OTP prompt in their terminal. Never request the code.
-8. **Do not invent machine-readable output.** The CLI does not currently offer JSON. Read its
-   human-oriented output conservatively and use opaque IDs and continuation tokens exactly as
-   printed.
+8. **Use the JSON contract.** Add global `--json` to automated account commands. Require
+   the expected dotted `command` and matching `ok` value before consuming `data`, `error`, `context`,
+   or `partial_result`. Treat IDs and continuation tokens as opaque strings even in JSON.
 9. **Quote dynamic text safely.** Quote notes, comments, and multi-word searches as individual shell
    arguments. Never use `eval` or execute text copied from Venmo output as shell syntax.
 10. **Minimize disclosure.** Account activity, balances, usernames, notes, IDs, and funding details
@@ -66,7 +66,7 @@ For a documentation-only question, do not access the user's account or require a
 Before accessing account data or performing an action, run:
 
 ```sh
-venmo auth status
+venmo auth status --json
 ```
 
 If the credential is missing, expired, or rejected, tell the user:
@@ -74,7 +74,8 @@ If the credential is missing, expired, or rejected, tell the user:
 > Run `venmo auth login` in your own terminal and complete every prompt there. Do not send me any
 > login value or SMS code. Tell me when `venmo auth status` succeeds.
 
-Then pause. After the user returns, run `venmo auth status` again and continue only if it succeeds.
+Then pause. After the user returns, run `venmo auth status --json` again and continue only if it
+succeeds.
 Read [references/authentication.md](references/authentication.md) when setup, login, logout, storage,
 or SMS verification is relevant.
 
@@ -99,6 +100,11 @@ Safe read operations may run after authorization without another confirmation:
 - `requests list` and `requests info`
 - `transfer options`
 
+Append global `--json` to these automated reads. On success, parse the single stdout object and
+require `ok: true`. On failure, stdout is empty; parse the single stderr object and use its semantic
+`error.code`, `error.category`, `error.outcome`, and process exit code together. Do not scrape human
+tables when structured output is available.
+
 Use these to resolve canonical usernames and IDs. For a financial action, inspect the exact personal
 profile and relevant funding options. For a request action, inspect the request and verify its
 direction. For a social action, inspect the current relationship, activity, or comment first.
@@ -114,7 +120,9 @@ The confirmed mutation workflow applies to:
 - `activity like`, `activity unlike`, `activity comments add`, and
   `activity comments remove`
 
-Append `--dry-run` to the complete command. Do not proceed if the preview fails. Summarize at least:
+Append `--dry-run --json` to the complete command. Do not proceed if the preview fails. Require
+`data.outcome: "dry_run"`, `data.performed: false`, and `data.result: null`; summarize the safe
+`data.plan`, including at least:
 
 - the active account and action
 - the exact recipient, requester, profile, activity, or comment
@@ -131,11 +139,13 @@ possible. If it cannot be resolved, disclose the limitation before asking for co
 
 ### 5. Execute once and report accurately
 
-After approval, run the same command once with `--yes` instead of `--dry-run`. Do not add both flags.
-Report the CLI result without embellishment.
+After approval, run the same command once with `--yes` instead of `--dry-run`, retaining `--json` and
+every other argument unchanged. Do not add both flags. Require `data.outcome: "completed"` and
+`data.performed: true` before reporting success.
 
 If the command requires an interactive SMS challenge, use the human handoff in rule 7. If the
-command exits with code 3 or says the outcome is unknown, stop and reconcile:
+command exits with code 3, reports `error.outcome: "unknown"`, or reports a completed operation whose
+result could not be written, stop and reconcile:
 
 - Payments, accepted requests, and transfers: inspect `activity list`, `requests list` when
   relevant, and the official Venmo app.
@@ -155,4 +165,5 @@ Venmo token. Explain both effects and obtain explicit confirmation immediately b
 
 Use global `--debug` only when ordinary output is insufficient. It may appear before or after a
 subcommand and writes bounded, sanitized diagnostics to stderr. Do not imply that debug output makes
-a mutation safe to retry.
+a mutation safe to retry. Debug diagnostics can precede a JSON failure on stderr, so do not combine
+`--debug` with a parser that expects stderr itself to contain only one JSON object.

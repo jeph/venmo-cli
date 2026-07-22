@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use time::OffsetDateTime;
 
-use super::run_cancel_with;
+use super::{human_output, run_cancel_with};
 use crate::adapters::cli::args::CancelArgs;
 use crate::adapters::cli::output::TimestampFormatter;
 use crate::features::auth::{CurrentAccountApi, PromptAvailability, PromptError};
@@ -181,6 +181,11 @@ async fn cancel_handler_orders_preflight_details_confirmation_one_write_and_resu
     let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::RequestsCancel,
+        &mut stdout,
+        &mut stderr,
+    );
 
     run_cancel_with(
         CancelArgs {
@@ -192,8 +197,7 @@ async fn cancel_handler_orders_preflight_details_confirmation_one_write_and_resu
         &api,
         &prompt,
         &timestamps,
-        &mut stdout,
-        &mut stderr,
+        &mut output,
         || Ok(pending()),
     )
     .await?;
@@ -243,6 +247,11 @@ async fn cancel_dry_run_keeps_preflight_but_skips_prompt_signal_and_write() -> T
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let interruption_calls = Rc::clone(&transcript);
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::RequestsCancel,
+        &mut stdout,
+        &mut stderr,
+    );
 
     run_cancel_with(
         CancelArgs {
@@ -254,8 +263,7 @@ async fn cancel_dry_run_keeps_preflight_but_skips_prompt_signal_and_write() -> T
         &api,
         &prompt,
         &timestamps,
-        &mut stdout,
-        &mut stderr,
+        &mut output,
         move || -> Result<
             std::future::Pending<Result<(), crate::adapters::cli::error::AppError>>,
             crate::adapters::cli::error::AppError,

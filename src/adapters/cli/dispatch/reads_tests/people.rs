@@ -46,7 +46,8 @@ async fn users_handler_routes_exact_page_and_continuation_streams_without_flush(
     );
 
     // Execute once.
-    let result = run_user_search(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let mut output = human_output(CommandId::UsersSearch, &mut stdout, &mut stderr);
+    let result = run_user_search(args, &reader, &api, &mut output).await;
     let observed = observation(
         result,
         &transcript,
@@ -89,7 +90,7 @@ async fn user_info_handler_uses_exact_username_resolution_and_writes_sanitized_s
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
-    let stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
 
     // Complete expected outcome and final fake state.
     let expected = Observed::new(
@@ -116,7 +117,8 @@ async fn user_info_handler_uses_exact_username_resolution_and_writes_sanitized_s
     );
 
     // Execute once.
-    let result = run_user_info(args, &reader, &api, &mut stdout).await;
+    let mut output = human_output(CommandId::UsersInfo, &mut stdout, &mut stderr);
+    let result = run_user_info(args, &reader, &api, &mut output).await;
     let observed = observation(
         result,
         &transcript,
@@ -165,7 +167,9 @@ async fn user_info_normalizes_optional_at_and_uses_shared_authoritative_lookup()
         };
         let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
 
-        let result = run_user_info(args, &reader, &api, &mut stdout).await;
+        let mut stderr = Vec::new();
+        let mut output = human_output(CommandId::UsersInfo, &mut stdout, &mut stderr);
+        let result = run_user_info(args, &reader, &api, &mut output).await;
 
         assert!(result.is_ok(), "input: {input}");
         assert_eq!(
@@ -236,7 +240,8 @@ async fn friends_handler_routes_exact_page_and_continuation_streams_without_flus
     );
 
     // Execute once.
-    let result = run_friends_list(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let mut output = human_output(CommandId::FriendsList, &mut stdout, &mut stderr);
+    let result = run_friends_list(args, &reader, &api, &mut output).await;
     let observed = observation(
         result,
         &transcript,
@@ -297,7 +302,8 @@ async fn friends_handler_resolves_other_user_and_labels_visible_results() -> Tes
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
     let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
 
-    let result = run_friends_list(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let mut output = human_output(CommandId::FriendsList, &mut stdout, &mut stderr);
+    let result = run_friends_list(args, &reader, &api, &mut output).await;
 
     assert!(result.is_ok());
     assert_eq!(
@@ -387,7 +393,8 @@ async fn representative_record_output_failure_stops_continuation_without_an_extr
     );
 
     // Execute once.
-    let result = run_friends_list(args, &reader, &api, &mut stdout, &mut stderr).await;
+    let mut output = human_output(CommandId::FriendsList, &mut stdout, &mut stderr);
+    let result = run_friends_list(args, &reader, &api, &mut output).await;
     let observed = observation(
         result,
         &transcript,

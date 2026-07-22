@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use super::*;
 use crate::features::auth::{DeviceTrustOutcome, LoginDisposition};
+use crate::shared::ApiOperationFailure;
 use crate::shared::{
     AccessToken, Account, ApiFailure, ApiFailureKind, CredentialBackend, CredentialCapability,
     CredentialDeleteOutcome, CredentialDeleter, CredentialEnvelope, CredentialFailureKind,
@@ -12,6 +13,20 @@ use crate::shared::{
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+fn human_output<'a, W: std::io::Write, E: std::io::Write>(
+    command: crate::adapters::cli::CommandId,
+    stdout: &'a mut W,
+    stderr: &'a mut E,
+) -> output::OutputSession<'a, W, E> {
+    output::OutputSession::new(
+        crate::adapters::cli::OutputFormat::Human,
+        command,
+        false,
+        stdout,
+        stderr,
+    )
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error("synthetic credential failure")]
@@ -94,8 +109,14 @@ fn replacement_login_output_warns_that_the_previous_remote_token_remains() -> Te
     );
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let response = response::password_login(&report)?;
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::AuthLogin,
+        &mut stdout,
+        &mut stderr,
+    );
 
-    let result = finish_password_login(&mut stdout, &mut stderr, &report);
+    let result = finish_password_login(&mut output, &response);
 
     assert!(result.is_ok());
     assert_eq!(
@@ -110,6 +131,54 @@ fn replacement_login_output_warns_that_the_previous_remote_token_remains() -> Te
 }
 
 #[test]
+fn json_incomplete_login_is_one_failure_with_a_partial_result() -> TestResult {
+    let report = auth::PasswordLoginReport::new(
+        auth::LoginResult::new(
+            account()?,
+            time::OffsetDateTime::UNIX_EPOCH,
+            LoginDisposition::Created,
+        ),
+        DeviceTrustOutcome::Failed(ApiOperationFailure::new(FakeApiError(
+            ApiFailureKind::Internal,
+        ))),
+    );
+    let response = response::password_login(&report)?;
+    let mut stdout = Vec::new();
+    let mut diagnostics = Vec::new();
+    let mut output = output::OutputSession::new(
+        crate::adapters::cli::OutputFormat::Json,
+        crate::adapters::cli::CommandId::AuthLogin,
+        false,
+        &mut stdout,
+        &mut diagnostics,
+    );
+
+    let error = match finish_password_login(&mut output, &response) {
+        Err(error) => error,
+        Ok(()) => return Err("device trust failure should leave login incomplete".into()),
+    };
+    let failure = output.into_failure(error);
+    let mut stderr = Vec::new();
+    crate::adapters::cli::write_cli_failure(&mut stderr, &failure)?;
+
+    assert!(stdout.is_empty());
+    assert!(diagnostics.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&stderr)?;
+    assert_eq!(value["command"], "auth.login");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["error"]["code"], "device_trust_incomplete");
+    assert_eq!(value["error"]["outcome"], "partial");
+    assert_eq!(value["partial_result"]["credential_stored"], true);
+    assert_eq!(value["partial_result"]["account"]["username"], "alice");
+    assert_eq!(value["partial_result"]["device_trust"]["status"], "failed");
+    assert_eq!(
+        value["partial_result"]["previous_remote_token_revoked"],
+        serde_json::Value::Null
+    );
+    Ok(())
+}
+
+#[test]
 fn logout_only_deletes_locally_and_reports_remote_session_consequences() -> TestResult {
     let store = FakeStore {
         credential: Some(credential()?),
@@ -119,8 +188,13 @@ fn logout_only_deletes_locally_and_reports_remote_session_consequences() -> Test
     };
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::AuthLogout,
+        &mut stdout,
+        &mut stderr,
+    );
 
-    let result = run_logout_local_with(&store, &mut stdout, &mut stderr);
+    let result = run_logout_local_with(&store, &mut output);
 
     assert!(result.is_ok());
     assert_eq!(store.calls.borrow().as_slice(), ["delete"]);
@@ -147,8 +221,14 @@ async fn auth_status_converts_the_saved_instant_to_the_selected_local_zone() -> 
     let timestamps =
         output::TimestampFormatter::for_time_zone(jiff::tz::TimeZone::fixed(jiff::tz::offset(-8)));
     let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::AuthStatus,
+        &mut stdout,
+        &mut stderr,
+    );
 
-    let result = run_auth_status_with(&store, &api, &timestamps, &mut stdout).await;
+    let result = run_auth_status_with(&store, &api, &timestamps, &mut output).await;
 
     assert!(result.is_ok());
     assert_eq!(store.calls.borrow().as_slice(), ["read"]);
@@ -176,9 +256,15 @@ async fn auth_status_preserves_authentication_failure_classification() -> TestRe
     };
     let api = FakeApi(Err(FakeApiError(ApiFailureKind::Authentication)));
     let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
     let timestamps = output::TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::AuthStatus,
+        &mut stdout,
+        &mut stderr,
+    );
 
-    let error = run_auth_status_with(&store, &api, &timestamps, &mut stdout)
+    let error = run_auth_status_with(&store, &api, &timestamps, &mut output)
         .await
         .err()
         .ok_or("expected auth status failure")?;
@@ -203,8 +289,14 @@ async fn auth_status_reports_the_backend_that_supplied_the_credential() -> TestR
     let api = FakeApi(Ok(account()?));
     let timestamps = output::TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
     let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::AuthStatus,
+        &mut stdout,
+        &mut stderr,
+    );
 
-    run_auth_status_with(&store, &api, &timestamps, &mut stdout).await?;
+    run_auth_status_with(&store, &api, &timestamps, &mut output).await?;
 
     assert!(String::from_utf8(stdout)?.ends_with("Credential store: xdg\n"));
     Ok(())

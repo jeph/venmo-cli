@@ -222,6 +222,11 @@ async fn activity_social_dry_run_stops_after_preflight_without_prompt_or_interru
     let (calls, reader, api, prompt) = fixture()?;
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::ActivityLike,
+        &mut stdout,
+        &mut stderr,
+    );
     let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
     let activity_id = ActivityId::from_str("story-1")?;
 
@@ -234,8 +239,7 @@ async fn activity_social_dry_run_stops_after_preflight_without_prompt_or_interru
         &api,
         &prompt,
         &timestamps,
-        &mut stdout,
-        &mut stderr,
+        &mut output,
         || {
             calls.borrow_mut().push(Call::InstallInterruption);
             Ok(pending())
@@ -259,6 +263,11 @@ async fn activity_social_yes_path_skips_prompt_and_executes_one_state_write() ->
     let (calls, reader, api, prompt) = fixture()?;
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::ActivityLike,
+        &mut stdout,
+        &mut stderr,
+    );
     let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
     let activity_id = ActivityId::from_str("story-1")?;
 
@@ -271,8 +280,7 @@ async fn activity_social_yes_path_skips_prompt_and_executes_one_state_write() ->
         &api,
         &prompt,
         &timestamps,
-        &mut stdout,
-        &mut stderr,
+        &mut output,
         || {
             calls.borrow_mut().push(Call::InstallInterruption);
             Ok(pending())
@@ -303,6 +311,11 @@ async fn comment_remove_dry_run_stops_after_credential_and_discloses_no_prefligh
     let (calls, reader, api, prompt) = fixture()?;
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::ActivityCommentsRemove,
+        &mut stdout,
+        &mut stderr,
+    );
 
     run_activity_comment_remove_with(
         ActivityCommentId::from_str("comment-1")?,
@@ -311,8 +324,7 @@ async fn comment_remove_dry_run_stops_after_credential_and_discloses_no_prefligh
         &reader,
         &api,
         &prompt,
-        &mut stdout,
-        &mut stderr,
+        &mut output,
         || {
             calls.borrow_mut().push(Call::InstallInterruption);
             Ok(pending())
@@ -336,6 +348,11 @@ async fn comment_remove_yes_path_sends_exactly_one_write_without_detail_read() -
     let (calls, reader, api, prompt) = fixture()?;
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::ActivityCommentsRemove,
+        &mut stdout,
+        &mut stderr,
+    );
 
     run_activity_comment_remove_with(
         ActivityCommentId::from_str("comment-1")?,
@@ -344,8 +361,7 @@ async fn comment_remove_yes_path_sends_exactly_one_write_without_detail_read() -
         &reader,
         &api,
         &prompt,
-        &mut stdout,
-        &mut stderr,
+        &mut output,
         || {
             calls.borrow_mut().push(Call::InstallInterruption);
             Ok(pending())

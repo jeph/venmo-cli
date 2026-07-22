@@ -2,6 +2,7 @@ use std::error::Error;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use serde_json::Value;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -39,6 +40,98 @@ fn usage_errors_exit_two_without_success_output() -> TestResult {
         String::from_utf8(assertion.get_output().stderr.clone())?
     );
 
+    Ok(())
+}
+
+#[test]
+fn json_parser_failures_are_one_compact_stderr_object() -> TestResult {
+    let assertion = Command::cargo_bin("venmo")?
+        .args(["--json", "not-a-command"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty());
+    let stderr = &assertion.get_output().stderr;
+
+    assert_eq!(stderr.iter().filter(|byte| **byte == b'\n').count(), 1);
+    let value: Value = serde_json::from_slice(stderr)?;
+    assert!(value.get("schema_version").is_none());
+    assert_eq!(value["command"], Value::Null);
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["error"]["code"], "invalid_arguments");
+    assert_eq!(value["error"]["category"], "usage");
+    assert_eq!(value["error"]["exit_code"], 2);
+    assert_eq!(value["error"]["outcome"], "not_performed");
+    assert_eq!(value["error"]["details"]["kind"], "invalid_subcommand");
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("not-a-command"))
+    );
+    Ok(())
+}
+
+#[test]
+fn json_intent_stops_at_the_argument_terminator_and_never_changes_help() -> TestResult {
+    Command::cargo_bin("venmo")?
+        .args(["--", "--json"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(
+            predicate::str::contains("error:").and(predicate::str::contains("\"command\"").not()),
+        );
+
+    Command::cargo_bin("venmo")?
+        .args(["--json", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage: venmo"))
+        .stderr(predicate::str::is_empty());
+    Ok(())
+}
+
+#[test]
+fn json_global_placement_and_application_failures_keep_unix_streams() -> TestResult {
+    for arguments in [
+        &["--json", "auth", "login"][..],
+        &["auth", "--json", "login"][..],
+        &["auth", "login", "--json"][..],
+    ] {
+        let assertion = Command::cargo_bin("venmo")?
+            .args(arguments)
+            .assert()
+            .code(2)
+            .stdout(predicate::str::is_empty());
+        let stderr = &assertion.get_output().stderr;
+        assert_eq!(stderr.iter().filter(|byte| **byte == b'\n').count(), 1);
+        let value: Value = serde_json::from_slice(stderr)?;
+        assert_eq!(value["command"], "auth.login");
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["error"]["code"], "usage_error");
+        assert_eq!(value["error"]["category"], "usage");
+        assert_eq!(value["error"]["exit_code"], 2);
+        assert_eq!(value["error"]["outcome"], "not_performed");
+        assert_eq!(value["context"], Value::Null);
+        assert_eq!(value["partial_result"], Value::Null);
+    }
+    Ok(())
+}
+
+#[test]
+fn json_parser_errors_preserve_input_redaction() -> TestResult {
+    let secret = "sensitive request id";
+    let assertion = Command::cargo_bin("venmo")?
+        .args(["requests", "accept", secret, "--json"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty());
+    let stderr = &assertion.get_output().stderr;
+    let value: Value = serde_json::from_slice(stderr)?;
+    assert_eq!(value["command"], Value::Null);
+    assert_eq!(value["error"]["code"], "invalid_arguments");
+    let serialized = String::from_utf8(stderr.clone())?;
+    assert!(!serialized.contains(secret));
+    assert!(!serialized.contains("sensitive"));
     Ok(())
 }
 

@@ -4,7 +4,7 @@ use std::future::{Future, ready};
 use std::rc::Rc;
 use std::str::FromStr;
 
-use super::{run_friend_add_with, run_friend_remove_with, run_transfer_out_with};
+use super::{human_output, run_friend_add_with, run_friend_remove_with, run_transfer_out_with};
 use crate::adapters::cli::args::{
     FriendAddArgs, FriendRemoveArgs, TransferAmountArg, TransferOutArgs, TransferSpeedArg,
 };
@@ -226,6 +226,11 @@ async fn transfer_out_dry_run_stops_after_full_preflight_and_details() -> TestRe
     };
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::TransferOut,
+        &mut stdout,
+        &mut stderr,
+    );
 
     run_transfer_out_with(
         TransferOutArgs {
@@ -238,8 +243,7 @@ async fn transfer_out_dry_run_stops_after_full_preflight_and_details() -> TestRe
         &api,
         &prompt,
         &TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC),
-        &mut stdout,
-        &mut stderr,
+        &mut output,
         unexpected_interruption,
     )
     .await?;
@@ -280,6 +284,11 @@ async fn friendship_dry_runs_stop_after_authoritative_state_preflight() -> TestR
         let username = Username::from_bare("target")?;
 
         if add {
+            let mut output = human_output(
+                crate::adapters::cli::CommandId::FriendsAdd,
+                &mut stdout,
+                &mut stderr,
+            );
             run_friend_add_with(
                 FriendAddArgs {
                     username,
@@ -289,12 +298,16 @@ async fn friendship_dry_runs_stop_after_authoritative_state_preflight() -> TestR
                 &reader,
                 &api,
                 &prompt,
-                &mut stdout,
-                &mut stderr,
+                &mut output,
                 unexpected_interruption,
             )
             .await?;
         } else {
+            let mut output = human_output(
+                crate::adapters::cli::CommandId::FriendsRemove,
+                &mut stdout,
+                &mut stderr,
+            );
             run_friend_remove_with(
                 FriendRemoveArgs {
                     username,
@@ -304,8 +317,7 @@ async fn friendship_dry_runs_stop_after_authoritative_state_preflight() -> TestR
                 &reader,
                 &api,
                 &prompt,
-                &mut stdout,
-                &mut stderr,
+                &mut output,
                 unexpected_interruption,
             )
             .await?;

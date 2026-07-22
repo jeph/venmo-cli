@@ -10,13 +10,13 @@ venmo <COMMAND> --help
 venmo <COMMAND> <SUBCOMMAND> --help
 ```
 
-The CLI uses human-oriented text output and does not currently support JSON. Treat IDs and
-continuation values as opaque strings and copy them exactly.
+Use global `--json` for automated account commands. It emits a structured envelope while preserving
+IDs and continuation values as opaque strings that must be copied exactly.
 
 ## Global invocation
 
 ```sh
-venmo [--debug] <COMMAND>
+venmo [--debug] [--json] <COMMAND>
 venmo --help
 venmo --version
 ```
@@ -25,6 +25,20 @@ venmo --version
 stderr, including request timing, route, status, retry, response size, and sanitized errors. It omits
 credentials, raw bodies, dynamic identifiers, usernames, notes, and amounts. Use it only for
 troubleshooting.
+
+`--json` is also global and may appear at any command depth. On success, one compact JSON object plus
+one newline is written to stdout. On failure, stdout stays empty and one JSON error object is written
+to stderr. Help and version remain human-readable. Clean `--dry-run`, `--yes`, and noninteractive
+invocations suppress human preflight text; an actual interactive prompt or explicit `--debug` may
+write diagnostics before the final JSON object on stderr.
+
+Require the expected dotted `command` and `ok: true` before consuming success `data`. Exact money is
+`{"amount":"12.34","currency":"USD"}`, timestamps are RFC 3339 UTC,
+collections are arrays, and unavailable values are `null`. Confirmed mutations use
+`data.outcome`, `data.performed`, `data.plan`, and nullable `data.result`. Failures use stable
+`error.code`, `error.category`, `error.exit_code`, and `error.outcome`, with optional safe
+`context.plan` and `partial_result`. Parser failures use `command: null`. See the repository's
+`JSON.md` for the complete contract.
 
 ## Common values
 
@@ -335,8 +349,8 @@ defaults to No.
 - A successful dry-run does not reserve state or guarantee the later mutation. The real command
   validates again.
 
-The agent workflow is always dry-run, present the exact result, obtain fresh approval, and execute the
-unchanged command once with `--yes`.
+The agent workflow is always `--dry-run --json`, present the exact `data.plan`, obtain fresh approval,
+and execute the unchanged command once with `--yes --json`.
 
 ## Pagination
 
@@ -359,6 +373,10 @@ different command.
 | `1` | Operational failure, cancellation, credential/authentication problem, network/timeout/API failure, contract mismatch, or internal failure | Explain the printed error. Do not automatically retry a mutation. |
 | `2` | Invalid usage or required interactive prompting was unavailable | Correct syntax, obtain missing confirmation, or hand an interactive login/OTP command to the user as appropriate. |
 | `3` | A financial or state-changing write may have happened, or succeeded but its result could not be rendered | Outcome is unknown. Never retry until independently reconciled. |
+
+For JSON failures, use `error.outcome` to refine recovery: `not_performed`, `partial`, `unknown`, or
+`completed`. Inspect `partial_result` and `context.plan` when present. `unknown` and `completed`
+mutation outcomes must never be retried until independently reconciled.
 
 For exit code 3:
 

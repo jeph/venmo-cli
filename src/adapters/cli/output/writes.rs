@@ -1,24 +1,31 @@
 use std::io::{self, Write};
 
-use crate::features::payments::pay::{PayResult, PreparedPay};
-use crate::features::payments::{FinancialStatus, PeerFundingFee, PeerFundingSource};
-use crate::features::requests::accept::{AcceptResult, PreparedAccept};
-use crate::features::requests::cancel::{CancelResult, PreparedCancel};
-use crate::features::requests::create::{PreparedRequest, RequestCreateResult};
-use crate::features::requests::decline::{DeclineResult, PreparedDecline};
+use crate::features::payments::pay::PayResult;
+use crate::features::payments::{FinancialStatus, PayPlan, PeerFundingFee, PeerFundingSource};
+use crate::features::requests::accept::AcceptResult;
+use crate::features::requests::cancel::CancelResult;
+use crate::features::requests::create::RequestCreateResult;
+use crate::features::requests::decline::DeclineResult;
+use crate::features::requests::{
+    AcceptRequestPlan, CancelRequestPlan, CreateRequestPlan, DeclineRequestPlan,
+};
 
+use super::super::response::HumanSource;
 use super::TimestampFormatter;
 use super::shared::{financial_user_label, sanitize_terminal_text};
 
-pub(crate) fn write_dry_run_complete<W: Write>(writer: &mut W, _value: &()) -> io::Result<()> {
+pub(crate) fn write_dry_run_complete<W: Write, T: ?Sized>(
+    writer: &mut W,
+    _response: &T,
+) -> io::Result<()> {
     writeln!(writer, "Dry run complete; no changes made.")
 }
 
 pub(crate) fn write_pay_details<W: Write>(
     writer: &mut W,
-    prepared: &PreparedPay,
+    response: &impl HumanSource<PayPlan>,
 ) -> io::Result<()> {
-    let plan = prepared.plan();
+    let plan = response.human_source();
     writeln!(writer, "Payment details:")?;
     writeln!(
         writer,
@@ -75,7 +82,11 @@ pub(crate) fn write_pay_details<W: Write>(
     Ok(())
 }
 
-pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> io::Result<()> {
+pub(crate) fn write_pay_result<W: Write>(
+    writer: &mut W,
+    response: &impl HumanSource<PayResult>,
+) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(
         writer,
         "Payment ID: {}",
@@ -111,8 +122,9 @@ pub(crate) fn write_pay_result<W: Write>(writer: &mut W, result: &PayResult) -> 
 
 pub(crate) fn write_request_create_result<W: Write>(
     writer: &mut W,
-    result: &RequestCreateResult,
+    response: &impl HumanSource<RequestCreateResult>,
 ) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(
         writer,
         "Request ID: {}",
@@ -134,9 +146,9 @@ pub(crate) fn write_request_create_result<W: Write>(
 
 pub(crate) fn write_request_create_details<W: Write>(
     writer: &mut W,
-    prepared: &PreparedRequest,
+    response: &impl HumanSource<CreateRequestPlan>,
 ) -> io::Result<()> {
-    let plan = prepared.plan();
+    let plan = response.human_source();
     writeln!(writer, "Request creation details:")?;
     writeln!(
         writer,
@@ -162,10 +174,10 @@ pub(crate) fn write_request_create_details<W: Write>(
 
 pub(crate) fn write_accept_details<W: Write>(
     writer: &mut W,
-    prepared: &PreparedAccept,
+    response: &impl HumanSource<AcceptRequestPlan>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
-    let plan = prepared.plan();
+    let plan = response.human_source();
     let request = plan.request();
     writeln!(writer, "Request acceptance details:")?;
     writeln!(
@@ -242,8 +254,9 @@ pub(crate) fn write_accept_details<W: Write>(
 
 pub(crate) fn write_accept_result<W: Write>(
     writer: &mut W,
-    result: &AcceptResult,
+    response: &impl HumanSource<AcceptResult>,
 ) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(
         writer,
         "Accepted request ID: {}",
@@ -279,8 +292,9 @@ pub(crate) fn write_accept_result<W: Write>(
 
 pub(crate) fn write_decline_result<W: Write>(
     writer: &mut W,
-    result: &DeclineResult,
+    response: &impl HumanSource<DeclineResult>,
 ) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(
         writer,
         "Request ID: {}",
@@ -308,10 +322,10 @@ pub(crate) fn write_decline_result<W: Write>(
 
 pub(crate) fn write_decline_details<W: Write>(
     writer: &mut W,
-    prepared: &PreparedDecline,
+    response: &impl HumanSource<DeclineRequestPlan>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
-    let request = prepared.plan().request();
+    let request = response.human_source().request();
     writeln!(writer, "Request decline details:")?;
     writeln!(
         writer,
@@ -352,8 +366,9 @@ pub(crate) fn write_decline_details<W: Write>(
 
 pub(crate) fn write_cancel_result<W: Write>(
     writer: &mut W,
-    result: &CancelResult,
+    response: &impl HumanSource<CancelResult>,
 ) -> io::Result<()> {
+    let result = response.human_source();
     writeln!(
         writer,
         "Request ID: {}",
@@ -381,10 +396,10 @@ pub(crate) fn write_cancel_result<W: Write>(
 
 pub(crate) fn write_cancel_details<W: Write>(
     writer: &mut W,
-    prepared: &PreparedCancel,
+    response: &impl HumanSource<CancelRequestPlan>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
-    let request = prepared.plan().request();
+    let request = response.human_source().request();
     writeln!(writer, "Outgoing request cancellation details:")?;
     writeln!(
         writer,

@@ -224,6 +224,28 @@ Debug diagnostics are written to stderr and include bounded request timing, rout
 response-size, and sanitized error information. Credentials, raw request and response bodies,
 dynamic identifiers, usernames, notes, and amounts are omitted.
 
+### JSON output
+
+Pass the global `--json` flag before or after a subcommand to receive one compact, newline-terminated
+JSON object:
+
+```sh
+venmo --json balance
+venmo activity list --json
+venmo requests create @alice 12.50 "Dinner" --dry-run --json
+```
+
+Successful results go to stdout. Failures go to stderr and preserve the normal exit code, leaving
+stdout empty. Every object includes a stable dotted command identity and `ok`.
+Money uses exact decimal strings rather than floating-point numbers, timestamps use RFC 3339 UTC,
+and missing values are explicit `null`s. Mutations include a safe resolved `plan` and distinguish
+`dry_run`, `completed`, `partial`, and `unknown` outcomes.
+
+Help and version output remain human-readable. Interactive confirmations and explicit `--debug`
+diagnostics may share stderr with the final JSON object; `--dry-run`, `--yes`, and noninteractive
+JSON invocations otherwise suppress human preflight text. See [JSON output contract](JSON.md) for the
+complete contract and recovery semantics.
+
 ## Roadmap
 
 This project is currently **alpha** and will probably remain there for a while. The commands are
@@ -240,8 +262,6 @@ Planned work includes:
   users to retrieve and enter a browser `v_id` manually.
 - **Non-interactive OTP challenges.** Design a secure structured flow that lets scripts and
   LLM-based tools respond to SMS OTP challenges without an interactive terminal prompt.
-- **Structured output.** Add a `--json` flag to each command so output can be chained reliably by
-  scripts, automation, and LLM-based tools.
 - **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
   easier to scan while preserving important safety and recovery information.
 - **Windows support.** Add and validate native Windows builds, credential storage, terminal prompts,

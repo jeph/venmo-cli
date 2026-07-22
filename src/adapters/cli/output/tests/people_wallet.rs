@@ -219,6 +219,12 @@ fn friendship_details_and_result_are_exact_and_sanitized() -> TestResult {
     ));
     let mut output = Vec::new();
     write_friendship_result(&mut output, &result)?;
+    let wire = crate::adapters::cli::response::friendship_result(&result);
+    let json = serde_json::to_value(wire)?;
+    assert_eq!(json["outcome"], "completed");
+    assert_eq!(json["performed"], true);
+    assert_eq!(json["plan"]["action"], "send_request");
+    assert_eq!(json["result"]["accepted"], true);
     insta::assert_snapshot!("friendship_result", String::from_utf8(output)?);
     Ok(())
 }

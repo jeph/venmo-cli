@@ -65,6 +65,13 @@ fn transfer_details_and_result_outputs_are_complete() -> TestResult {
 
     write_transfer_out_details(&mut details, &prepared)?;
     write_transfer_out_result(&mut completed, &result, &timestamps)?;
+    let wire = crate::adapters::cli::response::transfer_out_result(&result)?;
+    let json = serde_json::to_value(wire)?;
+    assert_eq!(json["outcome"], "completed");
+    assert_eq!(json["performed"], true);
+    assert_eq!(json["plan"]["amount"]["amount"], "12.34");
+    assert_eq!(json["result"]["requested_at"], "1970-01-01T00:00:00Z");
+    assert_eq!(json["result"]["net_amount"]["amount"], "12.34");
 
     insta::assert_snapshot!("transfer_out_details", String::from_utf8(details)?);
     insta::assert_snapshot!("transfer_out_result", String::from_utf8(completed)?);
@@ -85,6 +92,16 @@ fn transfer_details_and_result_outputs_are_complete() -> TestResult {
     let mut all_completed = Vec::new();
     write_transfer_out_details(&mut all_details, &all_prepared)?;
     write_transfer_out_result(&mut all_completed, &all_result, &timestamps)?;
+    let all_wire = crate::adapters::cli::response::transfer_out_result(&all_result)?;
+    let all_json = serde_json::to_value(all_wire)?;
+    assert_eq!(
+        all_json["plan"]["amount_selection"]["kind"],
+        "all_available"
+    );
+    assert_eq!(
+        all_json["plan"]["amount_selection"]["amount"],
+        serde_json::Value::Null
+    );
     insta::assert_snapshot!("transfer_out_all_details", String::from_utf8(all_details)?);
     insta::assert_snapshot!("transfer_out_all_result", String::from_utf8(all_completed)?);
     Ok(())

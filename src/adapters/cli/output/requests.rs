@@ -5,14 +5,16 @@ use tabled::builder::Builder;
 use crate::features::requests::list::RequestsResult;
 use crate::features::requests::{RequestAction, RequestInfoResult, RequestsBefore};
 
+use super::super::response::HumanSource;
 use super::TimestampFormatter;
 use super::shared::{sanitize_terminal_text, user_label, write_table};
 
 pub(crate) fn write_request_info(
     writer: &mut impl Write,
-    result: &RequestInfoResult,
+    response: &impl HumanSource<RequestInfoResult>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    let result = response.human_source();
     let request = result.request();
     let counterparty = request.counterparty();
     let action = match request.action() {
@@ -72,9 +74,10 @@ pub(crate) fn write_request_info(
 pub(crate) fn write_requests<W: Write, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
-    result: &RequestsResult,
+    response: &impl HumanSource<RequestsResult>,
     timestamps: &TimestampFormatter,
 ) -> io::Result<()> {
+    let result = response.human_source();
     if result.requests().is_empty() {
         writeln!(stdout, "No pending requests found.")?;
     } else {
