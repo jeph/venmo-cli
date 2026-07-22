@@ -234,6 +234,10 @@ Planned work includes:
   scripts, automation, and LLM-based tools.
 - **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
   easier to scan while preserving important safety and recovery information.
+- **Fee visibility.** Resolve and display applicable fee rates more consistently so fewer commands
+  fall back to `unknown`, without guessing when Venmo does not provide authoritative fee data.
+- **Activity reactions.** Support Venmo reactions on activity beyond the current like, unlike, and
+  comment commands once the private API behavior is reliably established.
 - **Beta stabilization.** Move to beta after enough users have exercised the CLI and reported issues.
   The beta phase will focus especially on making the `--json` output shapes consistent and stable.
 
@@ -246,7 +250,7 @@ from real-world usage are especially helpful while the project is in alpha.
 ## Donations
 
 If this project is useful to you and you would like to support its development, donations are
-welcome on Venmo at **@Jephrey**.
+welcome to **@Jephrey** on Venmo.
 
 I'd encourage you to use the CLI if donating 😊
 
