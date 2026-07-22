@@ -16,6 +16,8 @@ experience from the terminal:
   choose private/friends/public visibility, and optionally request Venmo Purchase Protection.
 - **The complete request lifecycle.** List and inspect pending requests, create new ones, accept with
   funding and protection controls, decline incoming requests, or cancel outgoing requests.
+- **Built-in OTP challenges (2FA).** Interactive login, payments, request creation, and request
+  acceptance can complete Venmo's SMS verification flow when required.
 - **Social features.** Search and inspect users, browse your or another user's visible friends and
   activity, manage friendships, like or unlike activity, and list, add, or remove comments.
 - **Balance and cash-out.** Check your wallet balance, inspect transfer eligibility, and transfer a
