@@ -18,8 +18,20 @@ jobs:
         include:
           - runner: macos-15
             target: aarch64-apple-darwin
+            platform: macos
+            artifact: unsigned/venmo-*
           - runner: macos-15-intel
             target: x86_64-apple-darwin
+            platform: macos
+            artifact: unsigned/venmo-*
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform: linux
+            artifact: dist/venmo-v*.tar.gz
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+            artifact: dist/venmo-v*.tar.gz
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -64,13 +76,22 @@ jobs:
       - name: Verify production binary
         run: |
           test "$(target/release/venmo --version)" = "venmo $VERSION"
-          mkdir unsigned
-          cp target/release/venmo "unsigned/venmo-${{ matrix.target }}"
+
+      - name: Prepare release artifact
+        run: |
+          if [ "${{ matrix.platform }}" = macos ]; then
+            mkdir unsigned
+            cp target/release/venmo "unsigned/venmo-${{ matrix.target }}"
+          else
+            mkdir package dist
+            cp target/release/venmo package/venmo
+            tar -czf "dist/venmo-v$VERSION-${{ matrix.target }}.tar.gz" -C package venmo
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
-          path: unsigned/venmo-*
+          path: ${{ matrix.artifact }}
 
   sign:
     needs: build
@@ -102,15 +123,20 @@ jobs:
           certificate="$RUNNER_TEMP/certificate.p12"
           api_key="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
           keychain_password=$(openssl rand -hex 16)
-          cleanup() { security delete-keychain "$keychain" >/dev/null 2>&1 || true; }
+          cleanup() {
+            security list-keychain -d user -s "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1 || true
+            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+          }
           trap cleanup EXIT
 
           printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate"
           printf '%s\n' "$APPLE_API_KEY_P8" > "$api_key"
           security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain"
+          security list-keychain -d user -s "$keychain"
 
           for target in aarch64-apple-darwin x86_64-apple-darwin; do
             binary="unsigned/venmo-$target"
@@ -165,6 +191,12 @@ jobs:
           name: signed-macos
           path: dist
 
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "*-unknown-linux-gnu"
+          path: dist
+          merge-multiple: true
+
       - name: Publish release
         run: |
           cd dist
@@ -186,6 +218,8 @@ jobs:
         run: |
           arm_sha=$(sha256sum "dist/venmo-v$VERSION-aarch64-apple-darwin.tar.gz" | cut -d ' ' -f 1)
           intel_sha=$(sha256sum "dist/venmo-v$VERSION-x86_64-apple-darwin.tar.gz" | cut -d ' ' -f 1)
+          linux_arm_sha=$(sha256sum "dist/venmo-v$VERSION-aarch64-unknown-linux-gnu.tar.gz" | cut -d ' ' -f 1)
+          linux_intel_sha=$(sha256sum "dist/venmo-v$VERSION-x86_64-unknown-linux-gnu.tar.gz" | cut -d ' ' -f 1)
           mkdir -p tap/Formula
           cat > tap/Formula/venmo.rb <<EOF
           class Venmo < Formula
@@ -193,8 +227,6 @@ jobs:
             homepage "https://github.com/$GITHUB_REPOSITORY"
             version "$VERSION"
             license "MIT"
-
-            depends_on :macos
 
             on_macos do
               depends_on macos: :sonoma
@@ -207,6 +239,18 @@ jobs:
               on_intel do
                 url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/venmo-v#{version}-x86_64-apple-darwin.tar.gz"
                 sha256 "$intel_sha"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/venmo-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "$linux_arm_sha"
+              end
+
+              on_intel do
+                url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/venmo-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "$linux_intel_sha"
               end
             end
 

@@ -9,7 +9,13 @@
 
 ## Installation
 
-Building requires Rust 1.97.1. The checked-in `rust-toolchain.toml` pins the required toolchain. From the repository root:
+On macOS or Linux, install the latest release with Homebrew:
+
+```sh
+brew install jeph/tap/venmo
+```
+
+Building from source requires Rust 1.97.1. The checked-in `rust-toolchain.toml` pins the required toolchain. From the repository root:
 
 ```sh
 cargo build
