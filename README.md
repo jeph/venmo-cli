@@ -44,6 +44,14 @@ With Rust installed, build and install from the repository root:
 cargo install --locked --path .
 ```
 
+### Agent Skill
+
+After installing the CLI, install the optional skill globally for your supported AI agents:
+
+```sh
+npx skills add jeph/venmo-cli@venmo-cli -g
+```
+
 ## Usage
 
 ### Authorization
@@ -234,6 +242,8 @@ Planned work includes:
   scripts, automation, and LLM-based tools.
 - **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
   easier to scan while preserving important safety and recovery information.
+- **Windows support.** Add and validate native Windows builds, credential storage, terminal prompts,
+  and release packaging.
 - **Fee visibility.** Resolve and display applicable fee rates more consistently so fewer commands
   fall back to `unknown`, without guessing when Venmo does not provide authoritative fee data.
 - **Activity reactions.** Support Venmo reactions on activity beyond the current like, unlike, and
