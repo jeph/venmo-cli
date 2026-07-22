@@ -41,3 +41,19 @@ With Rust installed, build and install from the repository root:
 ```sh
 cargo install --locked --path .
 ```
+
+## Authorization
+
+Venmo requires a trusted browser `v_id` when the CLI signs in. Retrieve it from your own Venmo
+session:
+
+1. Open [Venmo's account site](https://account.venmo.com/) in a normal browser window.
+2. Sign in, complete any MFA challenge, and choose to remember or trust the device if prompted.
+3. After the account page loads, open the browser's developer tools and select
+   **Application/Storage → Cookies**.
+4. Select the `account.venmo.com` or `venmo.com` origin, find the cookie named `v_id`, and copy only
+   its value.
+5. Run `venmo auth login` and paste the value at the hidden `Trusted Venmo v_id/device ID` prompt.
+
+The cookie exists before authentication but is not trusted until the browser login and device-trust
+flow completes, so retrieve it only after signing in.
