@@ -235,18 +235,14 @@ venmo activity list --json
 venmo requests create @alice 12.50 "Dinner" --dry-run --json
 ```
 
-After argument parsing succeeds, results go to stdout and application failures go to stderr while
-preserving the normal exit code and leaving stdout empty. Invalid syntax remains a normal
-human-readable Clap usage error. Every JSON object includes a stable dotted command identity and
-`ok`.
-Money uses exact decimal strings rather than floating-point numbers, timestamps use RFC 3339 UTC,
-and missing values are explicit `null`s. Mutations include a safe resolved `plan` and distinguish
-`dry_run`, `completed`, `partial`, and `unknown` outcomes.
+Successful results go to stdout. Failures go to stderr.
 
-Help and version output remain human-readable. Interactive confirmations and explicit `--debug`
-diagnostics may share stderr with the final JSON object; `--dry-run`, `--yes`, and noninteractive
-JSON invocations otherwise suppress human preflight text. See [JSON output contract](JSON.md) for the
-complete contract and recovery semantics.
+For example, using dummy balance values:
+
+```console
+$ venmo balance --json
+{"command":"balance","ok":true,"data":{"balance":{"available":{"amount":"12.34","currency":"USD"},"on_hold":{"amount":"0.00","currency":"USD"}}}}
+```
 
 ## Roadmap
 

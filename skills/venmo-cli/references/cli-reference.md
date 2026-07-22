@@ -38,7 +38,7 @@ Require the expected dotted `command` and `ok: true` before consuming success `d
 collections are arrays, and unavailable values are `null`. Confirmed mutations use
 `data.outcome`, `data.performed`, `data.plan`, and nullable `data.result`. Failures use stable
 `error.code`, `error.category`, `error.exit_code`, and `error.outcome`, with optional safe
-`context.plan` and `partial_result`. See the repository's `JSON.md` for the complete contract.
+`context.plan` and `partial_result`.
 
 ## Common values
 
