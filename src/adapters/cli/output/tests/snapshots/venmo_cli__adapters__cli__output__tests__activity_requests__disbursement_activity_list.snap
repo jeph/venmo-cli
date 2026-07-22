@@ -1,0 +1,9 @@
+---
+source: src/adapters/cli/output/tests/activity_requests.rs
+expression: list_stdout
+---
+Activity for @alice
+Direction and counterparty are relative to @alice.
+ Id                 | Time                | Action       | Direction | Counterparty                  | Status | Note
+--------------------+---------------------+--------------+-----------+-------------------------------+--------+------------------
+ story-disbursement | 1969-12-31T16:00:00 | disbursement | incoming  | Synthetic merchant (merchant) |        | Synthetic reward

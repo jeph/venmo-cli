@@ -137,6 +137,8 @@ venmo activity info <ACTIVITY_ID>
 `activity list` defaults to the active account. Pass `--user <USERNAME>` to list the activity
 visible to you for another personal profile. The username may include a leading `@`. Venmo privacy
 settings determine which records are visible, and amounts are omitted from other-user activity.
+Some activity types, including rewards disbursements, do not provide an amount or status. Their
+unavailable table fields are blank, and `activity info` omits those detail lines.
 
 Like, unlike, and manage comments on visible activity:
 

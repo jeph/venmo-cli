@@ -78,7 +78,7 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
             ];
             if other_user_feed {
                 builder.push_record(common.into_iter().chain([
-                    sanitize_terminal_text(activity.status().as_str()),
+                    sanitize_terminal_text(activity.status().map_or("", |status| status.as_str())),
                     sanitize_terminal_text(activity.note().unwrap_or("")),
                 ]));
             } else {
@@ -88,7 +88,9 @@ pub(crate) fn write_activity_list<W: Write, E: Write>(
                             .amount()
                             .map(|amount| format!("${amount}"))
                             .unwrap_or_default(),
-                        sanitize_terminal_text(activity.status().as_str()),
+                        sanitize_terminal_text(
+                            activity.status().map_or("", |status| status.as_str()),
+                        ),
                         sanitize_terminal_text(activity.note().unwrap_or("")),
                     ]),
                 );
@@ -135,15 +137,29 @@ pub(crate) fn write_activity_info<W: Write>(
             "Counterparty: {}",
             sanitize_terminal_text(&activity_counterparty_label(counterparty))
         )?;
+    } else if let Some((account, direction, counterparty)) = activity.parties().account_parts() {
+        writeln!(
+            writer,
+            "Account: {}",
+            sanitize_terminal_text(&user_label(account))
+        )?;
+        writeln!(writer, "Direction: {direction}")?;
+        writeln!(
+            writer,
+            "Counterparty: {}",
+            sanitize_terminal_text(&activity_counterparty_label(counterparty))
+        )?;
     }
     if let Some(amount) = activity.amount() {
         writeln!(writer, "Amount: ${amount}")?;
     }
-    writeln!(
-        writer,
-        "Status: {}",
-        sanitize_terminal_text(activity.status().as_str())
-    )?;
+    if let Some(status) = activity.status() {
+        writeln!(
+            writer,
+            "Status: {}",
+            sanitize_terminal_text(status.as_str())
+        )?;
+    }
     writeln!(
         writer,
         "Note: {}",

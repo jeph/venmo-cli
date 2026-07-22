@@ -48,7 +48,7 @@ pub(super) fn synthetic_activity() -> TestResult<Activity> {
             Some("Synthetic User".to_owned()),
         )),
         Some(Money::from_str("1.25")?),
-        ActivityStatus::from_str("failed")?,
+        Some(ActivityStatus::from_str("failed")?),
         Some("note\n\u{1b}[31mline".to_owned()),
         Some("private".to_owned()),
     ))
@@ -66,7 +66,7 @@ pub(super) fn synthetic_transfer() -> TestResult<Activity> {
             Some("1234".to_owned()),
         ),
         Some(Money::from_str("12.34")?),
-        ActivityStatus::from_str("issued")?,
+        Some(ActivityStatus::from_str("issued")?),
         None,
         Some("private".to_owned()),
     ))

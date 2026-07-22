@@ -247,7 +247,10 @@ async fn activity_list_maps_external_transfer_records() -> TestResult {
     assert!(next.is_none());
     assert_eq!(activities.len(), 3);
     assert_eq!(activity.action().as_str(), "transfer:standard");
-    assert_eq!(activity.status().as_str(), "issued");
+    assert_eq!(
+        activity.status().map(|status| status.as_str()),
+        Some("issued")
+    );
     assert_eq!(activity.direction(), ActivityDirection::Outgoing);
     assert_eq!(activity.amount().map(Money::cents), Some(1_234));
     assert_eq!(
@@ -261,7 +264,10 @@ async fn activity_list_maps_external_transfer_records() -> TestResult {
         Some(("Synthetic source", "bank", Some("5678")))
     );
     assert_eq!(authorization.action().as_str(), "authorization");
-    assert_eq!(authorization.status().as_str(), "captured");
+    assert_eq!(
+        authorization.status().map(|status| status.as_str()),
+        Some("captured")
+    );
     assert_eq!(authorization.direction(), ActivityDirection::Outgoing);
     assert_eq!(
         authorization.counterparty().external_parts(),
@@ -429,6 +435,213 @@ async fn other_user_activity_accepts_private_story_only_when_viewer_is_other_par
     );
 
     assert_eq!(observed, expected);
+    Ok(())
+}
+
+fn disbursement_story(owner_id: &str, audience: &str, rewards_earned: bool) -> Value {
+    serde_json::json!({
+        "id": "story-disbursement",
+        "type": "disbursement",
+        "date_created": "2026-07-11T12:00:00",
+        "note": "Synthetic reward",
+        "audience": audience,
+        "payment": null,
+        "transfer": null,
+        "authorization": null,
+        "disbursement": {
+            "id": "disbursement-1",
+            "date_created": "2026-07-11T12:00:00",
+            "merchant": {"display_name": "Synthetic merchant"},
+            "user": {"id": owner_id, "username": "alice"},
+            "rewards_earned": rewards_earned,
+            "rewards_partner_label": null,
+            "type": null,
+            "metadata": {}
+        }
+    })
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn other_user_activity_maps_visible_disbursement_without_amount_or_status() -> TestResult {
+    let next = "https://api.venmo.com/v1/stories/target-or-actor/456?before_id=story-next&limit=1";
+    let response = scripted_json_response(
+        200,
+        serde_json::json!({
+            "data": [disbursement_story("456", "friends", false)],
+            "pagination": {"next": next}
+        }),
+    )?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let scope = ActivityFeedScope::new(
+        UserId::from_str("123")?,
+        UserId::from_str("456")?,
+        ActivityFeedKind::OtherPersonalUser,
+    );
+
+    let result = client
+        .activity(
+            &token,
+            &device_id,
+            &scope,
+            ActivityPageRequest::new(Limit::MIN, None),
+        )
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |page| {
+            let (activities, next) = page.into_parts();
+            let activity = &activities[0];
+            (
+                activity.id().as_str().to_owned(),
+                activity.action().as_str().to_owned(),
+                activity.direction(),
+                activity
+                    .counterparty()
+                    .external_parts()
+                    .map(|(name, kind, last_four)| {
+                        (
+                            name.to_owned(),
+                            kind.to_owned(),
+                            last_four.map(str::to_owned),
+                        )
+                    }),
+                activity.amount(),
+                activity.status().map(|status| status.as_str().to_owned()),
+                activity.note().map(str::to_owned),
+                activity.audience().map(str::to_owned),
+                next.map(|value| value.as_str().to_owned()),
+            )
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok((
+            "story-disbursement".to_owned(),
+            "disbursement".to_owned(),
+            ActivityDirection::Incoming,
+            Some(("Synthetic merchant".to_owned(), "merchant".to_owned(), None)),
+            None,
+            None,
+            Some("Synthetic reward".to_owned()),
+            Some("friends".to_owned()),
+            Some("story-next".to_owned()),
+        )),
+        vec![authenticated_read_request(
+            "/stories/target-or-actor/{user-id}",
+            &["stories", "target-or-actor", "456"],
+            &[("limit", "1")],
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_detail_maps_disbursement_with_absolute_owner() -> TestResult {
+    let response = scripted_json_response(
+        200,
+        serde_json::json!({"data": disbursement_story("456", "public", true)}),
+    )?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-disbursement")?;
+
+    let result = client
+        .activity_by_id(&token, &device_id, &current_user_id, &activity_id)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |detail| {
+            (
+                detail
+                    .parties()
+                    .account_parts()
+                    .map(|(account, direction, counterparty)| {
+                        (
+                            account.user_id().as_str().to_owned(),
+                            direction,
+                            counterparty
+                                .external_parts()
+                                .map(|(name, kind, _)| (name.to_owned(), kind.to_owned())),
+                        )
+                    }),
+                detail.amount(),
+                detail.status().map(|status| status.as_str().to_owned()),
+            )
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok((
+            Some((
+                "456".to_owned(),
+                ActivityDirection::Incoming,
+                Some(("Synthetic merchant".to_owned(), "merchant".to_owned())),
+            )),
+            None,
+            None,
+        )),
+        vec![authenticated_read_request(
+            "/stories/{story-id}",
+            &["stories", "story-disbursement"],
+            &[],
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn disbursement_activity_rejects_unproven_or_ambiguous_shapes() -> TestResult {
+    let (token, device_id) = test_session()?;
+    let scope = ActivityFeedScope::new(
+        UserId::from_str("123")?,
+        UserId::from_str("456")?,
+        ActivityFeedKind::OtherPersonalUser,
+    );
+    let wrong_owner = disbursement_story("789", "friends", true);
+    let private = disbursement_story("456", "private", true);
+    let mut wrong_type = disbursement_story("456", "friends", true);
+    wrong_type["type"] = Value::String("reward".to_owned());
+    let mut ambiguous = disbursement_story("456", "friends", true);
+    ambiguous["payment"] = serde_json::json!({
+        "id": "payment-1",
+        "status": "settled",
+        "action": "pay",
+        "amount": null,
+        "actor": {"id": "456", "username": "alice"},
+        "target": {"user": {"id": "789", "username": "bob"}},
+        "audience": "friends",
+        "date_created": "2026-07-11T12:00:00"
+    });
+
+    for story in [wrong_owner, private, wrong_type, ambiguous] {
+        let response = scripted_json_response(
+            200,
+            serde_json::json!({"data": [story], "pagination": {"next": null}}),
+        )?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let result = client
+            .activity(
+                &token,
+                &device_id,
+                &scope,
+                ActivityPageRequest::new(Limit::MIN, None),
+            )
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::contract(ACTIVITY_LIST_OPERATION)),
+            vec![authenticated_read_request(
+                "/stories/target-or-actor/{user-id}",
+                &["stories", "target-or-actor", "456"],
+                &[("limit", "1")],
+            )],
+        );
+        assert_eq!(observed, expected);
+    }
     Ok(())
 }
 

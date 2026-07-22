@@ -1072,7 +1072,7 @@ fn activity(id: u32, note: &str) -> Result<Activity, Box<dyn Error>> {
             None,
         )),
         Some(Money::from_cents(u64::from(id) + 100)?),
-        ActivityStatus::from_str("settled")?,
+        Some(ActivityStatus::from_str("settled")?),
         Some(note.to_owned()),
         Some("friends".to_owned()),
     ))

@@ -34,6 +34,8 @@ impl StoryData {
 #[derive(Deserialize)]
 pub(crate) struct StoryDto {
     pub id: StringOrInteger,
+    #[serde(default, rename = "type")]
+    pub story_type: Option<String>,
     #[serde(default)]
     pub date_created: Option<String>,
     #[serde(default)]
@@ -47,9 +49,26 @@ pub(crate) struct StoryDto {
     #[serde(default)]
     pub authorization: Option<AuthorizationDto>,
     #[serde(default)]
+    pub disbursement: Option<DisbursementDto>,
+    #[serde(default)]
     pub likes: Option<StorySocialCollectionDto<UserDto>>,
     #[serde(default)]
     pub comments: Option<StorySocialCollectionDto<ActivityCommentDto>>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct DisbursementDto {
+    pub id: StringOrInteger,
+    #[serde(default)]
+    pub date_created: Option<String>,
+    pub merchant: DisbursementMerchantDto,
+    pub user: UserDto,
+    pub rewards_earned: bool,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct DisbursementMerchantDto {
+    pub display_name: String,
 }
 
 #[derive(Deserialize)]

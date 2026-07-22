@@ -66,7 +66,7 @@ fn activity_list_and_info_render_authoritative_status_as_data() -> TestResult {
             Some("1234".to_owned()),
         ),
         Some(Money::from_str("12.34")?),
-        ActivityStatus::from_str("issued")?,
+        Some(ActivityStatus::from_str("issued")?),
         None,
         Some("private".to_owned()),
     );
@@ -81,7 +81,7 @@ fn activity_list_and_info_render_authoritative_status_as_data() -> TestResult {
         synthetic_user("123", "alice")?,
         synthetic_user("456", "bob")?,
         activity.amount(),
-        activity.status().clone(),
+        activity.status().cloned(),
         activity.note().map(str::to_owned),
         activity.audience().map(str::to_owned),
     ));
@@ -131,6 +131,52 @@ fn other_user_activity_output_names_its_subject_and_perspective() -> TestResult 
 }
 
 #[test]
+fn disbursement_output_preserves_owner_and_omits_unavailable_financial_fields() -> TestResult {
+    let owner = synthetic_user("456", "alice")?;
+    let activity = Activity::new(
+        ActivityId::from_str("story-disbursement")?,
+        time::OffsetDateTime::UNIX_EPOCH,
+        ActivityAction::from_str("disbursement")?,
+        ActivityDirection::Incoming,
+        ActivityCounterparty::external(
+            "Synthetic merchant".to_owned(),
+            "merchant".to_owned(),
+            None,
+        ),
+        None,
+        None,
+        Some("Synthetic reward".to_owned()),
+        Some("friends".to_owned()),
+    );
+    let subject = ActivitySubject::new(
+        owner.user_id().clone(),
+        owner
+            .username()
+            .cloned()
+            .ok_or_else(|| std::io::Error::other("missing synthetic username"))?,
+        ActivityFeedKind::OtherPersonalUser,
+    );
+    let list = ActivityListResult::for_subject(subject, vec![activity.clone()], None);
+    let info = ActivityInfoResult::new(ActivityDetail::account(activity, owner));
+    let mut list_stdout = Vec::new();
+    let mut list_stderr = Vec::new();
+    let mut info_stdout = Vec::new();
+    let timestamps = super::local_timestamps();
+
+    write_activity_list(&mut list_stdout, &mut list_stderr, &list, &timestamps)?;
+    write_activity_info(&mut info_stdout, &info, &timestamps)?;
+    let list_stdout = String::from_utf8(list_stdout)?;
+    let info_stdout = String::from_utf8(info_stdout)?;
+
+    assert!(list_stderr.is_empty());
+    insta::assert_snapshot!("disbursement_activity_list", list_stdout);
+    insta::assert_snapshot!("disbursement_activity_info", info_stdout);
+    assert!(!info_stdout.contains("Amount:"));
+    assert!(!info_stdout.contains("Status:"));
+    Ok(())
+}
+
+#[test]
 fn external_activity_detail_omits_an_unavailable_amount() -> TestResult {
     let info = ActivityInfoResult::new(ActivityDetail::payment(
         ActivityId::from_str("story-1")?,
@@ -139,7 +185,7 @@ fn external_activity_detail_omits_an_unavailable_amount() -> TestResult {
         synthetic_user("456", "alice")?,
         synthetic_user("789", "bob")?,
         None,
-        ActivityStatus::from_str("settled")?,
+        Some(ActivityStatus::from_str("settled")?),
         Some("visible note".to_owned()),
         Some("public".to_owned()),
     ));
@@ -173,7 +219,7 @@ fn activity_info_renders_partial_embedded_social_data_and_sanitizes_it() -> Test
         synthetic_user("123", "alice")?,
         synthetic_user("456", "bob")?,
         Some(Money::from_str("1.25")?),
-        ActivityStatus::from_str("settled")?,
+        Some(ActivityStatus::from_str("settled")?),
         Some("visible note".to_owned()),
         Some("friends".to_owned()),
     )
@@ -214,7 +260,7 @@ fn activity_info_limits_comments_to_five_and_points_to_the_remaining_list() -> T
         synthetic_user("123", "alice")?,
         synthetic_user("456", "bob")?,
         Some(Money::from_str("1.25")?),
-        ActivityStatus::from_str("settled")?,
+        Some(ActivityStatus::from_str("settled")?),
         Some("visible note".to_owned()),
         Some("friends".to_owned()),
     )
@@ -361,7 +407,7 @@ fn synthetic_activity(status: &str, note: &str) -> Result<Activity, Box<dyn Erro
         ActivityDirection::Outgoing,
         ActivityCounterparty::user(synthetic_user("456", "bob")?),
         Some(Money::from_str("1.25")?),
-        ActivityStatus::from_str(status)?,
+        Some(ActivityStatus::from_str(status)?),
         Some(note.to_owned()),
         Some("private".to_owned()),
     ))

@@ -428,7 +428,7 @@ pub struct Activity {
     direction: ActivityDirection,
     counterparty: ActivityCounterparty,
     amount: Option<Money>,
-    status: ActivityStatus,
+    status: Option<ActivityStatus>,
     note: Option<String>,
     audience: Option<String>,
 }
@@ -443,7 +443,7 @@ impl Activity {
         direction: ActivityDirection,
         counterparty: ActivityCounterparty,
         amount: Option<Money>,
-        status: ActivityStatus,
+        status: Option<ActivityStatus>,
         note: Option<String>,
         audience: Option<String>,
     ) -> Self {
@@ -491,8 +491,8 @@ impl Activity {
     }
 
     #[must_use]
-    pub const fn status(&self) -> &ActivityStatus {
-        &self.status
+    pub const fn status(&self) -> Option<&ActivityStatus> {
+        self.status.as_ref()
     }
 
     #[must_use]
@@ -533,6 +533,11 @@ pub enum ActivityDetailParties {
         direction: ActivityDirection,
         counterparty: ActivityCounterparty,
     },
+    Account {
+        account: User,
+        direction: ActivityDirection,
+        counterparty: ActivityCounterparty,
+    },
 }
 
 impl ActivityDetailParties {
@@ -540,7 +545,7 @@ impl ActivityDetailParties {
     pub const fn payment_parties(&self) -> Option<(&User, &User)> {
         match self {
             Self::Payment { actor, target } => Some((actor, target)),
-            Self::Relative { .. } => None,
+            Self::Relative { .. } | Self::Account { .. } => None,
         }
     }
 
@@ -552,6 +557,19 @@ impl ActivityDetailParties {
                 direction,
                 counterparty,
             } => Some((*direction, counterparty)),
+            Self::Account { .. } => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn account_parts(&self) -> Option<(&User, ActivityDirection, &ActivityCounterparty)> {
+        match self {
+            Self::Account {
+                account,
+                direction,
+                counterparty,
+            } => Some((account, *direction, counterparty)),
+            Self::Payment { .. } | Self::Relative { .. } => None,
         }
     }
 }
@@ -561,6 +579,7 @@ impl fmt::Debug for ActivityDetailParties {
         formatter.write_str(match self {
             Self::Payment { .. } => "ActivityDetailParties::Payment([REDACTED])",
             Self::Relative { .. } => "ActivityDetailParties::Relative([REDACTED])",
+            Self::Account { .. } => "ActivityDetailParties::Account([REDACTED])",
         })
     }
 }
@@ -572,7 +591,7 @@ pub struct ActivityDetail {
     action: ActivityAction,
     parties: ActivityDetailParties,
     amount: Option<Money>,
-    status: ActivityStatus,
+    status: Option<ActivityStatus>,
     note: Option<String>,
     audience: Option<String>,
     social: ActivitySocial,
@@ -588,7 +607,7 @@ impl ActivityDetail {
         actor: User,
         target: User,
         amount: Option<Money>,
-        status: ActivityStatus,
+        status: Option<ActivityStatus>,
         note: Option<String>,
         audience: Option<String>,
     ) -> Self {
@@ -612,6 +631,25 @@ impl ActivityDetail {
             occurred_at: activity.occurred_at,
             action: activity.action,
             parties: ActivityDetailParties::Relative {
+                direction: activity.direction,
+                counterparty: activity.counterparty,
+            },
+            amount: activity.amount,
+            status: activity.status,
+            note: activity.note,
+            audience: activity.audience,
+            social: ActivitySocial::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn account(activity: Activity, account: User) -> Self {
+        Self {
+            id: activity.id,
+            occurred_at: activity.occurred_at,
+            action: activity.action,
+            parties: ActivityDetailParties::Account {
+                account,
                 direction: activity.direction,
                 counterparty: activity.counterparty,
             },
@@ -654,8 +692,8 @@ impl ActivityDetail {
     }
 
     #[must_use]
-    pub const fn status(&self) -> &ActivityStatus {
-        &self.status
+    pub const fn status(&self) -> Option<&ActivityStatus> {
+        self.status.as_ref()
     }
 
     #[must_use]
@@ -750,7 +788,7 @@ mod tests {
             ActivityDirection::Outgoing,
             ActivityCounterparty::user(user.clone()),
             Some(Money::from_cents(125)?),
-            ActivityStatus::from_str("settled")?,
+            Some(ActivityStatus::from_str("settled")?),
             Some("private note".to_owned()),
             Some("private".to_owned()),
         );
@@ -760,7 +798,10 @@ mod tests {
         assert_eq!(activity.direction(), ActivityDirection::Outgoing);
         assert_eq!(activity.counterparty().as_user(), Some(&user));
         assert_eq!(activity.amount().map(Money::cents), Some(125));
-        assert_eq!(activity.status().as_str(), "settled");
+        assert_eq!(
+            activity.status().map(ActivityStatus::as_str),
+            Some("settled")
+        );
         assert_eq!(activity.note(), Some("private note"));
         assert_eq!(activity.audience(), Some("private"));
         let rendered = format!("{activity:?}");

@@ -178,6 +178,8 @@ venmo activity list --user <USERNAME> [--limit <N>] [--before-id <TOKEN>]
 - `--before-id` takes only the continuation token printed by an earlier `activity list` call.
 - Venmo privacy settings determine which records are visible.
 - Amounts are omitted from other-user activity.
+- Some activity types, including rewards disbursements, do not provide an amount or status. The
+  list leaves unavailable fields blank, and `activity info` omits unavailable detail lines.
 
 Inspect one canonical activity record:
 

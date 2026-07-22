@@ -14,8 +14,8 @@ use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
 
 use super::super::dto::{
     ActivityCommentDto, ActivityCommentEnvelope, ActivityPaymentRecordDto,
-    AddActivityCommentRequest, AuthorizationDto, StoriesEnvelope, StoryDto, StoryEnvelope,
-    StorySocialCollectionDto, TransferDto, UserDto,
+    AddActivityCommentRequest, AuthorizationDto, DisbursementDto, StoriesEnvelope, StoryDto,
+    StoryEnvelope, StorySocialCollectionDto, TransferDto, UserDto,
 };
 use super::super::transport::{ApiSession, ApiTransport, HttpRequest, JsonBody};
 use super::error::VenmoApiError;
@@ -427,12 +427,14 @@ pub(super) fn map_activity(
     let operation = ACTIVITY_LIST_OPERATION;
     let StoryDto {
         id,
+        story_type,
         date_created: story_created,
         note: story_note,
         audience: story_audience,
         payment,
         transfer,
         authorization,
+        disbursement,
         likes: _,
         comments: _,
     } = story;
@@ -442,18 +444,27 @@ pub(super) fn map_activity(
     })?;
     let metadata = StoryMetadata {
         id,
+        story_type,
         created_at: story_created,
         note: story_note,
         audience: story_audience,
     };
-    match (payment, transfer, authorization) {
-        (Some(payment), None, None) => {
+    match (payment, transfer, authorization, disbursement) {
+        (Some(payment), None, None, None) => {
             map_payment_activity(metadata, payment, current_user_id, operation)
         }
-        (None, Some(transfer), None) => map_transfer_activity(metadata, transfer, operation),
-        (None, None, Some(authorization)) => {
+        (None, Some(transfer), None, None) => map_transfer_activity(metadata, transfer, operation),
+        (None, None, Some(authorization), None) => {
             map_authorization_activity(metadata, authorization, current_user_id, operation)
         }
+        (None, None, None, Some(disbursement)) => map_disbursement_activity(
+            metadata,
+            disbursement,
+            Some(current_user_id),
+            current_user_id,
+            operation,
+        )
+        .map(|(activity, _)| activity),
         _ => Err(VenmoApiError::Contract {
             operation,
             problem: "the activity response contained an unsupported or ambiguous record type",
@@ -468,12 +479,14 @@ fn map_other_user_activity(
 ) -> Result<Activity, VenmoApiError> {
     let StoryDto {
         id,
+        story_type,
         date_created,
         note,
         audience,
         payment,
         transfer,
         authorization,
+        disbursement,
         likes: _,
         comments: _,
     } = story;
@@ -481,10 +494,11 @@ fn map_other_user_activity(
         operation: ACTIVITY_LIST_OPERATION,
         problem: "the activity response contained an invalid activity ID",
     })?;
-    match (payment, transfer, authorization) {
-        (Some(payment), None, None) => map_payment_activity_for_scope(
+    match (payment, transfer, authorization, disbursement) {
+        (Some(payment), None, None, None) => map_payment_activity_for_scope(
             StoryMetadata {
                 id,
+                story_type,
                 created_at: date_created,
                 note,
                 audience,
@@ -494,9 +508,23 @@ fn map_other_user_activity(
             Some(viewer_user_id),
             ACTIVITY_LIST_OPERATION,
         ),
+        (None, None, None, Some(disbursement)) => map_disbursement_activity(
+            StoryMetadata {
+                id,
+                story_type,
+                created_at: date_created,
+                note,
+                audience,
+            },
+            disbursement,
+            Some(subject_user_id),
+            viewer_user_id,
+            ACTIVITY_LIST_OPERATION,
+        )
+        .map(|(activity, _)| activity),
         _ => Err(VenmoApiError::Contract {
             operation: ACTIVITY_LIST_OPERATION,
-            problem: "another user's activity feed contained a nonpayment or ambiguous record",
+            problem: "another user's activity feed contained an unsupported or ambiguous record",
         }),
     }
 }
@@ -507,12 +535,14 @@ fn map_activity_detail(
 ) -> Result<ActivityDetail, VenmoApiError> {
     let StoryDto {
         id,
+        story_type,
         date_created,
         note,
         audience,
         payment,
         transfer,
         authorization,
+        disbursement,
         likes,
         comments,
     } = story;
@@ -522,29 +552,38 @@ fn map_activity_detail(
     })?;
     let metadata = StoryMetadata {
         id,
+        story_type,
         created_at: date_created,
         note,
         audience,
     };
     let social = map_activity_social(likes, comments, ACTIVITY_DETAIL_OPERATION)?;
-    let detail = match (payment, transfer, authorization) {
-        (Some(payment), None, None) => map_payment_detail(
+    let detail = match (payment, transfer, authorization, disbursement) {
+        (Some(payment), None, None, None) => map_payment_detail(
             metadata,
             payment,
             current_user_id,
             ACTIVITY_DETAIL_OPERATION,
         ),
-        (None, Some(transfer), None) => {
+        (None, Some(transfer), None, None) => {
             map_transfer_activity(metadata, transfer, ACTIVITY_DETAIL_OPERATION)
                 .map(ActivityDetail::relative)
         }
-        (None, None, Some(authorization)) => map_authorization_activity(
+        (None, None, Some(authorization), None) => map_authorization_activity(
             metadata,
             authorization,
             current_user_id,
             ACTIVITY_DETAIL_OPERATION,
         )
         .map(ActivityDetail::relative),
+        (None, None, None, Some(disbursement)) => map_disbursement_activity(
+            metadata,
+            disbursement,
+            None,
+            current_user_id,
+            ACTIVITY_DETAIL_OPERATION,
+        )
+        .map(|(activity, account)| ActivityDetail::account(activity, account)),
         _ => Err(VenmoApiError::Contract {
             operation: ACTIVITY_DETAIL_OPERATION,
             problem: "the activity response contained an unsupported or ambiguous record type",
@@ -673,9 +712,104 @@ pub(super) fn map_activity_comment(
 
 struct StoryMetadata {
     id: ActivityId,
+    story_type: Option<String>,
     created_at: Option<String>,
     note: Option<String>,
     audience: Option<String>,
+}
+
+fn map_disbursement_activity(
+    story: StoryMetadata,
+    disbursement: DisbursementDto,
+    expected_account_id: Option<&UserId>,
+    viewer_user_id: &UserId,
+    operation: &'static str,
+) -> Result<(Activity, User), VenmoApiError> {
+    if story.story_type.as_deref() != Some("disbursement") {
+        return Err(VenmoApiError::Contract {
+            operation,
+            problem: "the disbursement activity had an unsupported story type",
+        });
+    }
+    let DisbursementDto {
+        id: disbursement_id,
+        date_created,
+        merchant,
+        user,
+        rewards_earned: _rewards_earned,
+    } = disbursement;
+    ActivityId::from_str(&disbursement_id.into_string()).map_err(|_| VenmoApiError::Contract {
+        operation,
+        problem: "the activity response contained an invalid disbursement ID",
+    })?;
+    let account = map_user(user, operation)?;
+    if let Some(expected_account_id) = expected_account_id
+        && account.user_id() != expected_account_id
+    {
+        return Err(VenmoApiError::Contract {
+            operation,
+            problem: "the disbursement activity belonged to a different account",
+        });
+    }
+    let audience = bounded_optional_label(
+        story.audience,
+        operation,
+        "the disbursement activity contained an invalid audience",
+    )?;
+    if account.user_id() != viewer_user_id {
+        match audience.as_deref() {
+            Some("public" | "friends") => {}
+            Some("private") => {
+                return Err(VenmoApiError::Contract {
+                    operation,
+                    problem: "a private disbursement activity did not belong to the authenticated viewer",
+                });
+            }
+            Some(_) => {
+                return Err(VenmoApiError::Contract {
+                    operation,
+                    problem: "another user's disbursement activity contained an unsupported audience",
+                });
+            }
+            None => {
+                return Err(VenmoApiError::Contract {
+                    operation,
+                    problem: "another user's disbursement activity omitted its audience",
+                });
+            }
+        }
+    }
+    let occurred_at = parse_required_timestamp(
+        date_created.or(story.created_at).as_deref(),
+        operation,
+        "the disbursement activity omitted or contained an invalid creation timestamp",
+    )?;
+    let note = bounded_optional_text(
+        story.note,
+        operation,
+        "the disbursement activity contained an oversized note",
+    )?;
+    let merchant_name = bounded_required_text(
+        merchant.display_name,
+        operation,
+        "the disbursement activity contained an invalid merchant name",
+    )?;
+    let action = ActivityAction::from_str("disbursement").map_err(|_| VenmoApiError::Contract {
+        operation,
+        problem: "the disbursement activity action was invalid",
+    })?;
+    let activity = Activity::new(
+        story.id,
+        occurred_at,
+        action,
+        ActivityDirection::Incoming,
+        ActivityCounterparty::external(merchant_name, "merchant".to_owned(), None),
+        None,
+        None,
+        note,
+        audience,
+    );
+    Ok((activity, account))
 }
 
 fn map_authorization_activity(
@@ -744,7 +878,7 @@ fn map_authorization_activity(
         ActivityDirection::Outgoing,
         ActivityCounterparty::external(merchant_name, "merchant".to_owned(), None),
         Some(amount),
-        status,
+        Some(status),
         note,
         audience,
     ))
@@ -789,7 +923,7 @@ fn map_payment_activity_for_scope(
         direction,
         counterparty,
         amount,
-        payment.status,
+        Some(payment.status),
         payment.note,
         payment.audience,
     ))
@@ -829,7 +963,7 @@ fn map_payment_detail(
         payment.actor,
         payment.target,
         amount,
-        payment.status,
+        Some(payment.status),
         payment.note,
         payment.audience,
     ))
@@ -1040,7 +1174,7 @@ fn map_transfer_activity(
         direction,
         ActivityCounterparty::external(name, kind, last_four),
         Some(amount),
-        status,
+        Some(status),
         note,
         audience,
     ))

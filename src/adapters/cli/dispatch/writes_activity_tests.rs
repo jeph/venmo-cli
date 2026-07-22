@@ -188,7 +188,7 @@ fn detail(liked: bool) -> TestResult<ActivityDetail> {
         owner,
         other,
         Some(Money::from_cents(100)?),
-        ActivityStatus::from_str("settled")?,
+        Some(ActivityStatus::from_str("settled")?),
         Some("Synthetic activity".to_owned()),
         Some("private".to_owned()),
     )
