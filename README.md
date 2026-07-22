@@ -89,6 +89,12 @@ Remove the locally stored authorization:
 venmo auth logout
 ```
 
+Credentials are stored in macOS Keychain or Linux Secret Service when available. On Linux without
+Secret Service, the bearer token is stored unencrypted in an owner-only XDG state file at
+`$XDG_STATE_HOME/venmo-cli/credential.json`. If a keyring becomes available later, run
+`venmo auth login` again; the CLI verifies the new keyring entry before deleting the fallback file.
+`venmo auth logout` removes locally stored credentials but does not revoke the remote token.
+
 ### Paying and requesting money
 
 Inspect your balance and the funding sources available for peer payments:
