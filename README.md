@@ -76,9 +76,6 @@ session:
 The cookie exists before authentication but is not trusted until the browser login and device-trust
 flow completes, so retrieve it only after signing in.
 
-Password, trusted device ID, and SMS code prompts display one `*` per entered character while the
-underlying value remains hidden. The masked prompt is cleared after submission or cancellation.
-
 Check the current authorization status:
 
 ```sh
