@@ -267,7 +267,7 @@ pub(crate) enum CredentialStoreSelectionError {
     Unsupported,
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 const SECRET_SERVICE_NAME: &str = "org.freedesktop.secrets";
 
 #[cfg(any(target_os = "linux", test))]
@@ -285,15 +285,15 @@ impl SecretServiceAvailability {
     }
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 trait SecretServiceProbe {
     fn availability(&self) -> Result<SecretServiceAvailability, SecretServiceProbeError>;
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 struct DbusSecretServiceProbe;
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 impl SecretServiceProbe for DbusSecretServiceProbe {
     fn availability(&self) -> Result<SecretServiceAvailability, SecretServiceProbeError> {
         let connection = match zbus::blocking::Connection::session() {
@@ -336,7 +336,7 @@ impl SecretServiceProbe for DbusSecretServiceProbe {
     }
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 fn session_bus_is_absent(error: &zbus::Error) -> bool {
     let zbus::Error::InputOutput(source) = error else {
         return false;
@@ -349,7 +349,7 @@ fn session_bus_is_absent(error: &zbus::Error) -> bool {
     )
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 #[derive(Debug, Error)]
 pub(crate) enum SecretServiceProbeError {
     #[error("failed to connect to the user D-Bus")]
@@ -368,6 +368,7 @@ pub(crate) enum SecretServiceProbeError {
 #[cfg(test)]
 mod tests {
     use std::io;
+    #[cfg(unix)]
     use std::sync::Arc;
 
     use super::*;
@@ -437,6 +438,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn only_absent_session_bus_endpoints_are_treated_as_no_keyring() {
         for kind in [
             io::ErrorKind::NotFound,

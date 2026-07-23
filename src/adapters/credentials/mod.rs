@@ -1,7 +1,7 @@
 mod codec;
 mod keyring;
 mod store;
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 mod xdg;
 
 #[cfg(test)]

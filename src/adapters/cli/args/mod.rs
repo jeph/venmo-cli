@@ -1,5 +1,10 @@
 use clap::{Parser, Subcommand};
 
+const CLI_VERSION: &str = match option_env!("VENMO_BUILD_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 mod auth;
 mod friends;
 mod parsers;
@@ -30,7 +35,7 @@ pub use writes::{PayArgs, PayOperation, PayUserArgs, VisibilityArg};
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]
 #[command(
     name = "venmo",
-    version,
+    version = CLI_VERSION,
     about = "An unofficial Venmo command-line client",
     long_about = None,
     after_long_help = "Financial exit code 3 means the write outcome must be verified independently. Do not retry; check `activity list`, `requests list`, and the official Venmo app."
