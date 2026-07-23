@@ -1,6 +1,6 @@
 ---
 name: venmo-cli
-description: Safely operate the `venmo` CLI for authorization status, balances, users, payments, requests, transfers, friends, activity, likes, comments, and reactions. Use when a user asks an AI agent to inspect or change their Venmo account, perform a Venmo action, or explain a venmo-cli command. Interactive login and SMS verification remain human-only.
+description: Safely operate the `venmo` CLI for authorization status, balances, users, payments, requests, transfers, friends, activity, likes, comments, and reactions. Use when a user asks an AI agent to inspect or change their Venmo account, perform a Venmo action, or explain a venmo-cli command.
 license: MIT
 compatibility: Requires the `venmo` executable on PATH, network access to Venmo, and terminal command execution. Interactive login and SMS OTP challenges require a human-operated terminal.
 metadata:
