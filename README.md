@@ -251,6 +251,35 @@ $ venmo balance --json
 
 Successful results go to stdout. Failures go to stderr.
 
+## Troubleshooting
+
+### macOS credential update could not be verified
+
+If `venmo auth login` reports that the local credential update could not be verified, first check
+whether a credential was stored:
+
+```sh
+venmo auth status --debug
+```
+
+If it reports that no credential is stored, the login Keychain may be locked. Unlock it
+interactively:
+
+```sh
+security unlock-keychain ~/Library/Keychains/login.keychain-db
+```
+
+Enter the password at the prompt; do not pass it with `-p`, which can expose it in shell history.
+Then retry `venmo auth login`. Unlocking the login Keychain is normal—macOS usually does it when you
+sign in. It can be relocked afterward:
+
+```sh
+security lock-keychain ~/Library/Keychains/login.keychain-db
+```
+
+If login still cannot verify the credential after unlocking the Keychain, the failure has another
+credential-storage cause.
+
 ## Roadmap
 
 This project is currently **alpha** and will probably remain there for a while. The commands are
