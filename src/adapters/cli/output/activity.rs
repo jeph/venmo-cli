@@ -179,21 +179,17 @@ pub(crate) fn write_activity_info<W: Write>(
     match activity.social().likes() {
         Some(likes) => {
             writeln!(writer, "Likes: {}", likes.count())?;
-            writeln!(
-                writer,
-                "Likers shown: {} ({})",
-                likes.items().len(),
-                if likes.is_complete() {
-                    "complete"
-                } else {
-                    "partial"
-                }
-            )?;
             for liker in likes.items() {
                 writeln!(
                     writer,
                     "  Liker: {}",
                     sanitize_terminal_text(&user_label(liker))
+                )?;
+            }
+            if !likes.is_complete() {
+                writeln!(
+                    writer,
+                    "Additional likers were not included in Venmo's activity response."
                 )?;
             }
         }
@@ -203,18 +199,6 @@ pub(crate) fn write_activity_info<W: Write>(
         Some(comments) => {
             let displayed_count = comments.items().len().min(ACTIVITY_INFO_COMMENT_LIMIT);
             writeln!(writer, "Comments: {}", comments.count())?;
-            writeln!(
-                writer,
-                "Comments shown: {} ({})",
-                displayed_count,
-                if !comments.is_complete() {
-                    "partial source"
-                } else if comments.items().len() > displayed_count {
-                    "display limited"
-                } else {
-                    "complete"
-                }
-            )?;
             for comment in comments.items().iter().take(displayed_count) {
                 write_activity_comment(writer, comment, timestamps)?;
             }
@@ -225,9 +209,7 @@ pub(crate) fn write_activity_info<W: Write>(
                     sanitize_terminal_text(activity.id().as_str()),
                     ACTIVITY_INFO_COMMENT_LIMIT
                 )?;
-            } else if !comments.is_complete()
-                && comments.count() > u64::try_from(comments.items().len()).unwrap_or(u64::MAX)
-            {
+            } else if !comments.is_complete() {
                 writeln!(
                     writer,
                     "Additional comments were not included in Venmo's activity response."
@@ -410,13 +392,7 @@ pub(crate) fn write_activity_reaction_details(
         writer,
         "  Reaction: {}",
         sanitize_terminal_text(plan.action().emoji().as_str())
-    )?;
-    writeln!(
-        writer,
-        "  Current reaction state: {}",
-        reaction_state_label(plan.previous_state())
-    )?;
-    writeln!(writer, "  Automatic retries: disabled")
+    )
 }
 
 pub(crate) fn write_activity_comment_removal_details(
@@ -485,35 +461,11 @@ pub(crate) fn write_activity_reaction_result(
     writer: &mut impl Write,
     response: &impl HumanSource<ActivityReactionMutationResult>,
 ) -> io::Result<()> {
-    let result = response.human_source();
-    let action = result.plan().action();
-    writeln!(writer, "Action: {}", action.label())?;
     writeln!(
         writer,
-        "Activity ID: {}",
-        sanitize_terminal_text(result.activity().id().as_str())
-    )?;
-    writeln!(
-        writer,
-        "Reaction: {}",
-        sanitize_terminal_text(action.emoji().as_str())
-    )?;
-    writeln!(writer, "Result: {}", action.result_label())?;
-    writeln!(
-        writer,
-        "Reconciled state: {}",
-        reaction_state_label(action.expected_state())
+        "{}",
+        response.human_source().plan().action().result_label()
     )
-}
-
-const fn reaction_state_label(
-    state: crate::features::activity::ActivityReactionState,
-) -> &'static str {
-    match state {
-        crate::features::activity::ActivityReactionState::Present => "present",
-        crate::features::activity::ActivityReactionState::Absent => "absent",
-        crate::features::activity::ActivityReactionState::Unknown => "unknown",
-    }
 }
 
 const fn like_state_label(state: ActivityLikeState) -> &'static str {

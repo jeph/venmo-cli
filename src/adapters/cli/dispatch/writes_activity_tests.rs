@@ -418,7 +418,8 @@ async fn activity_reaction_dry_run_stops_after_authoritative_preflight() -> Test
     let details = String::from_utf8(stderr)?;
     assert!(details.contains("Action: add activity reaction"));
     assert!(details.contains("Reaction: 🔥"));
-    assert!(details.contains("Current reaction state: absent"));
+    assert!(!details.contains("Current reaction state:"));
+    assert!(!details.contains("Automatic retries:"));
     Ok(())
 }
 
@@ -466,9 +467,7 @@ async fn activity_reaction_yes_path_executes_one_state_write_and_reports_reconci
         ]
     );
     assert!(!calls.borrow().contains(&Call::Confirm));
-    let result = String::from_utf8(stdout)?;
-    assert!(result.contains("Result: Reaction added"));
-    assert!(result.contains("Reconciled state: present"));
+    assert_eq!(String::from_utf8(stdout)?, "Reaction added\n");
     Ok(())
 }
 
