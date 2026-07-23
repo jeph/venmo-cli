@@ -35,6 +35,7 @@ pub use writes::{PayArgs, PayOperation, PayUserArgs, VisibilityArg};
 #[derive(Clone, Debug, Eq, Parser, PartialEq)]
 #[command(
     name = "venmo",
+    bin_name = "venmo",
     version = CLI_VERSION,
     about = "An unofficial Venmo command-line client",
     long_about = None,
