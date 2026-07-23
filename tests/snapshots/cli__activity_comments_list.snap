@@ -12,7 +12,7 @@ Arguments:
 
 Options:
       --limit <N>
-          Number of comments to display
+          Number of comments to display (maximum 50)
 
           [default: 10]
 

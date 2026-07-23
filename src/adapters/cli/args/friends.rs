@@ -26,7 +26,7 @@ pub struct FriendsListArgs {
     #[arg(long, value_name = "USERNAME")]
     pub user: Option<Username>,
 
-    /// Server request page size.
+    /// Server request page size (maximum 50).
     #[arg(long, value_name = "N", default_value = "10")]
     pub limit: Limit,
 

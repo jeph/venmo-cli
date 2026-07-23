@@ -14,7 +14,7 @@ Options:
           [possible values: all, incoming, outgoing]
 
       --limit <N>
-          Server request page size before local direction filtering
+          Server request page size before local direction filtering (maximum 50)
 
           [default: 10]
 

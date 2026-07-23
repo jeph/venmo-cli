@@ -41,7 +41,7 @@ pub struct RequestsListArgs {
     #[arg(long, value_enum, default_value_t = RequestDirectionArg::All)]
     pub direction: RequestDirectionArg,
 
-    /// Server request page size before local direction filtering.
+    /// Server request page size before local direction filtering (maximum 50).
     #[arg(long, value_name = "N", default_value = "10")]
     pub limit: Limit,
 

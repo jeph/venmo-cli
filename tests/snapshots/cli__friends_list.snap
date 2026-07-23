@@ -11,7 +11,7 @@ Options:
           Exact username whose visible friends should be listed
 
       --limit <N>
-          Server request page size
+          Server request page size (maximum 50)
 
           [default: 10]
 

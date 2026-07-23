@@ -36,7 +36,7 @@ pub struct UserSearchArgs {
     #[arg(value_name = "QUERY")]
     pub query: UserSearchQuery,
 
-    /// Server request page size.
+    /// Server request page size (maximum 50).
     #[arg(long, value_name = "N", default_value = "10")]
     pub limit: Limit,
 
@@ -75,7 +75,7 @@ pub struct ActivityListArgs {
     #[arg(long, value_name = "USERNAME")]
     pub user: Option<Username>,
 
-    /// Server request page size.
+    /// Server request page size (maximum 50).
     #[arg(long, value_name = "N", default_value = "10")]
     pub limit: Limit,
 
@@ -151,7 +151,7 @@ pub struct ActivityCommentListArgs {
     #[arg(value_name = "ACTIVITY_ID")]
     pub activity_id: ActivityId,
 
-    /// Number of comments to display.
+    /// Number of comments to display (maximum 50).
     #[arg(long, value_name = "N", default_value = "10")]
     pub limit: Limit,
 
