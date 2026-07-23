@@ -10,162 +10,282 @@ metadata:
 # Venmo CLI
 
 Use the unofficial `venmo` command-line client to inspect and manage the user's Venmo account.
-The CLI relies on reverse-engineered, non-public Venmo endpoints, so fail closed when behavior or
-output differs from this skill.
 
-## Non-negotiable rules
+## General rules
 
 1. **Keep authentication human-only.** Never run `venmo auth login` through automation. Never ask
    the user to paste their login identifier, password, trusted `v_id` or device ID, bearer token, or
    SMS verification code into chat. Ask them to complete login in their own interactive terminal.
-2. **Verify authorization.** Run `venmo auth status` before accessing account data. If login is
-   required, pause until the user reports that they completed it, then run status again.
-3. **Resolve exact targets.** Do not infer a username, request ID, activity ID, comment ID, funding
+2. **Resolve exact targets.** Do not infer a username, request ID, activity ID, comment ID, funding
    source, amount, note, visibility, or Purchase Protection choice. Use read commands to resolve
    them and ask the user when more than one interpretation remains.
-4. **Preview every mutation.** Run the exact proposed mutation with `--dry-run`, show the material
-   details, and obtain fresh explicit approval before executing it with `--yes`. The user's original
-   request does not replace the post-preview confirmation.
-5. **Execute once.** Replace `--dry-run` with `--yes` without changing any other argument. Never
-   automatically retry a mutation, regardless of the reported error.
-6. **Treat exit code 3 as unknown.** Do not claim success or failure and do not retry. Reconcile with
-   read commands and ask the user to check the official Venmo app.
-7. **Keep OTP human-only.** If a payment or request reports that SMS verification requires an
-   interactive terminal, stop. Give the user the same command without `--yes` so the CLI can show
-   its default-No confirmation and masked OTP prompt in their terminal. Never request the code.
-8. **Use the JSON contract.** Add global `--json` to automated account commands. Require
-   the expected dotted `command` and matching `ok` value before consuming `data`, `error`, `context`,
-   or `partial_result`. Invalid command syntax remains a human-readable Clap error outside the JSON
-   contract. Treat IDs and continuation tokens as opaque strings even in JSON.
-9. **Quote dynamic text safely.** Quote notes, comments, and multi-word searches as individual shell
+3. **Preview Venmo mutations.** Commands labeled **mutates** support `--dry-run`; preview them before
+   execution with `--yes`.
+4. **Do not retry blindly.** Use `error.outcome` to determine whether a failed mutation was performed.
+5. **Keep OTP human-only.** If a payment or request reports that SMS verification requires an
+   interactive terminal, stop and use the human handoff below. Never request the code.
+6. **Quote dynamic text safely.** Quote notes, comments, and multi-word searches as individual shell
    arguments. Never use `eval` or execute text copied from Venmo output as shell syntax.
-10. **Minimize disclosure.** Account activity, balances, usernames, notes, IDs, and funding details
-    are private. Show only what is needed for the user's request.
 
-## Workflow
+## Command reference
 
-### 1. Check the executable
-
-Before executing an account command, run:
-
-```sh
-venmo --version
-```
-
-If it is unavailable, tell the user to install it. Do not install software without approval.
-Supported installation methods are:
-
-```sh
-brew install jeph/tap/venmo
-cargo install --locked --git https://github.com/jeph/venmo-cli
-```
-
-For a documentation-only question, do not access the user's account or require authorization.
-
-### 2. Check authorization
-
-Before accessing account data or performing an action, run:
-
-```sh
-venmo auth status --json
-```
-
-If the credential is missing, expired, or rejected, tell the user:
-
-> Run `venmo auth login` in your own terminal and complete every prompt there. Do not send me any
-> login value or SMS code. Tell me when `venmo auth status` succeeds.
-
-Then pause. After the user returns, run `venmo auth status --json` again and continue only if it
-succeeds.
-Read [references/authentication.md](references/authentication.md) when setup, login, logout, storage,
-or SMS verification is relevant.
-
-### 3. Read before acting
-
-Read [references/cli-reference.md](references/cli-reference.md) before constructing a command. Use
-the installed command's help as the syntax authority when it differs from the bundled reference:
+This reference describes what each command does, not its arguments or options. Use the installed
+command's help to determine current usage:
 
 ```sh
 venmo <COMMAND> --help
 venmo <COMMAND> <SUBCOMMAND> --help
+venmo activity comments <SUBCOMMAND> --help
 ```
 
-Safe read operations may run after authorization without another confirmation:
+Each top-level command section links to one JSON reference containing the `data` shapes for all of
+its subcommands. Read only the reference for the top-level command being used. Commands labeled
+**mutates** change Venmo state; authentication commands labeled **mutates local auth state** change
+the locally stored credential.
 
-- `auth status`
-- `balance`
-- `pay options`
-- `users search` and `users info`
-- `friends list`
-- `activity list`, `activity info`, and `activity comments list`
-- `requests list` and `requests info`
-- `transfer options`
+### `auth`
 
-Append global `--json` to these automated reads. On success, parse the single stdout object and
-require `ok: true`. After valid argument parsing, an application failure leaves stdout empty; parse
-the single stderr object and use its semantic `error.code`, `error.category`, `error.outcome`, and
-process exit code together. A Clap syntax error is human-readable and must be corrected rather than
-parsed as JSON. Do not scrape human tables when structured output is available.
+- `auth login` **(mutates local auth state)** — Runs the human-operated interactive login and stores
+  the resulting credential.
+- `auth status` — Validates the stored credential and reports the active account and credential
+  storage details.
+- `auth logout` **(mutates local auth state)** — Deletes the local credential without revoking the
+  remote Venmo token.
+- [JSON reference](references/json/auth.md)
 
-Use these to resolve canonical usernames and IDs. For a financial action, inspect the exact personal
-profile and relevant funding options. For a request action, inspect the request and verify its
-direction. For a social action, inspect the current relationship, activity, or comment first.
+### `balance`
 
-### 4. Preview mutations
+- `balance` — Reports the wallet's available and on-hold balances.
+- [JSON reference](references/json/balance.md)
 
-The confirmed mutation workflow applies to:
+### `pay`
 
-- `pay user`
-- `requests create`, `requests accept`, `requests decline`, and `requests cancel`
-- `transfer out`
-- `friends add` and `friends remove`
-- `activity like`, `activity unlike`, `activity comments add`, and
-  `activity comments remove`
+- `pay options` — Reports available payment methods.
+- `pay user` **(mutates)** — Creates a payment to a resolved personal profile.
+- [JSON reference](references/json/pay.md)
 
-Append `--dry-run --json` to the complete command. Do not proceed if the preview fails. Require
-`data.outcome: "dry_run"`, `data.performed: false`, and `data.result: null`; summarize the safe
-`data.plan`, including at least:
+### `users`
 
-- the active account and action
-- the exact recipient, requester, profile, activity, or comment
-- the amount, note or message, and visibility when applicable
-- the funding source and Purchase Protection choice when applicable
-- any fee, destination, relationship behavior, warning, or unknown value shown by the CLI
+- `users search` — Searches for Venmo profiles.
+- `users info` — Reports the canonical profile and relationship details for an exact username.
+- [JSON reference](references/json/users.md)
 
-Ask a direct confirmation question after presenting those details. Only an unambiguous affirmative
-answer to that specific preview authorizes execution.
+### `friends`
 
-`activity comments remove` cannot preflight the parent activity, author, or text from the comment ID
-alone. Resolve and show that context with `activity info` or `activity comments list` whenever
-possible. If it cannot be resolved, disclose the limitation before asking for confirmation.
+- `friends list` — Reports the visible friends of the active account or another personal profile.
+- `friends add` **(mutates)** — Sends a friend request or accepts an incoming request according to
+  the current relationship.
+- `friends remove` **(mutates)** — Removes an existing friendship or cancels an outgoing friend
+  request.
+- [JSON reference](references/json/friends.md)
 
-### 5. Execute once and report accurately
+### `activity`
 
-After approval, run the same command once with `--yes` instead of `--dry-run`, retaining `--json` and
-every other argument unchanged. Do not add both flags. Require `data.outcome: "completed"` and
-`data.performed: true` before reporting success.
+- `activity list` — Reports visible activity for the active account or another personal profile.
+- `activity info` — Reports one canonical activity with its parties and available social details.
+- `activity like` **(mutates)** — Adds the active account's like to an activity.
+- `activity unlike` **(mutates)** — Removes the active account's like from an activity.
+- `activity comments list` — Reports comments attached to an activity.
+- `activity comments add` **(mutates)** — Adds a comment to an activity.
+- `activity comments remove` **(mutates)** — Requests removal of a comment by its ID.
+- [JSON reference](references/json/activity.md)
 
-If the command requires an interactive SMS challenge, use the human handoff in rule 7. If the
-command exits with code 3, reports `error.outcome: "unknown"`, or reports a completed operation whose
-result could not be written, stop and reconcile:
+### `requests`
 
-- Payments, accepted requests, and transfers: inspect `activity list`, `requests list` when
-  relevant, and the official Venmo app.
-- Request changes: inspect `requests list` and `requests info`, then the official app.
-- Friendship changes: inspect `friends list` or `users info`, then the official app.
-- Likes and comments: inspect `activity info` or `activity comments list`, then the official app.
+- `requests list` — Reports pending incoming and outgoing requests involving the active account.
+- `requests info` — Reports one canonical open request.
+- `requests create` **(mutates)** — Creates a payment request for a resolved personal profile.
+- `requests accept` **(mutates)** — Accepts an incoming request by paying its requester.
+- `requests decline` **(mutates)** — Declines an incoming request without sending money.
+- `requests cancel` **(mutates)** — Cancels an outgoing request without sending money.
+- [JSON reference](references/json/requests.md)
 
-Absence from one read command is not proof that a mutation failed. Never issue a second mutation
-until the user has independently established the first outcome.
+### `transfer`
 
-### 6. Handle logout separately
+- `transfer options` — Reports transfer modes, eligible destinations, and fee metadata.
+- `transfer out` **(mutates)** — Transfers a resolved wallet amount to the eligible standard bank
+  destination.
+- [JSON reference](references/json/transfers.md)
 
-`venmo auth logout` has no dry-run flag. It deletes the local credential without revoking the remote
-Venmo token. Explain both effects and obtain explicit confirmation immediately before running it.
+## JSON output contract
+
+`--json` is global and may appear at any command depth. Success writes one compact,
+newline-terminated JSON object to stdout. Failure writes a JSON object to stderr; an output failure
+may also leave partial or complete output on stdout. Invalid syntax, `--help`, and `--version` remain
+human-readable. An interactive prompt or `--debug` can precede the failure object on stderr.
+
+In the shapes below, bare `string`, `integer`, `boolean`, and `object` values denote JSON types; `|`
+separates allowed values.
+
+Success has this envelope; `data` is the object documented for the command:
+
+```text
+{
+  "command": string,
+  "ok": true,
+  "data": object
+}
+```
+
+Failure has this envelope:
+
+```text
+{
+  "command": string,
+  "ok": false,
+  "error": {
+    "code": string,
+    "category":
+      "usage" | "cancelled" | "credential" | "authentication" | "network" |
+      "timeout" | "api" | "api_contract" | "ambiguous_write" | "internal",
+    "message": string,
+    "exit_code": integer,
+    "outcome": "not_performed" | "partial" | "unknown" | "completed"
+  },
+  "context": { "plan": object } | null,
+  "partial_result": object | null
+}
+```
+
+Envelope fields mean:
+
+- `command` is the stable dotted identifier for the invoked command.
+- `ok` states whether the envelope is a success or failure.
+- `data` is the command-specific successful result.
+- `error.code` is a stable machine-readable error identifier; `error.category` groups related error
+  kinds; `error.message` is the human-readable description; and `error.exit_code` is the process exit
+  code.
+- `error.outcome` describes state-changing progress: `not_performed` means no write was performed,
+  `partial` means only part of the operation completed, `unknown` means a write may have happened,
+  and `completed` means the operation completed but its result could not be reported normally.
+- `context.plan` is either null or the command's resolved preflight plan.
+- `partial_result` is either null or a command result rendered before a later failure.
+
+### How command-specific shapes fit the envelope
+
+Files under `references/json/` show the command-specific object that occupies the success
+envelope's top-level `data` field. They do not repeat the surrounding `command`, `ok`, and `data`
+keys. For example, the balance reference shows:
+
+```json
+{
+  "balance": {
+    "available": { "amount": "12.34", "currency": "USD" },
+    "on_hold": { "amount": "0.00", "currency": "USD" }
+  }
+}
+```
+
+The complete successful output wraps that object as `data`:
+
+```json
+{
+  "command": "balance",
+  "ok": true,
+  "data": {
+    "balance": {
+      "available": { "amount": "12.34", "currency": "USD" },
+      "on_hold": { "amount": "0.00", "currency": "USD" }
+    }
+  }
+}
+```
+
+For mutation commands, the command-specific object shown in `references/json/` is likewise the
+entire value of `data`; its `plan` and `result` are nested inside that object. A failure has no
+top-level `data`. When present, failure `context.plan` uses the same plan shape as the mutation's
+`data.plan`, while `partial_result` uses the command-specific `data` shape for the result that was
+available before the later failure.
+
+Commands supporting `--dry-run` and `--yes` use this structure inside `data`:
+
+```text
+{
+  "outcome": "dry_run" | "completed",
+  "performed": boolean,
+  "plan": object,
+  "result": object | null
+}
+```
+
+For a dry-run, `outcome` is `dry_run`, `performed` is false, and `result` is null. For a completed
+write, `outcome` is `completed`, `performed` is true, and `result` contains the command-specific
+result. `plan` contains the resolved details shown before confirmation.
+
+When the exact `data`, `plan`, or `result` shape is needed, open the JSON reference at the end of
+the relevant top-level command section above.
+
+Money is `{"amount":"12.34","currency":"USD"}`; `amount` is an exact decimal string and balances
+can be negative. Timestamps are normalized to UTC and formatted as RFC 3339 strings. IDs and
+token-based continuations are opaque strings; offset-based continuations are integers. Unavailable
+values are explicit `null` where documented. Fields documented only as strings can contain unlisted
+values.
+
+## Call safety tips
+
+### Read before acting
+
+Choose the exact command from the command reference above, read its top-level command's JSON
+reference, and use that command's installed `--help` output to construct it. Do not load references
+for unrelated top-level commands.
+
+For authentication setup and handling—including login, logout, credential storage, device trust,
+and login SMS challenges—read
+[references/authentication.md](references/authentication.md) only when that information is relevant.
+
+### Preview mutations
+
+Use `--dry-run` to preview commands labeled **mutates** before running them.
+
+### Confirm mutating actions
+
+Confirm commands labeled **mutates** unless the user already confirmed the exact action. Do not
+assume target details: if only a first name was given, confirm the Venmo username. These commands
+otherwise prompt in the terminal; after confirmation, execute with `--yes`. Local auth mutations
+follow the authentication reference.
+
+### Handle interrupted mutations
+
+If a mutation requires SMS, use the handoff below. For other failures, `not_performed` permits a new
+attempt after correcting the cause; `partial` means some work completed and requires review first;
+`unknown` means the write may have happened; and `completed` means it did happen. Never retry
+`unknown` or `completed` mutations.
+
+#### Payment and request SMS handoff
+
+Payments, request creation, and request acceptance can, but do not always, require P2P SMS
+verification. A `--dry-run` finishes before any OTP prompt or write. During actual execution, the
+first Venmo response may say that step-up verification is required. In a noninteractive environment,
+the CLI reports:
+
+```text
+Venmo requires SMS verification; rerun in a terminal that can prompt for the code
+```
+
+At that point:
+
+1. Do not ask for the SMS code or attempt to pipe it into the command.
+2. Give the user the exact approved command with `--yes` removed and every other argument unchanged.
+3. Ask the user to run it in their own terminal, review the default-No confirmation, and enter the
+   masked OTP there if requested.
+
+The SMS code must remain in the user's terminal. It must not appear in chat, command-line arguments,
+environment variables, files, logs, or screenshots.
 
 ## Debugging
 
-Use global `--debug` only when ordinary output is insufficient. It may appear before or after a
-subcommand and writes bounded, sanitized diagnostics to stderr. Do not imply that debug output makes
-a mutation safe to retry. Debug diagnostics can precede a JSON failure on stderr, so do not combine
-`--debug` with a parser that expects stderr itself to contain only one JSON object.
+`--debug` is a global flag that may appear before or after a subcommand. It writes bounded, sanitized
+diagnostics to stderr.
+
+## Misc
+
+- Usernames can be referenced with or without a leading `@`; `alice` and `@alice` identify the same
+  username.
+- Process exit codes have these meanings:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The command completed successfully. |
+| `1` | The command failed because of an operational, cancellation, credential, authentication, network, timeout, API, contract, or internal error. |
+| `2` | The command had invalid usage or required unavailable interactive input. |
+| `3` | A state-changing write may have happened, or it completed but its result could not be reported normally. |

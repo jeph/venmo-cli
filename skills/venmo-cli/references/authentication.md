@@ -1,18 +1,21 @@
 # Authentication and human handoff
 
 Authentication is deliberately interactive. The agent may check status and explain the process, but
-the user must enter every login and SMS verification value directly into their own terminal.
+the user must enter every login value, including a login SMS code, directly into their own terminal.
 
 ## Check status
 
-Run this before account operations and again after any login handoff:
+Run this only when the user asks for authorization status or when diagnosing login or credential
+storage:
 
 ```sh
 venmo auth status
 ```
 
-The command validates the stored credential with Venmo and identifies the active account. Do not
-treat the mere presence of a local credential as proof that it remains valid.
+The command validates the stored credential with Venmo and identifies the active account. It is not
+a prerequisite check for ordinary account commands; those commands validate authorization and
+report an error themselves. Do not treat the mere presence of a local credential as proof that it
+remains valid.
 
 ## Human-only login
 
@@ -57,29 +60,8 @@ sensitive values out of its command line.
 - If login reports incomplete device trust or credential cleanup, follow the printed recovery
   guidance and verify with `venmo auth status` before doing anything else.
 
-After the user says login is complete, run `venmo auth status`. Continue only after it validates the
-credential and displays the intended active account.
-
-## SMS verification during payments and requests
-
-Payments, request creation, and request acceptance can require P2P SMS verification. A `--dry-run`
-finishes before any OTP prompt or write. During actual execution, the first Venmo response may say
-that step-up verification is required.
-
-If the agent's command environment is not interactive, the CLI reports:
-
-```text
-Venmo requires SMS verification; rerun in a terminal that can prompt for the code
-```
-
-At that point:
-
-1. Do not ask for the SMS code.
-2. Do not attempt to pipe a code into the command.
-3. Give the user the exact approved command with `--yes` removed.
-4. Ask the user to run it in their own terminal, review the default-No confirmation, and enter the
-   masked OTP there if requested.
-5. Afterward, use the appropriate read command to verify the resulting state.
+After the user says login is complete, resume the original account command. It validates the new
+credential itself. Use `venmo auth status` separately only when diagnosis is needed.
 
 ## Logout
 
