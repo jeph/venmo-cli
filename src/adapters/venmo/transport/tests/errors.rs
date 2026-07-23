@@ -332,10 +332,7 @@ async fn classifies_financial_write_timeout_as_ambiguous() -> Result<(), Box<dyn
 #[tokio::test(flavor = "current_thread")]
 async fn classifies_pretransmission_connect_failure_as_network()
 -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let address = listener.local_addr()?;
-    drop(listener);
-    let base_url = Url::parse(&format!("http://{address}/v1/"))?;
+    let base_url = Url::parse("http://127.0.0.1:0/v1/")?;
     let transport = VenmoHttpTransport::for_test(base_url, TEST_TIMEOUT, 1024)?;
     let credential = test_credential()?;
     let result = transport
