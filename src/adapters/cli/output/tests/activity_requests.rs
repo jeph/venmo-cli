@@ -2,14 +2,16 @@ use std::error::Error;
 use std::str::FromStr;
 
 use super::super::{
-    write_activity_comments, write_activity_info, write_activity_list, write_request_info,
-    write_requests,
+    write_activity_comments, write_activity_info, write_activity_list, write_activity_reactions,
+    write_request_info, write_requests,
 };
+use crate::features::activity::reactions::ActivityReactionListResult;
 use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
     ActivityCommentListResult, ActivityCounterparty, ActivityDetail, ActivityDirection,
-    ActivityFeedKind, ActivityId, ActivityInfoResult, ActivityListResult, ActivitySocial,
-    ActivitySocialCollection, ActivityStatus, ActivitySubject,
+    ActivityFeedKind, ActivityId, ActivityInfoResult, ActivityListResult, ActivityReaction,
+    ActivityReactionEmoji, ActivityReactions, ActivitySocial, ActivitySocialCollection,
+    ActivityStatus, ActivitySubject,
 };
 use crate::features::people::User;
 use crate::features::requests::list::RequestsResult;
@@ -223,10 +225,16 @@ fn activity_info_renders_partial_embedded_social_data_and_sanitizes_it() -> Test
         Some("visible note".to_owned()),
         Some("friends".to_owned()),
     )
-    .with_social(ActivitySocial::new(
-        Some(ActivitySocialCollection::new(2, vec![liker], false)),
-        Some(ActivitySocialCollection::new(2, vec![comment], false)),
-    ));
+    .with_social(
+        ActivitySocial::new(
+            Some(ActivitySocialCollection::new(2, vec![liker], false)),
+            Some(ActivitySocialCollection::new(2, vec![comment], false)),
+        )
+        .with_reactions(Some(ActivityReactions::try_new(vec![
+            ActivityReaction::new(ActivityReactionEmoji::from_str("🔥")?, 2, true),
+            ActivityReaction::new(ActivityReactionEmoji::from_str("❤️")?, 1, false),
+        ])?)),
+    );
     let mut stdout = Vec::new();
 
     write_activity_info(
@@ -238,6 +246,21 @@ fn activity_info_renders_partial_embedded_social_data_and_sanitizes_it() -> Test
 
     insta::assert_snapshot!("activity_info_partial_social", stdout);
     assert!(!stdout.contains('\u{1b}'));
+    Ok(())
+}
+
+#[test]
+fn activity_reaction_list_renders_aggregate_counts_and_current_user_state() -> TestResult {
+    let reactions = ActivityReactions::try_new(vec![
+        ActivityReaction::new(ActivityReactionEmoji::from_str("🔥")?, 2, true),
+        ActivityReaction::new(ActivityReactionEmoji::from_str("❤️")?, 1, false),
+    ])?;
+    let result = ActivityReactionListResult::new(ActivityId::from_str("story-1")?, reactions);
+    let mut stdout = Vec::new();
+
+    write_activity_reactions(&mut stdout, &result)?;
+
+    insta::assert_snapshot!("activity_reaction_list", String::from_utf8(stdout)?);
     Ok(())
 }
 

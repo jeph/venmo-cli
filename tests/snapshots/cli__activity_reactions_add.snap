@@ -1,0 +1,26 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Add one emoji reaction to an activity record
+
+Usage: add [OPTIONS] <ACTIVITY_ID> <REACTION>
+
+Arguments:
+  <ACTIVITY_ID>
+          Canonical activity ID
+
+  <REACTION>
+          Exact emoji glyph to add
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+      --dry-run
+          Complete preflight and show details without adding the reaction
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+REACTION must be exactly one Unicode grapheme cluster, such as '🔥' or '❤️'. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently.

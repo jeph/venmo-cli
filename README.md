@@ -19,7 +19,8 @@ experience from the terminal:
 - **Built-in OTP challenges (2FA).** Interactive login, payments, request creation, and request
   acceptance can complete Venmo's SMS verification flow when required.
 - **Social features.** Search and inspect users, browse your or another user's visible friends and
-  activity, manage friendships, like or unlike activity, and list, add, or remove comments.
+  activity, manage friendships, like or unlike activity, manage comments, and add or remove emoji
+  reactions.
 - **Balance and cash-out.** Check your wallet balance, inspect transfer eligibility, and transfer a
   fixed amount or all available funds to the selected standard bank destination.
 - **Native and security-conscious.** Prebuilt arm64 and x86_64 binaries require no language runtime.
@@ -147,7 +148,7 @@ settings determine which records are visible, and amounts are omitted from other
 Some activity types, including rewards disbursements, do not provide an amount or status. Their
 unavailable table fields are blank, and `activity info` omits those detail lines.
 
-Like, unlike, and manage comments on visible activity:
+Like, unlike, manage comments, and manage emoji reactions on visible activity:
 
 ```sh
 venmo activity like <ACTIVITY_ID>
@@ -155,7 +156,13 @@ venmo activity unlike <ACTIVITY_ID>
 venmo activity comments list <ACTIVITY_ID> [--limit <N>] [--offset <N>]
 venmo activity comments add <ACTIVITY_ID> <MESSAGE>
 venmo activity comments remove <COMMENT_ID>
+venmo activity reactions list <ACTIVITY_ID>
+venmo activity reactions add <ACTIVITY_ID> <REACTION>
+venmo activity reactions remove <ACTIVITY_ID> <REACTION>
 ```
+
+Reaction values are exact Unicode emoji glyphs, such as `🔥` or `❤️`; quote them if required by your
+shell.
 
 List commands print a continuation when another page is available. Pass that value back through
 the matching `--before-id` or `--offset` option. Continuation types are not interchangeable.
@@ -302,8 +309,6 @@ Planned work includes:
   and release packaging.
 - **Fee visibility.** Resolve and display applicable fee rates more consistently so fewer commands
   fall back to `unknown`, without guessing when Venmo does not provide authoritative fee data.
-- **Activity reactions.** Support Venmo reactions on activity beyond the current like, unlike, and
-  comment commands once the private API behavior is reliably established.
 - **Beta stabilization.** Move to beta after enough users have exercised the CLI and reported issues.
   The beta phase will focus especially on making the `--json` output shapes consistent and stable.
 

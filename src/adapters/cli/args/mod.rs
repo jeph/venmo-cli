@@ -20,8 +20,9 @@ pub use friends::{
 pub use reads::{
     ActivityArgs, ActivityCommentAddArgs, ActivityCommentListArgs, ActivityCommentRemoveArgs,
     ActivityCommentsArgs, ActivityCommentsOperation, ActivityInfoArgs, ActivityLikeArgs,
-    ActivityListArgs, ActivityOperation, ActivityUnlikeArgs, UserInfoArgs, UserSearchArgs,
-    UsersArgs, UsersOperation,
+    ActivityListArgs, ActivityOperation, ActivityReactionAddArgs, ActivityReactionListArgs,
+    ActivityReactionRemoveArgs, ActivityReactionsArgs, ActivityReactionsOperation,
+    ActivityUnlikeArgs, UserInfoArgs, UserSearchArgs, UsersArgs, UsersOperation,
 };
 pub use requests::{
     AcceptArgs, CancelArgs, DeclineArgs, RequestArgs, RequestDirectionArg, RequestInfoArgs,

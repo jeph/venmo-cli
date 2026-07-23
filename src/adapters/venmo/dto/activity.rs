@@ -54,6 +54,8 @@ pub(crate) struct StoryDto {
     pub likes: Option<StorySocialCollectionDto<UserDto>>,
     #[serde(default)]
     pub comments: Option<StorySocialCollectionDto<ActivityCommentDto>>,
+    #[serde(default)]
+    pub reactions: Option<Vec<ActivityReactionDto>>,
 }
 
 #[derive(Deserialize)]
@@ -110,6 +112,19 @@ impl ActivityCommentData {
 #[derive(Serialize)]
 pub(crate) struct AddActivityCommentRequest<'a> {
     pub message: &'a str,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ActivityReactionDto {
+    pub emoji: String,
+    pub count: u64,
+    #[serde(default)]
+    pub reacted_by_user: bool,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ActivityReactionRequest<'a> {
+    pub emoji: &'a str,
 }
 
 #[derive(Deserialize)]

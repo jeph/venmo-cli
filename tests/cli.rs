@@ -1,8 +1,8 @@
 use clap::{Command as ClapCommand, CommandFactory, Parser, error::ErrorKind};
 use venmo_cli::cli::{
-    ActivityCommentsOperation, ActivityOperation, AuthOperation, Cli, Command, OutputFormat,
-    PayOperation, RequestDirectionArg, RequestsOperation, TransferAmountArg, TransferOperation,
-    TransferSpeedArg, UsersOperation, VisibilityArg,
+    ActivityCommentsOperation, ActivityOperation, ActivityReactionsOperation, AuthOperation, Cli,
+    Command, OutputFormat, PayOperation, RequestDirectionArg, RequestsOperation, TransferAmountArg,
+    TransferOperation, TransferSpeedArg, UsersOperation, VisibilityArg,
 };
 
 fn command_at_path(mut command: ClapCommand, path: &[&str]) -> Option<ClapCommand> {
@@ -435,6 +435,48 @@ fn optional_at_usernames_and_global_option_placement_are_supported() {
                 )
         }));
     }
+
+    for arguments in [
+        &[
+            "venmo",
+            "--json",
+            "activity",
+            "reactions",
+            "list",
+            "story-1",
+        ][..],
+        &[
+            "venmo",
+            "activity",
+            "reactions",
+            "--json",
+            "add",
+            "story-1",
+            "🔥",
+            "--dry-run",
+        ][..],
+        &[
+            "venmo",
+            "activity",
+            "reactions",
+            "remove",
+            "story-1",
+            "🔥",
+            "--yes",
+            "--json",
+        ][..],
+    ] {
+        let parsed = Cli::try_parse_from(arguments);
+        assert!(parsed.is_ok_and(|cli| {
+            cli.json
+                && cli.output_format() == OutputFormat::Json
+                && matches!(
+                    cli.command,
+                    Command::Activity(args)
+                        if matches!(args.operation, ActivityOperation::Reactions(_))
+                )
+        }));
+    }
 }
 
 #[test]
@@ -499,6 +541,8 @@ fn dry_run_is_local_to_every_confirmed_mutation_and_conflicts_with_yes() {
             "Synthetic comment",
         ],
         &["venmo", "activity", "comments", "remove", "comment-1"],
+        &["venmo", "activity", "reactions", "add", "story-1", "🔥"],
+        &["venmo", "activity", "reactions", "remove", "story-1", "🔥"],
         &["venmo", "transfer", "out", "1.00"],
     ];
 
@@ -905,6 +949,26 @@ fn activity_social_commands_have_exact_grouped_grammar_and_redacted_inputs() {
         assert!(debug.contains("[REDACTED]"));
     }
 
+    let reaction_list = Cli::try_parse_from(["venmo", "activity", "reactions", "list", "story-1"]);
+    assert!(reaction_list.is_ok_and(|cli| matches!(
+        cli.command,
+        Command::Activity(args)
+            if matches!(&args.operation, ActivityOperation::Reactions(reactions)
+                if matches!(&reactions.operation, ActivityReactionsOperation::List(args)
+                    if args.activity_id.as_str() == "story-1"))
+    )));
+
+    for operation in ["add", "remove"] {
+        let parsed =
+            Cli::try_parse_from(["venmo", "activity", "reactions", operation, "story-1", "🔥"]);
+        assert!(parsed.is_ok());
+        if let Ok(parsed) = parsed {
+            let debug = format!("{parsed:?}");
+            assert!(!debug.contains("🔥"));
+            assert!(debug.contains("[REDACTED]"));
+        }
+    }
+
     for arguments in [
         &["venmo", "activity", "like"][..],
         &["venmo", "activity", "comments", "add", "story-1", "   "][..],
@@ -1034,6 +1098,16 @@ fn every_command_has_a_help_snapshot() {
             "activity_comments_remove",
             &["activity", "comments", "remove"],
         ),
+        ("activity_reactions", &["activity", "reactions"]),
+        (
+            "activity_reactions_list",
+            &["activity", "reactions", "list"],
+        ),
+        ("activity_reactions_add", &["activity", "reactions", "add"]),
+        (
+            "activity_reactions_remove",
+            &["activity", "reactions", "remove"],
+        ),
         ("requests", &["requests"]),
         ("requests_list", &["requests", "list"]),
         ("requests_create", &["requests", "create"]),
@@ -1116,6 +1190,11 @@ fn mutation_flags(cli: Cli) -> Option<(bool, bool)> {
                 ActivityCommentsOperation::List(_) => None,
                 ActivityCommentsOperation::Add(args) => Some((args.yes, args.dry_run)),
                 ActivityCommentsOperation::Remove(args) => Some((args.yes, args.dry_run)),
+            },
+            ActivityOperation::Reactions(args) => match args.operation {
+                ActivityReactionsOperation::List(_) => None,
+                ActivityReactionsOperation::Add(args) => Some((args.yes, args.dry_run)),
+                ActivityReactionsOperation::Remove(args) => Some((args.yes, args.dry_run)),
             },
             ActivityOperation::List(_) | ActivityOperation::Info(_) => None,
         },

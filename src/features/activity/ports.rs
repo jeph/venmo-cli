@@ -1,6 +1,6 @@
 use super::{
     Activity, ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityDetail,
-    ActivityFeedScope, ActivityId,
+    ActivityFeedScope, ActivityId, ActivityReactionEmoji,
 };
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, UserId};
 use std::future::Future;
@@ -114,4 +114,26 @@ pub trait ActivityCommentRemovalApi {
         device_id: &'a DeviceId,
         comment_id: &'a ActivityCommentId,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'a;
+}
+
+pub trait ActivityReactionMutationApi {
+    type Error: ApiFailure;
+
+    fn add_activity_reaction<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+        emoji: &'a ActivityReactionEmoji,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
+
+    fn remove_activity_reaction<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+        emoji: &'a ActivityReactionEmoji,
+    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
 }

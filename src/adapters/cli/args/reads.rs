@@ -1,7 +1,7 @@
 use clap::{Args, Subcommand};
 
 use crate::features::activity::{
-    ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityId,
+    ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityId, ActivityReactionEmoji,
 };
 use crate::features::people::UserSearchQuery;
 use crate::shared::{Limit, Offset, Username};
@@ -67,6 +67,9 @@ pub enum ActivityOperation {
 
     /// List, add, or remove activity comments.
     Comments(ActivityCommentsArgs),
+
+    /// List, add, or remove emoji reactions.
+    Reactions(ActivityReactionsArgs),
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -196,6 +199,75 @@ pub struct ActivityCommentRemoveArgs {
     pub yes: bool,
 
     /// Show the exact deletion intent without removing the comment.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+pub struct ActivityReactionsArgs {
+    #[command(subcommand)]
+    pub operation: ActivityReactionsOperation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
+pub enum ActivityReactionsOperation {
+    /// List aggregate reactions and the authenticated account's reaction state.
+    List(ActivityReactionListArgs),
+
+    /// Add one emoji reaction to an activity record.
+    Add(ActivityReactionAddArgs),
+
+    /// Remove one emoji reaction from an activity record.
+    Remove(ActivityReactionRemoveArgs),
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+pub struct ActivityReactionListArgs {
+    /// Canonical activity ID.
+    #[arg(value_name = "ACTIVITY_ID")]
+    pub activity_id: ActivityId,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "REACTION must be exactly one Unicode grapheme cluster, such as '🔥' or '❤️'. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
+)]
+pub struct ActivityReactionAddArgs {
+    /// Canonical activity ID.
+    #[arg(value_name = "ACTIVITY_ID")]
+    pub activity_id: ActivityId,
+
+    /// Exact emoji glyph to add.
+    #[arg(value_name = "REACTION")]
+    pub reaction: ActivityReactionEmoji,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long, conflicts_with = "dry_run")]
+    pub yes: bool,
+
+    /// Complete preflight and show details without adding the reaction.
+    #[arg(long, conflicts_with = "yes")]
+    pub dry_run: bool,
+}
+
+#[derive(Args, Clone, Debug, Eq, PartialEq)]
+#[command(
+    after_long_help = "REACTION must exactly match one Unicode emoji reaction already applied by the authenticated account. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
+)]
+pub struct ActivityReactionRemoveArgs {
+    /// Canonical activity ID.
+    #[arg(value_name = "ACTIVITY_ID")]
+    pub activity_id: ActivityId,
+
+    /// Exact emoji glyph to remove.
+    #[arg(value_name = "REACTION")]
+    pub reaction: ActivityReactionEmoji,
+
+    /// Skip only the final default-No confirmation.
+    #[arg(long, conflicts_with = "dry_run")]
+    pub yes: bool,
+
+    /// Complete preflight and show details without removing the reaction.
     #[arg(long, conflicts_with = "yes")]
     pub dry_run: bool,
 }

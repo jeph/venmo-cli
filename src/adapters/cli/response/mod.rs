@@ -6,6 +6,10 @@ use crate::features::activity::comment_remove::{
     ActivityCommentRemovalPlan, PreparedActivityCommentRemoval,
 };
 #[cfg(test)]
+use crate::features::activity::reactions::{
+    ActivityReactionPlan, PreparedActivityReactionMutation,
+};
+#[cfg(test)]
 use crate::features::activity::social::{ActivitySocialPlan, PreparedActivitySocialMutation};
 #[cfg(test)]
 use crate::features::payments::PayPlan;
@@ -41,7 +45,8 @@ mod writes;
 
 pub(crate) use activity::{
     activity_comment_list, activity_comment_removal_plan, activity_comment_removal_result,
-    activity_info, activity_list, activity_social_plan, activity_social_result,
+    activity_info, activity_list, activity_reaction_list, activity_reaction_plan,
+    activity_reaction_result, activity_social_plan, activity_social_result,
 };
 pub(crate) use auth::{auth_status, logout, password_login};
 pub(crate) use people::{friends, friendship_plan, friendship_result, user_info, user_search};
@@ -133,6 +138,8 @@ prepared_source!(PreparedTransferOut, TransferOutPlan);
 prepared_source!(PreparedFriendshipMutation, FriendshipPlan);
 #[cfg(test)]
 prepared_source!(PreparedActivitySocialMutation, ActivitySocialPlan);
+#[cfg(test)]
+prepared_source!(PreparedActivityReactionMutation, ActivityReactionPlan);
 #[cfg(test)]
 prepared_source!(PreparedActivityCommentRemoval, ActivityCommentRemovalPlan);
 

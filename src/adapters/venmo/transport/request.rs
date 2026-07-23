@@ -457,6 +457,23 @@ impl<'a> HttpRequest<'a> {
         )
     }
 
+    pub(in crate::adapters::venmo) fn state_json_delete(
+        route_template: &'static str,
+        path_segments: &'a [&'a str],
+        query: &'a [(&'a str, &'a str)],
+        json_body: JsonBody,
+    ) -> Self {
+        Self::new(
+            Method::DELETE,
+            route_template,
+            path_segments,
+            query,
+            RequestBodies::json(json_body),
+            OperationClass::StateWrite,
+            ResponseCapture::None,
+        )
+    }
+
     fn new(
         method: Method,
         route_template: &'static str,

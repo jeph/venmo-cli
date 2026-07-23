@@ -7,12 +7,13 @@ Inspect account activity
 Usage: activity <COMMAND>
 
 Commands:
-  list      List recent activity
-  info      Show information about one activity record
-  like      Like one activity record
-  unlike    Unlike one activity record
-  comments  List, add, or remove activity comments
-  help      Print this message or the help of the given subcommand(s)
+  list       List recent activity
+  info       Show information about one activity record
+  like       Like one activity record
+  unlike     Unlike one activity record
+  comments   List, add, or remove activity comments
+  reactions  List, add, or remove emoji reactions
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help

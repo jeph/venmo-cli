@@ -2,10 +2,11 @@ use std::future::Future;
 use std::io::Write;
 
 use crate::features::activity::comment_remove as activity_comment_remove;
+use crate::features::activity::reactions::{self as activity_reactions, ActivityReactionIntent};
 use crate::features::activity::social::{self as activity_social, ActivitySocialIntent};
 use crate::features::activity::{
     ActivityCommentId, ActivityCommentRemovalApi, ActivityDetailApi, ActivityId,
-    ActivitySocialMutationApi,
+    ActivityReactionMutationApi, ActivitySocialMutationApi,
 };
 use crate::features::auth::CurrentAccountApi;
 use crate::features::payments::pay;
@@ -445,6 +446,77 @@ where
         &response,
         output::OutputClass::StateMutation,
         |stdout, _stderr, response| output::write_activity_social_result(stdout, response),
+    )
+}
+
+pub(super) struct ActivityReactionCommand<'a> {
+    activity_id: &'a ActivityId,
+    intent: ActivityReactionIntent,
+    assume_yes: bool,
+    dry_run: bool,
+}
+
+impl<'a> ActivityReactionCommand<'a> {
+    pub(super) const fn new(
+        activity_id: &'a ActivityId,
+        intent: ActivityReactionIntent,
+        assume_yes: bool,
+        dry_run: bool,
+    ) -> Self {
+        Self {
+            activity_id,
+            intent,
+            assume_yes,
+            dry_run,
+        }
+    }
+}
+
+pub(super) async fn run_activity_reaction_with<R, A, P, W, E, M, S>(
+    command: ActivityReactionCommand<'_>,
+    store: &R,
+    api: &A,
+    prompt: &P,
+    timestamps: &output::TimestampFormatter,
+    session: &mut output::OutputSession<'_, W, E>,
+    make_interruption: M,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: ActivityDetailApi + ActivityReactionMutationApi,
+    P: DefaultNoConfirmation,
+    W: Write,
+    E: Write,
+    M: FnOnce() -> Result<S, AppError>,
+    S: Future<Output = Result<(), AppError>>,
+{
+    let prepared =
+        activity_reactions::prepare(store, api, command.activity_id, command.intent).await?;
+    {
+        let plan = response::activity_reaction_plan(prepared.plan())?;
+        session.write_preflight(
+            &plan,
+            preflight_mode(command.assume_yes, command.dry_run),
+            |stderr, plan| output::write_activity_reaction_details(stderr, plan, timestamps),
+        )?;
+        if command.dry_run {
+            let dry_run = response::dry_run(plan.source(), plan.data().clone());
+            return write_dry_run_complete(session, &dry_run);
+        }
+    }
+    let authorized = activity_reactions::authorize(prompt, prepared, command.assume_yes)?;
+    let interruption = make_interruption()?;
+    session.mark_write_started();
+    let result =
+        protect_state_with_interruption(activity_reactions::execute(api, authorized), interruption)
+            .await??;
+    session.mark_completed();
+    let response = response::activity_reaction_result(&result)
+        .map_err(|source| AppError::StateMutationResultOutput { source })?;
+    session.write_success(
+        &response,
+        output::OutputClass::StateMutation,
+        |stdout, _stderr, response| output::write_activity_reaction_result(stdout, response),
     )
 }
 

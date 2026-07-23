@@ -6,7 +6,8 @@ use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 use crate::features::activity::model::ActivityDetailParties;
 use crate::features::activity::{
     ActivityComment, ActivityCounterparty, ActivityDetail, ActivityDirection, ActivityFeedKind,
-    ActivityLikeState, ActivitySocial, ActivitySocialCollection,
+    ActivityLikeState, ActivityReaction, ActivityReactionState, ActivitySocial,
+    ActivitySocialCollection,
 };
 use crate::features::payments::{
     FinancialStatus, PeerFundingFee, PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection,
@@ -181,6 +182,22 @@ pub(super) const fn like_state(value: ActivityLikeState) -> &'static str {
     }
 }
 
+pub(super) const fn reaction_state(value: ActivityReactionState) -> &'static str {
+    match value {
+        ActivityReactionState::Present => "present",
+        ActivityReactionState::Absent => "absent",
+        ActivityReactionState::Unknown => "unknown",
+    }
+}
+
+pub(super) fn activity_reaction(value: &ActivityReaction) -> Value {
+    json!({
+        "emoji": value.emoji().as_str(),
+        "count": value.count(),
+        "reacted_by_current_user": value.reacted_by_current_user(),
+    })
+}
+
 pub(super) fn activity_counterparty(value: &ActivityCounterparty) -> Value {
     match value {
         ActivityCounterparty::User(value) => json!({
@@ -234,9 +251,13 @@ pub(super) fn activity_social(value: &ActivitySocial) -> io::Result<Value> {
         .comments()
         .map(|comments| social_collection(comments, activity_comment))
         .transpose()?;
+    let reactions = value
+        .reactions()
+        .map(|reactions| json!({ "count": reactions.total_count() }));
     Ok(json!({
         "likes": likes,
         "comments": comments,
+        "reactions": reactions,
     }))
 }
 

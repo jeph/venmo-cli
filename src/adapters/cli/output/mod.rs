@@ -14,6 +14,7 @@ mod writes;
 pub(super) use activity::{
     write_activity_comment_removal_details, write_activity_comment_removal_result,
     write_activity_comments, write_activity_info, write_activity_list,
+    write_activity_reaction_details, write_activity_reaction_result, write_activity_reactions,
     write_activity_social_details, write_activity_social_result,
 };
 pub(super) use auth::{write_auth_status, write_logout_report, write_password_login_report};

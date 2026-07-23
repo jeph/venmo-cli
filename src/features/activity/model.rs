@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use thiserror::Error;
 use time::OffsetDateTime;
+use unicode_properties::UnicodeEmoji;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::features::people::User;
 use crate::shared::opaque_id::opaque_id;
@@ -14,6 +16,7 @@ opaque_id!(ActivityCommentId, "activity comment ID");
 const MAX_ACTIVITY_LABEL_BYTES: usize = 64;
 const MAX_COMMENT_CHARACTERS: usize = 2_000;
 const MAX_COMMENT_BYTES: usize = MAX_COMMENT_CHARACTERS * 4;
+pub const MAX_REACTION_EMOJI_BYTES: usize = 128;
 
 macro_rules! activity_label {
     ($name:ident, $kind:literal) => {
@@ -117,6 +120,191 @@ pub enum ActivityCommentMessageParseError {
 
     #[error("comment must not exceed {maximum_characters} characters")]
     TooLong { maximum_characters: usize },
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct ActivityReactionEmoji(String);
+
+impl ActivityReactionEmoji {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ActivityReactionEmoji {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl fmt::Debug for ActivityReactionEmoji {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ActivityReactionEmoji([REDACTED])")
+    }
+}
+
+impl FromStr for ActivityReactionEmoji {
+    type Err = ActivityReactionEmojiParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.is_empty() {
+            return Err(ActivityReactionEmojiParseError::Empty);
+        }
+        if value.len() > MAX_REACTION_EMOJI_BYTES {
+            return Err(ActivityReactionEmojiParseError::TooLong {
+                maximum_bytes: MAX_REACTION_EMOJI_BYTES,
+            });
+        }
+        if value
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+        {
+            return Err(ActivityReactionEmojiParseError::WhitespaceOrControl);
+        }
+        let mut graphemes = value.graphemes(true);
+        if graphemes.next() != Some(value) || graphemes.next().is_some() {
+            return Err(ActivityReactionEmojiParseError::MultipleGraphemes);
+        }
+        if !value.chars().any(|character| character.is_emoji_char()) {
+            return Err(ActivityReactionEmojiParseError::NotEmoji);
+        }
+        let value = if value == "❤" { "❤️" } else { value };
+        Ok(Self(value.to_owned()))
+    }
+}
+
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+pub enum ActivityReactionEmojiParseError {
+    #[error("reaction emoji must not be empty")]
+    Empty,
+
+    #[error("reaction emoji must be one Unicode grapheme cluster")]
+    MultipleGraphemes,
+
+    #[error("reaction must contain a Unicode emoji character")]
+    NotEmoji,
+
+    #[error("reaction emoji must not contain whitespace or control characters")]
+    WhitespaceOrControl,
+
+    #[error("reaction emoji must not exceed {maximum_bytes} bytes")]
+    TooLong { maximum_bytes: usize },
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ActivityReaction {
+    emoji: ActivityReactionEmoji,
+    count: u64,
+    reacted_by_current_user: bool,
+}
+
+impl ActivityReaction {
+    #[must_use]
+    pub const fn new(
+        emoji: ActivityReactionEmoji,
+        count: u64,
+        reacted_by_current_user: bool,
+    ) -> Self {
+        Self {
+            emoji,
+            count,
+            reacted_by_current_user,
+        }
+    }
+
+    #[must_use]
+    pub const fn emoji(&self) -> &ActivityReactionEmoji {
+        &self.emoji
+    }
+
+    #[must_use]
+    pub const fn count(&self) -> u64 {
+        self.count
+    }
+
+    #[must_use]
+    pub const fn reacted_by_current_user(&self) -> bool {
+        self.reacted_by_current_user
+    }
+}
+
+impl fmt::Debug for ActivityReaction {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ActivityReaction")
+            .field("emoji", &"[REDACTED]")
+            .field("count", &self.count)
+            .field("reacted_by_current_user", &self.reacted_by_current_user)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ActivityReactions {
+    total_count: u64,
+    items: Vec<ActivityReaction>,
+}
+
+impl ActivityReactions {
+    pub fn try_new(items: Vec<ActivityReaction>) -> Result<Self, ActivityReactionsError> {
+        let total_count = items.iter().try_fold(0_u64, |total, reaction| {
+            total
+                .checked_add(reaction.count())
+                .ok_or(ActivityReactionsError::CountOverflow)
+        })?;
+        Ok(Self { total_count, items })
+    }
+
+    #[must_use]
+    pub const fn total_count(&self) -> u64 {
+        self.total_count
+    }
+
+    #[must_use]
+    pub fn items(&self) -> &[ActivityReaction] {
+        &self.items
+    }
+
+    #[must_use]
+    pub fn state(&self, emoji: &ActivityReactionEmoji) -> ActivityReactionState {
+        self.items
+            .iter()
+            .find(|reaction| reaction.emoji() == emoji)
+            .map_or(ActivityReactionState::Absent, |reaction| {
+                if reaction.reacted_by_current_user() {
+                    ActivityReactionState::Present
+                } else {
+                    ActivityReactionState::Absent
+                }
+            })
+    }
+}
+
+impl fmt::Debug for ActivityReactions {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ActivityReactions")
+            .field("total_count", &self.total_count)
+            .field(
+                "items",
+                &format_args!("{} redacted item(s)", self.items.len()),
+            )
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+pub enum ActivityReactionsError {
+    #[error("reaction counts exceed the supported aggregate range")]
+    CountOverflow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityReactionState {
+    Present,
+    Absent,
+    Unknown,
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -234,6 +422,7 @@ pub enum ActivityLikeState {
 pub struct ActivitySocial {
     likes: Option<ActivitySocialCollection<User>>,
     comments: Option<ActivitySocialCollection<ActivityComment>>,
+    reactions: Option<ActivityReactions>,
 }
 
 impl ActivitySocial {
@@ -242,7 +431,16 @@ impl ActivitySocial {
         likes: Option<ActivitySocialCollection<User>>,
         comments: Option<ActivitySocialCollection<ActivityComment>>,
     ) -> Self {
-        Self { likes, comments }
+        Self {
+            likes,
+            comments,
+            reactions: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_reactions(self, reactions: Option<ActivityReactions>) -> Self {
+        Self { reactions, ..self }
     }
 
     #[must_use]
@@ -253,6 +451,20 @@ impl ActivitySocial {
     #[must_use]
     pub const fn comments(&self) -> Option<&ActivitySocialCollection<ActivityComment>> {
         self.comments.as_ref()
+    }
+
+    #[must_use]
+    pub const fn reactions(&self) -> Option<&ActivityReactions> {
+        self.reactions.as_ref()
+    }
+
+    #[must_use]
+    pub fn reaction_state(&self, emoji: &ActivityReactionEmoji) -> ActivityReactionState {
+        self.reactions
+            .as_ref()
+            .map_or(ActivityReactionState::Unknown, |reactions| {
+                reactions.state(emoji)
+            })
     }
 
     #[must_use]
@@ -842,6 +1054,80 @@ mod tests {
                 maximum_characters: MAX_COMMENT_CHARACTERS
             })
         ));
+    }
+
+    #[test]
+    fn reaction_emoji_preserves_one_bounded_unicode_grapheme_and_redacts_debug()
+    -> Result<(), Box<dyn Error>> {
+        for value in ["🔥", "❤️", "👨🏽‍💻", "🇺🇸", "1️⃣"] {
+            let emoji = ActivityReactionEmoji::from_str(value)?;
+            assert_eq!(emoji.as_str(), value);
+            assert!(!format!("{emoji:?}").contains(value));
+        }
+        assert_eq!(ActivityReactionEmoji::from_str("❤")?.as_str(), "❤️");
+        assert_eq!(
+            ActivityReactionEmoji::from_str(""),
+            Err(ActivityReactionEmojiParseError::Empty)
+        );
+        assert_eq!(
+            ActivityReactionEmoji::from_str("🔥❤️"),
+            Err(ActivityReactionEmojiParseError::MultipleGraphemes)
+        );
+        assert_eq!(
+            ActivityReactionEmoji::from_str("A"),
+            Err(ActivityReactionEmojiParseError::NotEmoji)
+        );
+        assert_eq!(
+            ActivityReactionEmoji::from_str("🔥 ❤️"),
+            Err(ActivityReactionEmojiParseError::WhitespaceOrControl)
+        );
+        assert_eq!(
+            ActivityReactionEmoji::from_str("🔥\n"),
+            Err(ActivityReactionEmojiParseError::WhitespaceOrControl)
+        );
+        assert!(matches!(
+            ActivityReactionEmoji::from_str(&format!("🔥{}", "\u{fe0f}".repeat(128))),
+            Err(ActivityReactionEmojiParseError::TooLong {
+                maximum_bytes: MAX_REACTION_EMOJI_BYTES
+            })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn reaction_aggregates_preserve_counts_and_evidence_sensitive_state()
+    -> Result<(), Box<dyn Error>> {
+        let fire = ActivityReactionEmoji::from_str("🔥")?;
+        let heart = ActivityReactionEmoji::from_str("❤️")?;
+        let reactions = ActivityReactions::try_new(vec![
+            ActivityReaction::new(fire.clone(), 2, true),
+            ActivityReaction::new(heart.clone(), 1, false),
+        ])?;
+        assert_eq!(reactions.total_count(), 3);
+        assert_eq!(reactions.state(&fire), ActivityReactionState::Present);
+        assert_eq!(reactions.state(&heart), ActivityReactionState::Absent);
+        assert_eq!(
+            reactions.state(&ActivityReactionEmoji::from_str("👍")?),
+            ActivityReactionState::Absent
+        );
+        assert_eq!(
+            ActivitySocial::default().reaction_state(&fire),
+            ActivityReactionState::Unknown
+        );
+        assert_eq!(
+            ActivitySocial::new(None, None)
+                .with_reactions(Some(reactions))
+                .reaction_state(&fire),
+            ActivityReactionState::Present
+        );
+        assert_eq!(
+            ActivityReactions::try_new(vec![
+                ActivityReaction::new(fire, u64::MAX, false),
+                ActivityReaction::new(heart, 1, false),
+            ]),
+            Err(ActivityReactionsError::CountOverflow)
+        );
+        Ok(())
     }
 
     #[test]

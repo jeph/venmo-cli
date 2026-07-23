@@ -82,6 +82,9 @@ Expected envelope command: `activity.info`.
           }
         ],
         "complete": boolean
+      } | null,
+      "reactions": {
+        "count": integer
       } | null
     }
   }
@@ -116,6 +119,27 @@ Expected envelope command: `activity.comments.list`.
 
 Each author is a user object. `next_offset` is the continuation for the same activity ID.
 
+## `activity reactions list`
+
+Expected envelope command: `activity.reactions.list`.
+
+```text
+{
+  "activity_id": string,
+  "total_count": integer,
+  "reactions": [
+    {
+      "emoji": string,
+      "count": integer,
+      "reacted_by_current_user": boolean
+    }
+  ]
+}
+```
+
+`total_count` is the checked sum of the aggregate emoji counts. The command does not expose the
+identities of other reacting users.
+
 ## Social mutations
 
 Expected envelope commands are `activity.like`, `activity.unlike`, and `activity.comments.add`.
@@ -137,6 +161,34 @@ Expected envelope commands are `activity.like`, `activity.unlike`, and `activity
 
 `plan.activity` and `result.activity` use the inner object at `activity info`'s `data.activity`.
 `message` is non-null only for `add_comment`.
+
+## Reaction mutations
+
+Expected envelope commands are `activity.reactions.add` and `activity.reactions.remove`.
+
+```text
+{
+  "outcome": "dry_run" | "completed",
+  "performed": boolean,
+  "plan": {
+    "activity": object,
+    "action": "add_reaction" | "remove_reaction",
+    "emoji": string,
+    "previous_state": "present" | "absent" | "unknown",
+    "automatic_retries": false
+  },
+  "result": {
+    "activity_id": string,
+    "emoji": string,
+    "state": "present" | "absent",
+    "count": integer | null,
+    "reacted_by_current_user": boolean
+  } | null
+}
+```
+
+The write is sent once and followed by an authoritative activity read. An unprovable result has an
+ambiguous outcome and must not be retried before independent reconciliation.
 
 ## `activity comments remove`
 

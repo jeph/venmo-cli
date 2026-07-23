@@ -12,8 +12,8 @@ use crate::features::wallet::{BalanceApi, PaymentMethodsApi, balance, payment_me
 use crate::shared::CredentialReader;
 
 use super::super::args::{
-    ActivityCommentListArgs, ActivityInfoArgs, ActivityListArgs, FriendsListArgs, RequestInfoArgs,
-    RequestsListArgs, UserInfoArgs, UserSearchArgs,
+    ActivityCommentListArgs, ActivityInfoArgs, ActivityListArgs, ActivityReactionListArgs,
+    FriendsListArgs, RequestInfoArgs, RequestsListArgs, UserInfoArgs, UserSearchArgs,
 };
 use super::super::{error::AppError, output, response};
 
@@ -142,6 +142,28 @@ where
         |stdout, stderr, response| {
             output::write_activity_comments(stdout, stderr, response, timestamps)
         },
+    )?;
+    Ok(())
+}
+
+pub(super) async fn run_activity_reaction_list<R, A, W, E>(
+    args: ActivityReactionListArgs,
+    store: &R,
+    api: &A,
+    output: &mut output::OutputSession<'_, W, E>,
+) -> Result<(), AppError>
+where
+    R: CredentialReader,
+    A: ActivityDetailApi,
+    W: Write,
+    E: Write,
+{
+    let result = activity::reactions::list(store, api, &args.activity_id).await?;
+    let response = response::activity_reaction_list(&result);
+    output.write_success(
+        &response,
+        output::OutputClass::Ordinary,
+        |stdout, _stderr, response| output::write_activity_reactions(stdout, response),
     )?;
     Ok(())
 }

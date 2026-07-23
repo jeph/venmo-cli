@@ -12,8 +12,11 @@ pub use crate::features::activity::model::{
     Activity, ActivityAction, ActivityComment, ActivityCommentId, ActivityCommentMessage,
     ActivityCommentMessageParseError, ActivityCounterparty, ActivityDetail, ActivityDetailParties,
     ActivityDirection, ActivityFeedKind, ActivityId, ActivityLabelParseError, ActivityLikeState,
-    ActivitySocial, ActivitySocialCollection, ActivityStatus, ActivitySubject,
+    ActivityReaction, ActivityReactionEmoji, ActivityReactionEmojiParseError,
+    ActivityReactionState, ActivityReactions, ActivityReactionsError, ActivitySocial,
+    ActivitySocialCollection, ActivityStatus, ActivitySubject, MAX_REACTION_EMOJI_BYTES,
 };
+pub use crate::features::activity::reactions::ActivityReactionListResult;
 pub use crate::features::payments::model::{
     CreatedPayment, FinancialStatus, PayPlan, PaymentId, PeerFundingFee, PeerFundingMethod,
     PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection, PeerFundingSources,

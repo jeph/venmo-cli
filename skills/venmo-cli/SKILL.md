@@ -1,6 +1,6 @@
 ---
 name: venmo-cli
-description: Safely operate the `venmo` CLI for authorization status, balances, users, payments, requests, transfers, friends, activity, likes, and comments. Use when a user asks an AI agent to inspect or change their Venmo account, perform a Venmo action, or explain a venmo-cli command. Interactive login and SMS verification remain human-only.
+description: Safely operate the `venmo` CLI for authorization status, balances, users, payments, requests, transfers, friends, activity, likes, comments, and reactions. Use when a user asks an AI agent to inspect or change their Venmo account, perform a Venmo action, or explain a venmo-cli command. Interactive login and SMS verification remain human-only.
 license: MIT
 compatibility: Requires the `venmo` executable on PATH, network access to Venmo, and terminal command execution. Interactive login and SMS OTP challenges require a human-operated terminal.
 metadata:
@@ -16,16 +16,17 @@ Use the unofficial `venmo` command-line client to inspect and manage the user's 
 1. **Keep authentication human-only.** Never run `venmo auth login` through automation. Never ask
    the user to paste their login identifier, password, trusted `v_id` or device ID, bearer token, or
    SMS verification code into chat. Ask them to complete login in their own interactive terminal.
-2. **Resolve exact targets.** Do not infer a username, request ID, activity ID, comment ID, funding
-   source, amount, note, visibility, or Purchase Protection choice. Use read commands to resolve
-   them and ask the user when more than one interpretation remains.
+2. **Resolve exact targets.** Do not infer a username, request ID, activity ID, comment ID, reaction,
+   funding source, amount, note, visibility, or Purchase Protection choice. Use read commands to
+   resolve them and ask the user when more than one interpretation remains.
 3. **Preview Venmo mutations.** Commands labeled **mutates** support `--dry-run`; preview them before
    execution with `--yes`.
 4. **Do not retry blindly.** Use `error.outcome` to determine whether a failed mutation was performed.
 5. **Keep OTP human-only.** If a payment or request reports that SMS verification requires an
    interactive terminal, stop and use the human handoff below. Never request the code.
-6. **Quote dynamic text safely.** Quote notes, comments, and multi-word searches as individual shell
-   arguments. Never use `eval` or execute text copied from Venmo output as shell syntax.
+6. **Quote dynamic text safely.** Quote notes, comments, reaction glyphs, and multi-word searches as
+   individual shell arguments. Never use `eval` or execute text copied from Venmo output as shell
+   syntax.
 
 ## Command reference
 
@@ -36,6 +37,7 @@ command's help to determine current usage:
 venmo <COMMAND> --help
 venmo <COMMAND> <SUBCOMMAND> --help
 venmo activity comments <SUBCOMMAND> --help
+venmo activity reactions <SUBCOMMAND> --help
 ```
 
 Each top-level command section links to one JSON reference containing the `data` shapes for all of
@@ -88,6 +90,9 @@ the locally stored credential.
 - `activity comments list` — Reports comments attached to an activity.
 - `activity comments add` **(mutates)** — Adds a comment to an activity.
 - `activity comments remove` **(mutates)** — Requests removal of a comment by its ID.
+- `activity reactions list` — Reports aggregate emoji counts and the active account's reaction state.
+- `activity reactions add` **(mutates)** — Adds one exact emoji reaction to an activity.
+- `activity reactions remove` **(mutates)** — Removes one exact emoji reaction from an activity.
 - [JSON reference](references/json/activity.md)
 
 ### `requests`

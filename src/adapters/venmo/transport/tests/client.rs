@@ -1,5 +1,5 @@
 use reqwest::StatusCode;
-use wiremock::matchers::{header, header_exists, method, path, query_param};
+use wiremock::matchers::{body_string, header, header_exists, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
@@ -47,6 +47,38 @@ fn json_body_encodes_exact_bytes_without_debug_exposure() -> Result<(), Box<dyn 
         br#"{"password":"synthetic-private-password"}"#
     );
     assert!(!format!("{body:?}").contains(SENSITIVE_MARKER));
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn state_json_delete_sends_one_exact_body_bearing_delete()
+-> Result<(), Box<dyn std::error::Error>> {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/v1/stories/story-1/reactions"))
+        .and(header("content-type", "application/json"))
+        .and(body_string(r#"{"emoji":"🔥"}"#))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+    let transport = test_transport(&server, TEST_TIMEOUT, TEST_RESPONSE_LIMIT)?;
+    let credential = test_credential()?;
+    let body = JsonBody::encode(&serde_json::json!({"emoji":"🔥"}))?;
+
+    let response = transport
+        .send_authenticated(
+            ApiSession::from(&credential),
+            HttpRequest::state_json_delete(
+                "/stories/{story-id}/reactions",
+                &["stories", "story-1", "reactions"],
+                &[],
+                body,
+            ),
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_request_count(&server, 1).await;
     Ok(())
 }
 

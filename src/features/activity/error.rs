@@ -36,6 +36,9 @@ pub enum ActivityError {
         "Venmo provided only a partial comment collection, so the CLI cannot safely paginate it"
     )]
     CommentsIncomplete,
+
+    #[error("Venmo did not provide reaction data for this activity")]
+    ReactionsUnavailable,
 }
 
 impl ActivityError {
@@ -50,7 +53,8 @@ impl ActivityError {
             Self::Api { source } => ApplicationFailureKind::Api(source.kind()),
             Self::ResponseContract { .. }
             | Self::CommentsUnavailable
-            | Self::CommentsIncomplete => ApplicationFailureKind::ApiContract,
+            | Self::CommentsIncomplete
+            | Self::ReactionsUnavailable => ApplicationFailureKind::ApiContract,
         }
     }
 }

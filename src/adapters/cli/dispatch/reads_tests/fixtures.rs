@@ -189,6 +189,27 @@ pub(super) fn activity_comment_list_args() -> TestResult<ActivityCommentListArgs
     }
 }
 
+pub(super) fn activity_reaction_list_args() -> TestResult<ActivityReactionListArgs> {
+    match Cli::try_parse_from(["venmo", "activity", "reactions", "list", "story-1"])?.command {
+        Command::Activity(args) => match args.operation {
+            ActivityOperation::Reactions(args) => match args.operation {
+                ActivityReactionsOperation::List(args) => Ok(args),
+                ActivityReactionsOperation::Add(_) | ActivityReactionsOperation::Remove(_) => Err(
+                    io::Error::other("activity-reaction-list arguments parsed as a mutation")
+                        .into(),
+                ),
+            },
+            _ => Err(io::Error::other(
+                "activity-reaction-list arguments parsed as another activity operation",
+            )
+            .into()),
+        },
+        _ => Err(
+            io::Error::other("activity-reaction-list arguments parsed as another command").into(),
+        ),
+    }
+}
+
 pub(super) fn synthetic_activity_with_comments() -> TestResult<ActivityDetail> {
     let comments = (0_u32..3)
         .map(|index| {
@@ -210,6 +231,15 @@ pub(super) fn synthetic_activity_with_comments() -> TestResult<ActivityDetail> {
             Some(ActivitySocialCollection::new(3, comments, true)),
         )),
     )
+}
+
+pub(super) fn synthetic_activity_with_reactions() -> TestResult<ActivityDetail> {
+    Ok(ActivityDetail::relative(synthetic_activity()?).with_social(
+        ActivitySocial::new(None, None).with_reactions(Some(ActivityReactions::try_new(vec![
+            ActivityReaction::new(ActivityReactionEmoji::from_str("🔥")?, 2, true),
+            ActivityReaction::new(ActivityReactionEmoji::from_str("❤️")?, 1, false),
+        ])?)),
+    ))
 }
 
 pub(super) fn requests_args() -> TestResult<RequestsListArgs> {
@@ -302,6 +332,16 @@ pub(super) const ACTIVITY_INFO_OUTPUT: &str = concat!(
     "Audience: private\n",
     "Likes: (not provided)\n",
     "Comments: (not provided)\n",
+    "Reactions: 3\n",
+);
+
+pub(super) const ACTIVITY_REACTION_LIST_OUTPUT: &str = concat!(
+    "Reactions for activity story-1\n",
+    "Total reactions: 3\n",
+    " Emoji | Count | You reacted\n",
+    "-------+-------+-------------\n",
+    " 🔥    | 2     | yes\n",
+    " ❤️    | 1     | no\n",
 );
 
 pub(super) const REQUESTS_OUTPUT: &str = concat!(
