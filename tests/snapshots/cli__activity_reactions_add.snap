@@ -1,0 +1,26 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Add one Unicode emoji reaction or the special `like` target
+
+Usage: add [OPTIONS] <ACTIVITY_ID> <REACTION>
+
+Arguments:
+  <ACTIVITY_ID>
+          Canonical activity ID
+
+  <REACTION>
+          Exact emoji glyph or lowercase `like` target to add
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+      --dry-run
+          Complete preflight and show details without adding the reaction
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+REACTION must be exact lowercase 'like' or one complete Unicode emoji grapheme, such as '🔥' or '❤️'. On the Venmo backend, 'like' and the ❤️ emoji are equivalent.

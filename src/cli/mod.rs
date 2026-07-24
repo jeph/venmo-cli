@@ -17,7 +17,8 @@
 pub use crate::adapters::cli::args::{
     AcceptArgs, ActivityArgs, ActivityCommentAddArgs, ActivityCommentListArgs,
     ActivityCommentRemoveArgs, ActivityCommentsArgs, ActivityCommentsOperation, ActivityInfoArgs,
-    ActivityLikeArgs, ActivityListArgs, ActivityOperation, ActivityUnlikeArgs, AuthArgs,
+    ActivityListArgs, ActivityOperation, ActivityReactionAddArgs, ActivityReactionListArgs,
+    ActivityReactionRemoveArgs, ActivityReactionsArgs, ActivityReactionsOperation, AuthArgs,
     AuthOperation, CancelArgs, Cli, Command, DeclineArgs, FriendAddArgs, FriendRemoveArgs,
     FriendsArgs, FriendsListArgs, FriendsOperation, PayArgs, PayOperation, PayUserArgs,
     RequestArgs, RequestDirectionArg, RequestInfoArgs, RequestsArgs, RequestsListArgs,

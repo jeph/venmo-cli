@@ -1,6 +1,6 @@
 use super::args::{
-    ActivityCommentsOperation, ActivityOperation, AuthOperation, Cli, Command, FriendsOperation,
-    PayOperation, RequestsOperation, TransferOperation, UsersOperation,
+    ActivityCommentsOperation, ActivityOperation, ActivityReactionsOperation, AuthOperation, Cli,
+    Command, FriendsOperation, PayOperation, RequestsOperation, TransferOperation, UsersOperation,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,11 +35,12 @@ pub enum CommandId {
     Balance,
     ActivityList,
     ActivityInfo,
-    ActivityLike,
-    ActivityUnlike,
     ActivityCommentsList,
     ActivityCommentsAdd,
     ActivityCommentsRemove,
+    ActivityReactionsList,
+    ActivityReactionsAdd,
+    ActivityReactionsRemove,
     RequestsList,
     RequestsCreate,
     RequestsAccept,
@@ -67,11 +68,12 @@ impl CommandId {
             Self::Balance => "balance",
             Self::ActivityList => "activity.list",
             Self::ActivityInfo => "activity.info",
-            Self::ActivityLike => "activity.like",
-            Self::ActivityUnlike => "activity.unlike",
             Self::ActivityCommentsList => "activity.comments.list",
             Self::ActivityCommentsAdd => "activity.comments.add",
             Self::ActivityCommentsRemove => "activity.comments.remove",
+            Self::ActivityReactionsList => "activity.reactions.list",
+            Self::ActivityReactionsAdd => "activity.reactions.add",
+            Self::ActivityReactionsRemove => "activity.reactions.remove",
             Self::RequestsList => "requests.list",
             Self::RequestsCreate => "requests.create",
             Self::RequestsAccept => "requests.accept",
@@ -110,12 +112,15 @@ impl Command {
             Self::Activity(args) => match &args.operation {
                 ActivityOperation::List(_) => CommandId::ActivityList,
                 ActivityOperation::Info(_) => CommandId::ActivityInfo,
-                ActivityOperation::Like(_) => CommandId::ActivityLike,
-                ActivityOperation::Unlike(_) => CommandId::ActivityUnlike,
                 ActivityOperation::Comments(args) => match args.operation {
                     ActivityCommentsOperation::List(_) => CommandId::ActivityCommentsList,
                     ActivityCommentsOperation::Add(_) => CommandId::ActivityCommentsAdd,
                     ActivityCommentsOperation::Remove(_) => CommandId::ActivityCommentsRemove,
+                },
+                ActivityOperation::Reactions(args) => match args.operation {
+                    ActivityReactionsOperation::List(_) => CommandId::ActivityReactionsList,
+                    ActivityReactionsOperation::Add(_) => CommandId::ActivityReactionsAdd,
+                    ActivityReactionsOperation::Remove(_) => CommandId::ActivityReactionsRemove,
                 },
             },
             Self::Requests(args) => match args.operation {
@@ -158,11 +163,12 @@ mod tests {
             CommandId::Balance,
             CommandId::ActivityList,
             CommandId::ActivityInfo,
-            CommandId::ActivityLike,
-            CommandId::ActivityUnlike,
             CommandId::ActivityCommentsList,
             CommandId::ActivityCommentsAdd,
             CommandId::ActivityCommentsRemove,
+            CommandId::ActivityReactionsList,
+            CommandId::ActivityReactionsAdd,
+            CommandId::ActivityReactionsRemove,
             CommandId::RequestsList,
             CommandId::RequestsCreate,
             CommandId::RequestsAccept,
@@ -173,8 +179,8 @@ mod tests {
             CommandId::TransferOut,
         ];
         let names = ids.map(CommandId::as_str);
-        assert_eq!(names.len(), 26);
-        assert_eq!(names.into_iter().collect::<BTreeSet<_>>().len(), 26);
+        assert_eq!(names.len(), 27);
+        assert_eq!(names.into_iter().collect::<BTreeSet<_>>().len(), 27);
         assert!(names.into_iter().all(|name| {
             !name.is_empty()
                 && name

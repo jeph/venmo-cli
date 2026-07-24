@@ -126,7 +126,8 @@ impl From<ActivityError> for ErrorSnapshot {
             | ActivityError::MissingProfileType
             | ActivityError::UnsupportedProfileType
             | ActivityError::CommentsUnavailable
-            | ActivityError::CommentsIncomplete => {
+            | ActivityError::CommentsIncomplete
+            | ActivityError::ReactionsUnavailable => {
                 Self::ResponseContract("unexpected activity-subject failure in self-feed test")
             }
         }

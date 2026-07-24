@@ -1,0 +1,26 @@
+---
+source: tests/cli.rs
+expression: help
+---
+Remove one Unicode emoji reaction or the special `like` target
+
+Usage: remove [OPTIONS] <ACTIVITY_ID> <REACTION>
+
+Arguments:
+  <ACTIVITY_ID>
+          Canonical activity ID
+
+  <REACTION>
+          Exact emoji glyph or lowercase `like` target to remove
+
+Options:
+      --yes
+          Skip only the final default-No confirmation
+
+      --dry-run
+          Complete preflight and show details without removing the reaction
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+REACTION must be exact lowercase 'like' or exactly match one Unicode emoji reaction already applied by the authenticated account. On the Venmo backend, 'like' and the ❤️ emoji are equivalent.

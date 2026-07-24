@@ -5,6 +5,9 @@ use tabled::builder::Builder;
 use crate::features::activity::comment_remove::{
     ActivityCommentRemovalPlan, ActivityCommentRemovalResult,
 };
+use crate::features::activity::reactions::{
+    ActivityReactionListResult, ActivityReactionMutationResult, ActivityReactionPlan,
+};
 use crate::features::activity::social::{
     ActivitySocialAction, ActivitySocialMutationResult, ActivitySocialPlan,
 };
@@ -176,21 +179,17 @@ pub(crate) fn write_activity_info<W: Write>(
     match activity.social().likes() {
         Some(likes) => {
             writeln!(writer, "Likes: {}", likes.count())?;
-            writeln!(
-                writer,
-                "Likers shown: {} ({})",
-                likes.items().len(),
-                if likes.is_complete() {
-                    "complete"
-                } else {
-                    "partial"
-                }
-            )?;
             for liker in likes.items() {
                 writeln!(
                     writer,
                     "  Liker: {}",
                     sanitize_terminal_text(&user_label(liker))
+                )?;
+            }
+            if !likes.is_complete() {
+                writeln!(
+                    writer,
+                    "Additional likers were not included in Venmo's activity response."
                 )?;
             }
         }
@@ -200,18 +199,6 @@ pub(crate) fn write_activity_info<W: Write>(
         Some(comments) => {
             let displayed_count = comments.items().len().min(ACTIVITY_INFO_COMMENT_LIMIT);
             writeln!(writer, "Comments: {}", comments.count())?;
-            writeln!(
-                writer,
-                "Comments shown: {} ({})",
-                displayed_count,
-                if !comments.is_complete() {
-                    "partial source"
-                } else if comments.items().len() > displayed_count {
-                    "display limited"
-                } else {
-                    "complete"
-                }
-            )?;
             for comment in comments.items().iter().take(displayed_count) {
                 write_activity_comment(writer, comment, timestamps)?;
             }
@@ -222,9 +209,7 @@ pub(crate) fn write_activity_info<W: Write>(
                     sanitize_terminal_text(activity.id().as_str()),
                     ACTIVITY_INFO_COMMENT_LIMIT
                 )?;
-            } else if !comments.is_complete()
-                && comments.count() > u64::try_from(comments.items().len()).unwrap_or(u64::MAX)
-            {
+            } else if !comments.is_complete() {
                 writeln!(
                     writer,
                     "Additional comments were not included in Venmo's activity response."
@@ -233,7 +218,45 @@ pub(crate) fn write_activity_info<W: Write>(
         }
         None => writeln!(writer, "Comments: (not provided)")?,
     }
+    match activity.social().reactions() {
+        Some(reactions) => writeln!(writer, "Reactions: {}", reactions.total_count())?,
+        None => writeln!(writer, "Reactions: (not provided)")?,
+    }
     Ok(())
+}
+
+pub(crate) fn write_activity_reactions<W: Write>(
+    writer: &mut W,
+    response: &impl HumanSource<ActivityReactionListResult>,
+) -> io::Result<()> {
+    let result = response.human_source();
+    writeln!(
+        writer,
+        "Reactions for activity {}",
+        sanitize_terminal_text(result.activity_id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "Total reactions: {}",
+        result.reactions().total_count()
+    )?;
+    if result.reactions().items().is_empty() {
+        return writeln!(writer, "No reactions found.");
+    }
+    let mut builder = Builder::default();
+    builder.push_record(["Reaction", "Count", "You reacted"]);
+    for reaction in result.reactions().items() {
+        builder.push_record([
+            sanitize_terminal_text(reaction.value().as_str()),
+            reaction.count().to_string(),
+            if reaction.reacted_by_current_user() {
+                "yes".to_owned()
+            } else {
+                "no".to_owned()
+            },
+        ]);
+    }
+    write_table(writer, builder)
 }
 
 pub(crate) fn write_activity_comments<W: Write, E: Write>(
@@ -325,15 +348,53 @@ pub(crate) fn write_activity_social_details(
         "  Current like state: {}",
         like_state_label(plan.previous_like_state())
     )?;
-    match plan.action() {
-        ActivitySocialAction::AddComment(message) => writeln!(
-            writer,
-            "  Comment: {}",
-            sanitize_terminal_text(message.as_str())
-        )?,
-        ActivitySocialAction::Like | ActivitySocialAction::Unlike => {}
-    }
+    let ActivitySocialAction::AddComment(message) = plan.action();
+    writeln!(
+        writer,
+        "  Comment: {}",
+        sanitize_terminal_text(message.as_str())
+    )?;
     writeln!(writer, "  Automatic retries: disabled")
+}
+
+pub(crate) fn write_activity_reaction_details(
+    writer: &mut impl Write,
+    response: &impl HumanSource<ActivityReactionPlan>,
+    timestamps: &TimestampFormatter,
+) -> io::Result<()> {
+    let plan = response.human_source();
+    let activity = plan.activity();
+    writeln!(writer, "Activity reaction details:")?;
+    writeln!(writer, "  Action: {}", plan.action().label())?;
+    writeln!(
+        writer,
+        "  Activity ID: {}",
+        sanitize_terminal_text(activity.id().as_str())
+    )?;
+    writeln!(
+        writer,
+        "  Activity time: {}",
+        timestamps.format(activity.occurred_at())?
+    )?;
+    writeln!(
+        writer,
+        "  Activity note: {}",
+        sanitize_terminal_text(activity.note().unwrap_or(""))
+    )?;
+    writeln!(
+        writer,
+        "  Audience: {}",
+        sanitize_terminal_text(activity.audience().unwrap_or("(not provided)"))
+    )?;
+    writeln!(
+        writer,
+        "  Reaction: {}",
+        sanitize_terminal_text(if plan.action().target().is_like() {
+            "like (❤️)"
+        } else {
+            plan.action().target().as_str()
+        })
+    )
 }
 
 pub(crate) fn write_activity_comment_removal_details(
@@ -396,6 +457,17 @@ pub(crate) fn write_activity_social_result(
         writeln!(writer, "Comments: {}", comments.count())?;
     }
     Ok(())
+}
+
+pub(crate) fn write_activity_reaction_result(
+    writer: &mut impl Write,
+    response: &impl HumanSource<ActivityReactionMutationResult>,
+) -> io::Result<()> {
+    writeln!(
+        writer,
+        "{}",
+        response.human_source().plan().action().result_label()
+    )
 }
 
 const fn like_state_label(state: ActivityLikeState) -> &'static str {

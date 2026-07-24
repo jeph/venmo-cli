@@ -747,6 +747,11 @@ fn social_activity_body(liked_by_owner: bool, include_comment: bool) -> Value {
     } else {
         serde_json::json!({"count":0,"data":[],"pagination":{"next":null}})
     };
+    body["data"]["reactions"] = serde_json::json!([{
+        "emoji": ":red_heart:",
+        "count": u8::from(liked_by_owner),
+        "reacted_by_user": liked_by_owner
+    }]);
     body
 }
 
@@ -865,7 +870,112 @@ async fn activity_detail_rejects_inconsistent_or_duplicate_embedded_social_data(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn activity_like_and_unlike_use_exact_bodyless_state_routes_then_reconcile() -> TestResult {
+async fn activity_detail_maps_aggregate_reactions_and_current_user_state() -> TestResult {
+    let mut body = activity_body("story-1");
+    body["data"]["reactions"] = serde_json::json!([
+        {"emoji":"🔥","count":2,"reacted_by_user":true},
+        {"emoji":":red_heart:","count":1,"reacted_by_user":false},
+        {"emoji":":party_cup:","count":4,"reacted_by_user":false}
+    ]);
+    let response = scripted_json_response(200, body)?;
+    let (client, transport) = scripted_client([Ok(response)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+
+    let result = client
+        .activity_by_id(&token, &device_id, &current_user_id, &activity_id)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |detail| {
+            detail.social().reactions().map(|reactions| {
+                (
+                    reactions.total_count(),
+                    reactions
+                        .items()
+                        .iter()
+                        .map(|reaction| {
+                            (
+                                reaction.value().as_str().to_owned(),
+                                reaction.value().kind(),
+                                reaction.count(),
+                                reaction.reacted_by_current_user(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok(Some((
+            7,
+            vec![
+                ("🔥".to_owned(), ActivityReactionKind::UnicodeEmoji, 2, true),
+                (
+                    "❤️".to_owned(),
+                    ActivityReactionKind::UnicodeEmoji,
+                    1,
+                    false,
+                ),
+                (
+                    ":party_cup:".to_owned(),
+                    ActivityReactionKind::CustomAlias,
+                    4,
+                    false,
+                ),
+            ],
+        ))),
+        vec![authenticated_read_request(
+            "/stories/{story-id}",
+            &["stories", "story-1"],
+            &[],
+        )],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_detail_rejects_invalid_or_duplicate_reaction_aggregates() -> TestResult {
+    for reactions in [
+        serde_json::json!([
+            {"emoji":"🔥","count":1},
+            {"emoji":"🔥","count":1}
+        ]),
+        serde_json::json!([{"emoji":"🔥","count":0,"reacted_by_user":true}]),
+        serde_json::json!([{"emoji":"🔥❤️","count":1}]),
+    ] {
+        let mut body = activity_body("story-1");
+        body["data"]["reactions"] = reactions;
+        let response = scripted_json_response(200, body)?;
+        let (client, transport) = scripted_client([Ok(response)])?;
+        let (token, device_id) = test_session()?;
+        let current_user_id = UserId::from_str("123")?;
+        let activity_id = ActivityId::from_str("story-1")?;
+
+        let result = client
+            .activity_by_id(&token, &device_id, &current_user_id, &activity_id)
+            .await;
+        let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+        let expected = ScriptedObservation::expected(
+            Err(ApiErrorSnapshot::contract(ACTIVITY_DETAIL_OPERATION)),
+            vec![authenticated_read_request(
+                "/stories/{story-id}",
+                &["stories", "story-1"],
+                &[],
+            )],
+        );
+
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_like_target_uses_exact_bodyless_state_routes_then_reconciles() -> TestResult {
     for (like, response_body, method, operation, expected_likes) in [
         (
             true,
@@ -888,24 +998,40 @@ async fn activity_like_and_unlike_use_exact_bodyless_state_routes_then_reconcile
         let (token, device_id) = test_session()?;
         let current_user_id = UserId::from_str("123")?;
         let activity_id = ActivityId::from_str("story-1")?;
+        let heart = ActivityReactionEmoji::from_str("❤️")?;
+        let target = ActivityReactionTarget::Like;
 
         let result = if like {
             client
-                .like_activity(&token, &device_id, &current_user_id, &activity_id)
+                .add_activity_reaction(&token, &device_id, &current_user_id, &activity_id, &target)
                 .await
         } else {
             client
-                .unlike_activity(&token, &device_id, &current_user_id, &activity_id)
+                .remove_activity_reaction(
+                    &token,
+                    &device_id,
+                    &current_user_id,
+                    &activity_id,
+                    &target,
+                )
                 .await
         };
         let observed = ScriptedObservation::observed(
             project_result(result, |detail| {
-                detail.social().likes().map(|likes| likes.count())
+                (
+                    detail.social().likes().map(|likes| likes.count()),
+                    detail.social().reaction_state(&heart),
+                )
             }),
             &transport,
         );
+        let expected_reaction_state = if like {
+            ActivityReactionState::Present
+        } else {
+            ActivityReactionState::Absent
+        };
         let expected = ScriptedObservation::expected(
-            Ok(Some(expected_likes)),
+            Ok((Some(expected_likes), expected_reaction_state)),
             vec![
                 authenticated_request(
                     method,
@@ -921,6 +1047,164 @@ async fn activity_like_and_unlike_use_exact_bodyless_state_routes_then_reconcile
 
         assert_eq!(observed, expected, "{operation}");
     }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_reaction_add_and_remove_use_exact_json_state_routes_then_reconcile() -> TestResult
+{
+    for (add, method, operation, reacted, count) in [
+        (true, Method::POST, ACTIVITY_REACTION_ADD_OPERATION, true, 2),
+        (
+            false,
+            Method::DELETE,
+            ACTIVITY_REACTION_REMOVE_OPERATION,
+            false,
+            1,
+        ),
+    ] {
+        let mutation = scripted_response(204, Vec::new())?;
+        let mut body = activity_body("story-1");
+        body["data"]["reactions"] = serde_json::json!([
+            {"emoji":"🔥","count":count,"reacted_by_user":reacted}
+        ]);
+        let refresh = scripted_json_response(200, body)?;
+        let (client, transport) = scripted_client([Ok(mutation), Ok(refresh)])?;
+        let (token, device_id) = test_session()?;
+        let current_user_id = UserId::from_str("123")?;
+        let activity_id = ActivityId::from_str("story-1")?;
+        let emoji = ActivityReactionEmoji::from_str("🔥")?;
+        let target = ActivityReactionTarget::from(emoji.clone());
+
+        let result = if add {
+            client
+                .add_activity_reaction(&token, &device_id, &current_user_id, &activity_id, &target)
+                .await
+        } else {
+            client
+                .remove_activity_reaction(
+                    &token,
+                    &device_id,
+                    &current_user_id,
+                    &activity_id,
+                    &target,
+                )
+                .await
+        };
+        let observed = ScriptedObservation::observed(
+            project_result(result, |detail| detail.social().reaction_state(&emoji)),
+            &transport,
+        );
+        let expected_state = if add {
+            ActivityReactionState::Present
+        } else {
+            ActivityReactionState::Absent
+        };
+        let expected = ScriptedObservation::expected(
+            Ok(expected_state),
+            vec![
+                authenticated_request(
+                    method,
+                    "/stories/{story-id}/reactions",
+                    &["stories", "story-1", "reactions"],
+                    &[],
+                    Some(r#"{"emoji":"🔥"}"#.as_bytes()),
+                    OperationClass::StateWrite,
+                ),
+                authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),
+            ],
+        );
+
+        assert_eq!(observed, expected, "{operation}");
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_red_heart_reaction_uses_the_native_wire_alias() -> TestResult {
+    let mutation = scripted_response(204, Vec::new())?;
+    let mut body = social_activity_body(true, false);
+    body["data"]["reactions"] = serde_json::json!([
+        {"emoji":":red_heart:","count":1,"reacted_by_user":true}
+    ]);
+    let refresh = scripted_json_response(200, body)?;
+    let (client, transport) = scripted_client([Ok(mutation), Ok(refresh)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+    let emoji = ActivityReactionEmoji::from_str("❤")?;
+    let target = ActivityReactionTarget::from(emoji.clone());
+
+    let result = client
+        .add_activity_reaction(&token, &device_id, &current_user_id, &activity_id, &target)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |detail| {
+            (
+                detail.social().reaction_state(&emoji),
+                detail.social().like_state(&current_user_id),
+            )
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok((ActivityReactionState::Present, ActivityLikeState::Liked)),
+        vec![
+            authenticated_request(
+                Method::POST,
+                "/stories/{story-id}/reactions",
+                &["stories", "story-1", "reactions"],
+                &[],
+                Some(r#"{"emoji":":red_heart:"}"#.as_bytes()),
+                OperationClass::StateWrite,
+            ),
+            authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),
+        ],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_red_heart_removal_also_reconciles_the_like_state() -> TestResult {
+    let mutation = scripted_response(204, Vec::new())?;
+    let refresh = scripted_json_response(200, social_activity_body(false, false))?;
+    let (client, transport) = scripted_client([Ok(mutation), Ok(refresh)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+    let emoji = ActivityReactionEmoji::from_str("❤️")?;
+    let target = ActivityReactionTarget::from(emoji.clone());
+
+    let result = client
+        .remove_activity_reaction(&token, &device_id, &current_user_id, &activity_id, &target)
+        .await;
+    let observed = ScriptedObservation::observed(
+        project_result(result, |detail| {
+            (
+                detail.social().reaction_state(&emoji),
+                detail.social().like_state(&current_user_id),
+            )
+        }),
+        &transport,
+    );
+    let expected = ScriptedObservation::expected(
+        Ok((ActivityReactionState::Absent, ActivityLikeState::NotLiked)),
+        vec![
+            authenticated_request(
+                Method::DELETE,
+                "/stories/{story-id}/reactions",
+                &["stories", "story-1", "reactions"],
+                &[],
+                Some(r#"{"emoji":":red_heart:"}"#.as_bytes()),
+                OperationClass::StateWrite,
+            ),
+            authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),
+        ],
+    );
+
+    assert_eq!(observed, expected);
     Ok(())
 }
 
@@ -1030,16 +1314,17 @@ async fn activity_comment_remove_explains_that_the_comment_could_not_be_found() 
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn social_mutation_reconciliation_mismatches_are_ambiguous() -> TestResult {
+async fn like_target_reconciliation_mismatches_are_ambiguous() -> TestResult {
     let mutation = scripted_response(204, Vec::new())?;
     let refresh = scripted_json_response(200, social_activity_body(false, false))?;
     let (client, transport) = scripted_client([Ok(mutation), Ok(refresh)])?;
     let (token, device_id) = test_session()?;
     let current_user_id = UserId::from_str("123")?;
     let activity_id = ActivityId::from_str("story-1")?;
+    let target = ActivityReactionTarget::Like;
 
     let result = client
-        .like_activity(&token, &device_id, &current_user_id, &activity_id)
+        .add_activity_reaction(&token, &device_id, &current_user_id, &activity_id, &target)
         .await;
     let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
     let expected = ScriptedObservation::expected(
@@ -1056,6 +1341,47 @@ async fn social_mutation_reconciliation_mismatches_are_ambiguous() -> TestResult
                 &["stories", "story-1", "likes"],
                 &[],
                 None,
+                OperationClass::StateWrite,
+            ),
+            authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),
+        ],
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reaction_mutation_reconciliation_mismatches_are_ambiguous() -> TestResult {
+    let mutation = scripted_response(204, Vec::new())?;
+    let mut body = activity_body("story-1");
+    body["data"]["reactions"] = serde_json::json!([]);
+    let refresh = scripted_json_response(200, body)?;
+    let (client, transport) = scripted_client([Ok(mutation), Ok(refresh)])?;
+    let (token, device_id) = test_session()?;
+    let current_user_id = UserId::from_str("123")?;
+    let activity_id = ActivityId::from_str("story-1")?;
+    let emoji = ActivityReactionEmoji::from_str("🔥")?;
+    let target = ActivityReactionTarget::from(emoji);
+
+    let result = client
+        .add_activity_reaction(&token, &device_id, &current_user_id, &activity_id, &target)
+        .await;
+    let observed = ScriptedObservation::observed(project_result(result, |_| ()), &transport);
+    let expected = ScriptedObservation::expected(
+        Err(ApiErrorSnapshot {
+            kind: ApiFailureKind::AmbiguousWrite,
+            detail: ApiErrorDetail::StateMutationOutcomeUnknown {
+                operation: ACTIVITY_REACTION_ADD_OPERATION,
+            },
+        }),
+        vec![
+            authenticated_request(
+                Method::POST,
+                "/stories/{story-id}/reactions",
+                &["stories", "story-1", "reactions"],
+                &[],
+                Some(r#"{"emoji":"🔥"}"#.as_bytes()),
                 OperationClass::StateWrite,
             ),
             authenticated_read_request("/stories/{story-id}", &["stories", "story-1"], &[]),

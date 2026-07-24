@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use crate::adapters::venmo::TransportBuildError;
 use crate::features::activity::ActivityError;
+use crate::features::activity::reactions::ActivityReactionMutationError;
 use crate::features::activity::social::ActivitySocialMutationError;
 use crate::features::auth::{AuthStatusError, LoginError};
 use crate::features::payments::pay::PayError;
@@ -234,6 +235,12 @@ pub enum AppError {
     },
 
     #[error(transparent)]
+    ActivityReactionMutation {
+        #[from]
+        source: ActivityReactionMutationError,
+    },
+
+    #[error(transparent)]
     Requests {
         #[from]
         source: RequestsError,
@@ -308,6 +315,9 @@ impl AppError {
             Self::Balance { source } => read_failure_category(source.failure_kind()),
             Self::Activity { source } => application_failure_category(source.failure_kind()),
             Self::ActivitySocialMutation { source } => {
+                application_failure_category(source.failure_kind())
+            }
+            Self::ActivityReactionMutation { source } => {
                 application_failure_category(source.failure_kind())
             }
             Self::Requests { source } => read_failure_category(source.failure_kind()),

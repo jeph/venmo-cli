@@ -82,6 +82,9 @@ Expected envelope command: `activity.info`.
           }
         ],
         "complete": boolean
+      } | null,
+      "reactions": {
+        "count": integer
       } | null
     }
   }
@@ -116,9 +119,33 @@ Expected envelope command: `activity.comments.list`.
 
 Each author is a user object. `next_offset` is the continuation for the same activity ID.
 
-## Social mutations
+## `activity reactions list`
 
-Expected envelope commands are `activity.like`, `activity.unlike`, and `activity.comments.add`.
+Expected envelope command: `activity.reactions.list`.
+
+```text
+{
+  "activity_id": string,
+  "total_count": integer,
+  "reactions": [
+    {
+      "emoji": string,
+      "kind": "unicode_emoji" | "custom_alias",
+      "count": integer,
+      "reacted_by_current_user": boolean
+    }
+  ]
+}
+```
+
+`total_count` is the checked sum of all aggregate reaction counts. `custom_alias` values are emitted
+exactly as Venmo returned them and are read-only; add and remove accept `unicode_emoji` values or the
+special `like` target. The command does not expose the identities of other reacting users. Venmo
+exposes the `❤️` reaction and the like as the same state.
+
+## Comment addition
+
+Expected envelope command: `activity.comments.add`.
 
 ```text
 {
@@ -126,8 +153,8 @@ Expected envelope commands are `activity.like`, `activity.unlike`, and `activity
   "performed": boolean,
   "plan": {
     "activity": object,
-    "action": "like" | "unlike" | "add_comment",
-    "message": string | null,
+    "action": "add_comment",
+    "message": string,
     "previous_like_state": "liked" | "not_liked" | "unknown",
     "automatic_retries": false
   },
@@ -136,7 +163,41 @@ Expected envelope commands are `activity.like`, `activity.unlike`, and `activity
 ```
 
 `plan.activity` and `result.activity` use the inner object at `activity info`'s `data.activity`.
-`message` is non-null only for `add_comment`.
+
+## Reaction mutations
+
+Expected envelope commands are `activity.reactions.add` and `activity.reactions.remove`.
+
+```text
+{
+  "outcome": "dry_run" | "completed",
+  "performed": boolean,
+  "plan": {
+    "activity": object,
+    "action": "add_reaction" | "remove_reaction",
+    "target": {
+      "kind": "like" | "unicode_emoji",
+      "value": string
+    },
+    "previous_state": "present" | "absent" | "unknown",
+    "automatic_retries": false
+  },
+  "result": {
+    "activity_id": string,
+    "target": {
+      "kind": "like" | "unicode_emoji",
+      "value": string
+    },
+    "state": "present" | "absent",
+    "count": integer | null,
+    "reacted_by_current_user": boolean | null
+  } | null
+}
+```
+
+Exact lowercase `like` uses the bodyless likes endpoint. Unicode emoji, including literal `❤️`, use
+the reactions endpoint. Venmo exposes `like` and `❤️` as the same server state even though these
+inputs select different endpoints.
 
 ## `activity comments remove`
 

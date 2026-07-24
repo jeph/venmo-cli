@@ -6,16 +6,18 @@ use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
     ActivityCommentMessage, ActivityCommentRemovalApi, ActivityCounterparty, ActivityDetail,
     ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId,
-    ActivityLikeState, ActivityListApi, ActivityPage, ActivityPageRequest, ActivitySocial,
+    ActivityLikeState, ActivityListApi, ActivityPage, ActivityPageRequest, ActivityReaction,
+    ActivityReactionEmoji, ActivityReactionMutationApi, ActivityReactionState,
+    ActivityReactionTarget, ActivityReactionValue, ActivityReactions, ActivitySocial,
     ActivitySocialCollection, ActivitySocialMutationApi, ActivityStatus,
 };
 use crate::features::people::User;
 use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
 
 use super::super::dto::{
-    ActivityCommentDto, ActivityCommentEnvelope, ActivityPaymentRecordDto,
-    AddActivityCommentRequest, AuthorizationDto, DisbursementDto, StoriesEnvelope, StoryDto,
-    StoryEnvelope, StorySocialCollectionDto, TransferDto, UserDto,
+    ActivityCommentDto, ActivityCommentEnvelope, ActivityPaymentRecordDto, ActivityReactionDto,
+    ActivityReactionRequest, AddActivityCommentRequest, AuthorizationDto, DisbursementDto,
+    StoriesEnvelope, StoryDto, StoryEnvelope, StorySocialCollectionDto, TransferDto, UserDto,
 };
 use super::super::transport::{ApiSession, ApiTransport, HttpRequest, JsonBody};
 use super::error::VenmoApiError;
@@ -29,8 +31,11 @@ use super::support::{
 };
 use super::{
     ACTIVITY_COMMENT_ADD_OPERATION, ACTIVITY_COMMENT_REMOVE_OPERATION, ACTIVITY_DETAIL_OPERATION,
-    ACTIVITY_LIKE_OPERATION, ACTIVITY_LIST_OPERATION, ACTIVITY_UNLIKE_OPERATION, VenmoApiClient,
+    ACTIVITY_LIKE_OPERATION, ACTIVITY_LIST_OPERATION, ACTIVITY_REACTION_ADD_OPERATION,
+    ACTIVITY_REACTION_REMOVE_OPERATION, ACTIVITY_UNLIKE_OPERATION, VenmoApiClient,
 };
+
+const RED_HEART_WIRE_VALUE: &str = ":red_heart:";
 
 impl<T: ApiTransport> VenmoApiClient<T> {
     pub(super) async fn fetch_activity_page(
@@ -364,30 +369,67 @@ impl<T: ApiTransport> VenmoApiClient<T> {
         require_state_write_success(ACTIVITY_COMMENT_REMOVE_OPERATION, response)?;
         Ok(())
     }
+
+    async fn set_activity_reaction(
+        &self,
+        access_token: &AccessToken,
+        device_id: &DeviceId,
+        current_user_id: &UserId,
+        activity_id: &ActivityId,
+        emoji: &ActivityReactionEmoji,
+        add: bool,
+    ) -> Result<ActivityDetail, VenmoApiError> {
+        let operation = if add {
+            ACTIVITY_REACTION_ADD_OPERATION
+        } else {
+            ACTIVITY_REACTION_REMOVE_OPERATION
+        };
+        let body = JsonBody::encode(&ActivityReactionRequest {
+            emoji: activity_reaction_wire_value(emoji),
+        })
+        .map_err(|_| VenmoApiError::RequestEncoding { operation })?;
+        let path_segments = ["stories", activity_id.as_str(), "reactions"];
+        let request = if add {
+            HttpRequest::state_json_post("/stories/{story-id}/reactions", &path_segments, &[], body)
+        } else {
+            HttpRequest::state_json_delete(
+                "/stories/{story-id}/reactions",
+                &path_segments,
+                &[],
+                body,
+            )
+        };
+        let response = self
+            .transport
+            .send_authenticated(ApiSession::new(access_token, device_id), request)
+            .await?;
+        require_state_write_success(operation, response)?;
+        let activity = self
+            .reconcile_activity_social(
+                access_token,
+                device_id,
+                current_user_id,
+                activity_id,
+                operation,
+            )
+            .await?;
+        let expected = if add {
+            ActivityReactionState::Present
+        } else {
+            ActivityReactionState::Absent
+        };
+        if activity.social().reaction_state(emoji) != expected {
+            return Err(VenmoApiError::StateMutationOutcomeUnknown {
+                operation,
+                problem: "the refreshed activity did not prove the requested reaction state",
+            });
+        }
+        Ok(activity)
+    }
 }
 
 impl<T: ApiTransport> ActivitySocialMutationApi for VenmoApiClient<T> {
     type Error = VenmoApiError;
-
-    fn like_activity<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
-        activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        self.set_activity_like(access_token, device_id, current_user_id, activity_id, true)
-    }
-
-    fn unlike_activity<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
-        activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        self.set_activity_like(access_token, device_id, current_user_id, activity_id, false)
-    }
 
     fn add_activity_comment<'a>(
         &'a self,
@@ -420,6 +462,64 @@ impl<T: ApiTransport> ActivityCommentRemovalApi for VenmoApiClient<T> {
     }
 }
 
+impl<T: ApiTransport> ActivityReactionMutationApi for VenmoApiClient<T> {
+    type Error = VenmoApiError;
+
+    async fn add_activity_reaction<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+        target: &'a ActivityReactionTarget,
+    ) -> Result<ActivityDetail, Self::Error> {
+        match target {
+            ActivityReactionTarget::Like => {
+                self.set_activity_like(access_token, device_id, current_user_id, activity_id, true)
+                    .await
+            }
+            ActivityReactionTarget::Emoji(emoji) => {
+                self.set_activity_reaction(
+                    access_token,
+                    device_id,
+                    current_user_id,
+                    activity_id,
+                    emoji,
+                    true,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn remove_activity_reaction<'a>(
+        &'a self,
+        access_token: &'a AccessToken,
+        device_id: &'a DeviceId,
+        current_user_id: &'a UserId,
+        activity_id: &'a ActivityId,
+        target: &'a ActivityReactionTarget,
+    ) -> Result<ActivityDetail, Self::Error> {
+        match target {
+            ActivityReactionTarget::Like => {
+                self.set_activity_like(access_token, device_id, current_user_id, activity_id, false)
+                    .await
+            }
+            ActivityReactionTarget::Emoji(emoji) => {
+                self.set_activity_reaction(
+                    access_token,
+                    device_id,
+                    current_user_id,
+                    activity_id,
+                    emoji,
+                    false,
+                )
+                .await
+            }
+        }
+    }
+}
+
 pub(super) fn map_activity(
     story: StoryDto,
     current_user_id: &UserId,
@@ -437,6 +537,7 @@ pub(super) fn map_activity(
         disbursement,
         likes: _,
         comments: _,
+        reactions: _,
     } = story;
     let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
         operation,
@@ -489,6 +590,7 @@ fn map_other_user_activity(
         disbursement,
         likes: _,
         comments: _,
+        reactions: _,
     } = story;
     let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
         operation: ACTIVITY_LIST_OPERATION,
@@ -545,6 +647,7 @@ fn map_activity_detail(
         disbursement,
         likes,
         comments,
+        reactions,
     } = story;
     let id = ActivityId::from_str(&id.into_string()).map_err(|_| VenmoApiError::Contract {
         operation: ACTIVITY_DETAIL_OPERATION,
@@ -557,7 +660,7 @@ fn map_activity_detail(
         note,
         audience,
     };
-    let social = map_activity_social(likes, comments, ACTIVITY_DETAIL_OPERATION)?;
+    let social = map_activity_social(likes, comments, reactions, ACTIVITY_DETAIL_OPERATION)?;
     let detail = match (payment, transfer, authorization, disbursement) {
         (Some(payment), None, None, None) => map_payment_detail(
             metadata,
@@ -595,6 +698,7 @@ fn map_activity_detail(
 fn map_activity_social(
     likes: Option<StorySocialCollectionDto<UserDto>>,
     comments: Option<StorySocialCollectionDto<ActivityCommentDto>>,
+    reactions: Option<Vec<ActivityReactionDto>>,
     operation: &'static str,
 ) -> Result<ActivitySocial, VenmoApiError> {
     let likes = likes
@@ -665,7 +769,71 @@ fn map_activity_social(
             ))
         })
         .transpose()?;
-    Ok(ActivitySocial::new(likes, comments))
+    let reactions = reactions
+        .map(|reactions| map_activity_reactions(reactions, operation))
+        .transpose()?;
+    Ok(ActivitySocial::new(likes, comments).with_reactions(reactions))
+}
+
+fn map_activity_reactions(
+    reactions: Vec<ActivityReactionDto>,
+    operation: &'static str,
+) -> Result<ActivityReactions, VenmoApiError> {
+    let reactions = reactions
+        .into_iter()
+        .map(|reaction| {
+            let emoji = parse_activity_reaction_wire_value(&reaction.emoji).map_err(|_| {
+                VenmoApiError::Contract {
+                    operation,
+                    problem: "the activity response contained an invalid reaction emoji",
+                }
+            })?;
+            if reaction.reacted_by_user && reaction.count == 0 {
+                return Err(VenmoApiError::Contract {
+                    operation,
+                    problem: "the activity response marked a zero-count reaction as user-selected",
+                });
+            }
+            Ok(ActivityReaction::from_value(
+                emoji,
+                reaction.count,
+                reaction.reacted_by_user,
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut emojis = HashSet::with_capacity(reactions.len());
+    if reactions
+        .iter()
+        .any(|reaction| !emojis.insert(reaction.value().as_str()))
+    {
+        return Err(VenmoApiError::Contract {
+            operation,
+            problem: "the activity response contained duplicate reaction emojis",
+        });
+    }
+    ActivityReactions::try_new(reactions).map_err(|_| VenmoApiError::Contract {
+        operation,
+        problem: "the activity response's aggregate reaction count overflowed",
+    })
+}
+
+fn parse_activity_reaction_wire_value(value: &str) -> Result<ActivityReactionValue, ()> {
+    if value == RED_HEART_WIRE_VALUE {
+        return ActivityReactionEmoji::from_str("❤️")
+            .map(ActivityReactionValue::from)
+            .map_err(|_| ());
+    }
+    ActivityReactionEmoji::from_str(value)
+        .map(ActivityReactionValue::from)
+        .or_else(|_| ActivityReactionValue::custom_alias(value.to_owned()).map_err(|_| ()))
+}
+
+fn activity_reaction_wire_value(emoji: &ActivityReactionEmoji) -> &str {
+    if emoji.as_str() == "❤️" {
+        RED_HEART_WIRE_VALUE
+    } else {
+        emoji.as_str()
+    }
 }
 
 fn validate_embedded_count(

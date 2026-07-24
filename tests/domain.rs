@@ -2,9 +2,10 @@ use std::str::FromStr;
 
 use proptest::prelude::*;
 use venmo_cli::model::{
-    ActivityBeforeId, ActivityCommentListResult, FriendsSubject, Limit, Money, Note, Offset,
-    PeerFundingFee, RecipientInput, RequestAction, RequestDirection, RequestId, RequestInfoResult,
-    RequestRecord, RequestStatus, User, UserId, UserInfoResult, UserSearchQuery, Username,
+    ActivityBeforeId, ActivityCommentListResult, ActivityReactionEmoji, ActivityReactionListResult,
+    ActivityReactionTarget, FriendsSubject, Limit, Money, Note, Offset, PeerFundingFee,
+    RecipientInput, RequestAction, RequestDirection, RequestId, RequestInfoResult, RequestRecord,
+    RequestStatus, User, UserId, UserInfoResult, UserSearchQuery, Username,
 };
 
 #[test]
@@ -66,6 +67,18 @@ fn notes_and_limits_enforce_local_invariants() {
     assert!(Offset::from_str("-1").is_err());
     assert!(ActivityBeforeId::from_str("before-token").is_ok());
     assert!(ActivityBeforeId::from_str("before token").is_err());
+    for value in ["🔥", "5️⃣", "©"] {
+        assert!(ActivityReactionEmoji::from_str(value).is_ok());
+    }
+    for value in ["5", "#", "*", ":party_cup:"] {
+        assert!(ActivityReactionEmoji::from_str(value).is_err());
+    }
+    assert!(ActivityReactionTarget::from_str("like").is_ok());
+    assert!(ActivityReactionTarget::from_str("🔥").is_ok());
+    for value in ["Like", "heart", ":party_cup:"] {
+        assert!(ActivityReactionTarget::from_str(value).is_err());
+    }
+    assert!(ActivityReactionEmoji::from_str("two emoji 🔥").is_err());
     assert!(UserSearchQuery::from_str("Alice Smith").is_ok());
     assert!(UserSearchQuery::from_str("@").is_err());
 }
@@ -104,6 +117,7 @@ fn public_info_result_facades_expose_only_their_completed_records() {
     let user_result: Option<UserInfoResult> = None;
     let request_result: Option<RequestInfoResult> = None;
     let comment_result: Option<ActivityCommentListResult> = None;
+    let reaction_result: Option<ActivityReactionListResult> = None;
 
     assert!(user_result.as_ref().map(UserInfoResult::user).is_none());
     assert!(
@@ -116,6 +130,12 @@ fn public_info_result_facades_expose_only_their_completed_records() {
         comment_result
             .as_ref()
             .map(ActivityCommentListResult::comments)
+            .is_none()
+    );
+    assert!(
+        reaction_result
+            .as_ref()
+            .map(ActivityReactionListResult::reactions)
             .is_none()
     );
 }

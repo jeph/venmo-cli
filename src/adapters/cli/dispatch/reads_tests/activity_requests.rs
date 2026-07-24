@@ -75,14 +75,13 @@ async fn activity_list_handler_has_exact_page_output_and_continuation_streams() 
 async fn activity_info_handler_uses_only_detail_and_writes_exact_stdout() -> TestResult {
     // Setup.
     let args = activity_info_args()?;
-    let primary = synthetic_activity()?;
 
     // Immutable initial script/state.
     let transcript = Rc::new(RefCell::new(Vec::new()));
     let reader = FakeReader::standard(Rc::clone(&transcript));
     let api = ActivityFake {
         list_responses: ResponseQueue::successful(ActivityPage::new(Vec::new(), None)),
-        info_responses: ResponseQueue::successful(ActivityDetail::relative(primary)),
+        info_responses: ResponseQueue::successful(synthetic_activity_with_reactions()?),
         transcript: Rc::clone(&transcript),
     };
     let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
@@ -178,6 +177,61 @@ async fn activity_comment_list_handler_reads_one_detail_and_writes_one_local_pag
 
     let mut output = human_output(CommandId::ActivityCommentsList, &mut stdout, &mut stderr);
     let result = run_activity_comment_list(args, &reader, &api, &timestamps, &mut output).await;
+    let observed = Observed::new(
+        snapshot_result(result),
+        ReadState {
+            calls: transcript.borrow().clone(),
+            remaining_credentials: reader.remaining(),
+            api: ActivityApiState {
+                list: api.list_responses.remaining(),
+                info: api.info_responses.remaining(),
+            },
+            stdout: stdout.state,
+            stderr: stderr.state,
+        },
+    );
+
+    assert_eq!(observed, expected);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_reaction_list_handler_reads_one_detail_and_writes_aggregate_state() -> TestResult
+{
+    let args = activity_reaction_list_args()?;
+    let transcript = Rc::new(RefCell::new(Vec::new()));
+    let reader = FakeReader::standard(Rc::clone(&transcript));
+    let api = ActivityFake {
+        list_responses: ResponseQueue::successful(ActivityPage::new(Vec::new(), None)),
+        info_responses: ResponseQueue::successful(synthetic_activity_with_reactions()?),
+        transcript: Rc::clone(&transcript),
+    };
+    let mut stdout = writer(Stream::Stdout, Rc::clone(&transcript));
+    let mut stderr = writer(Stream::Stderr, Rc::clone(&transcript));
+    let expected = Observed::new(
+        ResultSnapshot::Success,
+        ReadState {
+            calls: vec![
+                ReadCall::ReadCredential,
+                ReadCall::ActivityInfo {
+                    session: fixture_session(),
+                    current_user_id: UserId::from_str("1000")?,
+                    activity_id: ActivityId::from_str("story-1")?,
+                },
+                ReadCall::StdoutWrite,
+            ],
+            remaining_credentials: vec![ResponseId::UnexpectedSecond],
+            api: ActivityApiState {
+                list: vec![ResponseId::Primary, ResponseId::UnexpectedSecond],
+                info: vec![ResponseId::UnexpectedSecond],
+            },
+            stdout: writer_state(ACTIVITY_REACTION_LIST_OUTPUT),
+            stderr: WriterState::default(),
+        },
+    );
+
+    let mut output = human_output(CommandId::ActivityReactionsList, &mut stdout, &mut stderr);
+    let result = run_activity_reaction_list(args, &reader, &api, &mut output).await;
     let observed = Observed::new(
         snapshot_result(result),
         ReadState {
