@@ -113,13 +113,20 @@ pub(crate) fn activity_reaction_result(
     result: &ActivityReactionMutationResult,
 ) -> io::Result<Response<'_, ActivityReactionMutationResult>> {
     let plan = activity_reaction_plan_data(result.plan())?;
-    let expected_state = result.plan().action().expected_state();
+    let reconciled_state = result.reconciled_state();
+    let reconciled_reaction = result.reconciled_reaction();
+    let reacted_by_current_user = reconciled_reaction
+        .map(|reaction| reaction.reacted_by_current_user())
+        .or_else(|| {
+            (reconciled_state == crate::features::activity::ActivityReactionState::Absent)
+                .then_some(false)
+        });
     let result_data = serde_json::json!({
         "activity_id": result.activity().id().as_str(),
-        "emoji": result.plan().action().emoji().as_str(),
-        "state": shared::reaction_state(expected_state),
-        "count": result.reconciled_reaction().map(|reaction| reaction.count()),
-        "reacted_by_current_user": expected_state == crate::features::activity::ActivityReactionState::Present,
+        "target": activity_reaction_target(result.plan().action().target()),
+        "state": shared::reaction_state(reconciled_state),
+        "count": reconciled_reaction.map(|reaction| reaction.count()),
+        "reacted_by_current_user": reacted_by_current_user,
     });
     Ok(Response::new(
         result,
@@ -173,32 +180,37 @@ fn subject(value: &ActivitySubject) -> serde_json::Value {
 }
 
 fn activity_social_plan_data(plan: &ActivitySocialPlan) -> io::Result<serde_json::Value> {
-    let (action, message) = match plan.action() {
-        ActivitySocialAction::Like => ("like", None),
-        ActivitySocialAction::Unlike => ("unlike", None),
-        ActivitySocialAction::AddComment(message) => ("add_comment", Some(message.as_str())),
-    };
+    let ActivitySocialAction::AddComment(message) = plan.action();
     Ok(serde_json::json!({
         "activity": shared::activity_detail(plan.activity())?,
-        "action": action,
-        "message": message,
+        "action": "add_comment",
+        "message": message.as_str(),
         "previous_like_state": shared::like_state(plan.previous_like_state()),
         "automatic_retries": false,
     }))
 }
 
 fn activity_reaction_plan_data(plan: &ActivityReactionPlan) -> io::Result<serde_json::Value> {
-    let (action, emoji) = match plan.action() {
-        ActivityReactionAction::Add(emoji) => ("add_reaction", emoji.as_str()),
-        ActivityReactionAction::Remove(emoji) => ("remove_reaction", emoji.as_str()),
+    let (action, target) = match plan.action() {
+        ActivityReactionAction::Add(target) => ("add_reaction", target),
+        ActivityReactionAction::Remove(target) => ("remove_reaction", target),
     };
     Ok(serde_json::json!({
         "activity": shared::activity_detail(plan.activity())?,
         "action": action,
-        "emoji": emoji,
+        "target": activity_reaction_target(target),
         "previous_state": shared::reaction_state(plan.previous_state()),
         "automatic_retries": false,
     }))
+}
+
+fn activity_reaction_target(
+    target: &crate::features::activity::ActivityReactionTarget,
+) -> serde_json::Value {
+    serde_json::json!({
+        "kind": if target.is_like() { "like" } else { "unicode_emoji" },
+        "value": target.as_str(),
+    })
 }
 
 fn activity_comment_removal_plan_data(plan: &ActivityCommentRemovalPlan) -> serde_json::Value {
@@ -220,7 +232,7 @@ mod tests {
     use super::*;
     use crate::features::activity::{
         ActivityAction, ActivityDetail, ActivityId, ActivityReaction, ActivityReactionEmoji,
-        ActivityReactions, ActivitySocial, ActivityStatus,
+        ActivityReactionValue, ActivityReactions, ActivitySocial, ActivityStatus,
     };
     use crate::features::people::User;
     use crate::shared::{Money, UserId, Username};
@@ -231,6 +243,11 @@ mod tests {
         Ok(ActivityReactions::try_new(vec![
             ActivityReaction::new(ActivityReactionEmoji::from_str("🔥")?, 2, true),
             ActivityReaction::new(ActivityReactionEmoji::from_str("❤️")?, 1, false),
+            ActivityReaction::from_value(
+                ActivityReactionValue::custom_alias(":party_cup:".to_owned())?,
+                4,
+                false,
+            ),
         ])?)
     }
 
@@ -245,10 +262,11 @@ mod tests {
             response.data(),
             &serde_json::json!({
                 "activity_id":"story-1",
-                "total_count":3,
+                "total_count":7,
                 "reactions":[
-                    {"emoji":"🔥","count":2,"reacted_by_current_user":true},
-                    {"emoji":"❤️","count":1,"reacted_by_current_user":false}
+                    {"emoji":"🔥","kind":"unicode_emoji","count":2,"reacted_by_current_user":true},
+                    {"emoji":"❤️","kind":"unicode_emoji","count":1,"reacted_by_current_user":false},
+                    {"emoji":":party_cup:","kind":"custom_alias","count":4,"reacted_by_current_user":false}
                 ]
             })
         );
@@ -284,7 +302,7 @@ mod tests {
         let response = activity_info(&result)?;
         let reaction_data = &response.data()["activity"]["social"]["reactions"];
 
-        assert_eq!(reaction_data, &serde_json::json!({"count":3}));
+        assert_eq!(reaction_data, &serde_json::json!({"count":7}));
         assert!(reaction_data.get("items").is_none());
         Ok(())
     }

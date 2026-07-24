@@ -530,8 +530,6 @@ fn dry_run_is_local_to_every_confirmed_mutation_and_conflicts_with_yes() {
         &["venmo", "requests", "cancel", "request-1"],
         &["venmo", "friends", "add", "alice"],
         &["venmo", "friends", "remove", "alice"],
-        &["venmo", "activity", "like", "story-1"],
-        &["venmo", "activity", "unlike", "story-1"],
         &[
             "venmo",
             "activity",
@@ -543,6 +541,15 @@ fn dry_run_is_local_to_every_confirmed_mutation_and_conflicts_with_yes() {
         &["venmo", "activity", "comments", "remove", "comment-1"],
         &["venmo", "activity", "reactions", "add", "story-1", "🔥"],
         &["venmo", "activity", "reactions", "remove", "story-1", "🔥"],
+        &["venmo", "activity", "reactions", "add", "story-1", "like"],
+        &[
+            "venmo",
+            "activity",
+            "reactions",
+            "remove",
+            "story-1",
+            "like",
+        ],
         &["venmo", "transfer", "out", "1.00"],
     ];
 
@@ -891,22 +898,6 @@ fn friend_mutation_commands_have_exact_grouped_grammar() {
 
 #[test]
 fn activity_social_commands_have_exact_grouped_grammar_and_redacted_inputs() {
-    let like = Cli::try_parse_from(["venmo", "activity", "like", "story-1", "--yes"]);
-    assert!(like.is_ok_and(|cli| matches!(
-        cli.command,
-        Command::Activity(args)
-            if matches!(&args.operation, ActivityOperation::Like(args)
-                if args.activity_id.as_str() == "story-1" && args.yes)
-    )));
-
-    let unlike = Cli::try_parse_from(["venmo", "activity", "unlike", "story-1"]);
-    assert!(unlike.is_ok_and(|cli| matches!(
-        cli.command,
-        Command::Activity(args)
-            if matches!(&args.operation, ActivityOperation::Unlike(args)
-                if args.activity_id.as_str() == "story-1" && !args.yes)
-    )));
-
     let list = Cli::try_parse_from([
         "venmo", "activity", "comments", "list", "story-1", "--limit", "3", "--offset", "4",
     ]);
@@ -959,18 +950,27 @@ fn activity_social_commands_have_exact_grouped_grammar_and_redacted_inputs() {
     )));
 
     for operation in ["add", "remove"] {
-        let parsed =
-            Cli::try_parse_from(["venmo", "activity", "reactions", operation, "story-1", "🔥"]);
-        assert!(parsed.is_ok());
-        if let Ok(parsed) = parsed {
-            let debug = format!("{parsed:?}");
-            assert!(!debug.contains("🔥"));
-            assert!(debug.contains("[REDACTED]"));
+        for reaction in ["like", "🔥", "5️⃣", "©"] {
+            let parsed = Cli::try_parse_from([
+                "venmo",
+                "activity",
+                "reactions",
+                operation,
+                "story-1",
+                reaction,
+            ]);
+            assert!(parsed.is_ok(), "{operation} {reaction}");
+            if let Ok(parsed) = parsed {
+                let debug = format!("{parsed:?}");
+                assert!(!debug.contains(reaction));
+                assert!(debug.contains("[REDACTED]"));
+            }
         }
     }
 
     for arguments in [
-        &["venmo", "activity", "like"][..],
+        &["venmo", "activity", "like", "story-1"][..],
+        &["venmo", "activity", "unlike", "story-1"][..],
         &["venmo", "activity", "comments", "add", "story-1", "   "][..],
         &["venmo", "activity", "comments", "remove"][..],
         &[
@@ -983,6 +983,17 @@ fn activity_social_commands_have_exact_grouped_grammar_and_redacted_inputs() {
         ][..],
         &["venmo", "activity", "comments", "delete", "comment-1"][..],
         &["venmo", "activity", "reactions", "add", "story-1", "heart"][..],
+        &["venmo", "activity", "reactions", "add", "story-1", "5"][..],
+        &["venmo", "activity", "reactions", "add", "story-1", "#"][..],
+        &["venmo", "activity", "reactions", "add", "story-1", "*"][..],
+        &[
+            "venmo",
+            "activity",
+            "reactions",
+            "add",
+            "story-1",
+            ":party_cup:",
+        ][..],
     ] {
         assert_rejected(arguments);
     }
@@ -1089,8 +1100,6 @@ fn every_command_has_a_help_snapshot() {
         ("activity", &["activity"]),
         ("activity_list", &["activity", "list"]),
         ("activity_info", &["activity", "info"]),
-        ("activity_like", &["activity", "like"]),
-        ("activity_unlike", &["activity", "unlike"]),
         ("activity_comments", &["activity", "comments"]),
         ("activity_comments_list", &["activity", "comments", "list"]),
         ("activity_comments_add", &["activity", "comments", "add"]),
@@ -1184,8 +1193,6 @@ fn mutation_flags(cli: Cli) -> Option<(bool, bool)> {
             TransferOperation::Options => None,
         },
         Command::Activity(args) => match args.operation {
-            ActivityOperation::Like(args) => Some((args.yes, args.dry_run)),
-            ActivityOperation::Unlike(args) => Some((args.yes, args.dry_run)),
             ActivityOperation::Comments(args) => match args.operation {
                 ActivityCommentsOperation::List(_) => None,
                 ActivityCommentsOperation::Add(args) => Some((args.yes, args.dry_run)),

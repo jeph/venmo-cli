@@ -10,8 +10,8 @@ use crate::features::activity::{
     Activity, ActivityAction, ActivityBeforeId, ActivityComment, ActivityCommentId,
     ActivityCommentListResult, ActivityCounterparty, ActivityDetail, ActivityDirection,
     ActivityFeedKind, ActivityId, ActivityInfoResult, ActivityListResult, ActivityReaction,
-    ActivityReactionEmoji, ActivityReactions, ActivitySocial, ActivitySocialCollection,
-    ActivityStatus, ActivitySubject,
+    ActivityReactionEmoji, ActivityReactionValue, ActivityReactions, ActivitySocial,
+    ActivitySocialCollection, ActivityStatus, ActivitySubject,
 };
 use crate::features::people::User;
 use crate::features::requests::list::RequestsResult;
@@ -254,6 +254,11 @@ fn activity_reaction_list_renders_aggregate_counts_and_current_user_state() -> T
     let reactions = ActivityReactions::try_new(vec![
         ActivityReaction::new(ActivityReactionEmoji::from_str("🔥")?, 2, true),
         ActivityReaction::new(ActivityReactionEmoji::from_str("❤️")?, 1, false),
+        ActivityReaction::from_value(
+            ActivityReactionValue::custom_alias(":party_cup:".to_owned())?,
+            4,
+            false,
+        ),
     ])?;
     let result = ActivityReactionListResult::new(ActivityId::from_str("story-1")?, reactions);
     let mut stdout = Vec::new();

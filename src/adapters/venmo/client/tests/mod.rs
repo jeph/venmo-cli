@@ -23,8 +23,9 @@ use super::*;
 use crate::features::activity::{
     ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityCommentRemovalApi,
     ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId,
-    ActivityListApi, ActivityPageRequest, ActivityReactionEmoji, ActivityReactionMutationApi,
-    ActivityReactionState, ActivitySocialMutationApi,
+    ActivityLikeState, ActivityListApi, ActivityPageRequest, ActivityReactionEmoji,
+    ActivityReactionKind, ActivityReactionMutationApi, ActivityReactionState,
+    ActivityReactionTarget, ActivitySocialMutationApi,
 };
 use crate::features::auth::{
     AccountPassword, CurrentAccountApi, LoginIdentifier, OtpCode, OtpSecret, PasswordLoginApi,

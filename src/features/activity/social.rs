@@ -14,15 +14,11 @@ use crate::shared::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActivitySocialIntent {
-    Like,
-    Unlike,
     AddComment(ActivityCommentMessage),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActivitySocialAction {
-    Like,
-    Unlike,
     AddComment(ActivityCommentMessage),
 }
 
@@ -30,8 +26,6 @@ impl ActivitySocialAction {
     #[must_use]
     pub const fn label(&self) -> &'static str {
         match self {
-            Self::Like => "like activity",
-            Self::Unlike => "unlike activity",
             Self::AddComment(_) => "add activity comment",
         }
     }
@@ -39,16 +33,12 @@ impl ActivitySocialAction {
     #[must_use]
     pub const fn result_label(&self) -> &'static str {
         match self {
-            Self::Like => "Activity liked",
-            Self::Unlike => "Activity unliked",
             Self::AddComment(_) => "Comment added",
         }
     }
 
     const fn confirmation(&self) -> &'static str {
         match self {
-            Self::Like => "Like this activity?",
-            Self::Unlike => "Unlike this activity?",
             Self::AddComment(_) => "Add this comment?",
         }
     }
@@ -126,17 +116,6 @@ pub enum ActivitySocialMutationError {
     #[error("the Venmo activity preflight violates its contract because {problem}")]
     ResponseContract { problem: &'static str },
 
-    #[error("the activity is already liked by the authenticated account")]
-    AlreadyLiked,
-
-    #[error("the activity is not liked by the authenticated account")]
-    NotLiked,
-
-    #[error(
-        "the activity's embedded liker data cannot prove the authenticated account's like state"
-    )]
-    LikeStateUnavailable,
-
     #[error(
         "activity social confirmation requires both stdin and stderr to be terminals; pass `--yes` to authorize non-interactively"
     )]
@@ -171,10 +150,7 @@ impl ActivitySocialMutationError {
             Self::Preflight { source } | Self::Mutation { source } => {
                 ApplicationFailureKind::Api(source.kind())
             }
-            Self::AlreadyLiked
-            | Self::NotLiked
-            | Self::LikeStateUnavailable
-            | Self::ConfirmationRequired => ApplicationFailureKind::Usage,
+            Self::ConfirmationRequired => ApplicationFailureKind::Usage,
             Self::ResponseContract { .. } => ApplicationFailureKind::ApiContract,
             Self::ConfirmationDeclined => ApplicationFailureKind::Cancelled,
             Self::Confirmation { source } => prompt_failure_kind(source),
@@ -213,7 +189,7 @@ where
         });
     }
     let previous_like_state = activity.social().like_state(credential.user_id());
-    let action = select_action(intent, previous_like_state)?;
+    let action = select_action(intent);
     Ok(PreparedActivitySocialMutation {
         credential,
         plan: ActivitySocialPlan {
@@ -224,32 +200,10 @@ where
     })
 }
 
-fn select_action(
-    intent: ActivitySocialIntent,
-    previous_like_state: ActivityLikeState,
-) -> Result<ActivitySocialAction, ActivitySocialMutationError> {
-    let action = match intent {
-        ActivitySocialIntent::Like => match previous_like_state {
-            ActivityLikeState::NotLiked => ActivitySocialAction::Like,
-            ActivityLikeState::Liked => {
-                return Err(ActivitySocialMutationError::AlreadyLiked);
-            }
-            ActivityLikeState::Unknown => {
-                return Err(ActivitySocialMutationError::LikeStateUnavailable);
-            }
-        },
-        ActivitySocialIntent::Unlike => match previous_like_state {
-            ActivityLikeState::Liked => ActivitySocialAction::Unlike,
-            ActivityLikeState::NotLiked => {
-                return Err(ActivitySocialMutationError::NotLiked);
-            }
-            ActivityLikeState::Unknown => {
-                return Err(ActivitySocialMutationError::LikeStateUnavailable);
-            }
-        },
+fn select_action(intent: ActivitySocialIntent) -> ActivitySocialAction {
+    match intent {
         ActivitySocialIntent::AddComment(message) => ActivitySocialAction::AddComment(message),
-    };
-    Ok(action)
+    }
 }
 
 pub(crate) fn authorize<P>(
@@ -287,24 +241,6 @@ where
     let credential = &prepared.credential;
     let activity_id = prepared.plan.activity.id();
     let updated = match &prepared.plan.action {
-        ActivitySocialAction::Like => {
-            api.like_activity(
-                credential.access_token(),
-                credential.device_id(),
-                credential.user_id(),
-                activity_id,
-            )
-            .await
-        }
-        ActivitySocialAction::Unlike => {
-            api.unlike_activity(
-                credential.access_token(),
-                credential.device_id(),
-                credential.user_id(),
-                activity_id,
-            )
-            .await
-        }
         ActivitySocialAction::AddComment(message) => {
             api.add_activity_comment(
                 credential.access_token(),
@@ -328,29 +264,4 @@ where
         plan: prepared.plan,
         activity: updated,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn explicit_like_intents_require_authoritative_current_state() {
-        assert!(matches!(
-            select_action(ActivitySocialIntent::Like, ActivityLikeState::Liked),
-            Err(ActivitySocialMutationError::AlreadyLiked)
-        ));
-        assert!(matches!(
-            select_action(ActivitySocialIntent::Unlike, ActivityLikeState::NotLiked),
-            Err(ActivitySocialMutationError::NotLiked)
-        ));
-        assert!(matches!(
-            select_action(ActivitySocialIntent::Like, ActivityLikeState::Unknown),
-            Err(ActivitySocialMutationError::LikeStateUnavailable)
-        ));
-        assert!(matches!(
-            select_action(ActivitySocialIntent::Unlike, ActivityLikeState::Unknown),
-            Err(ActivitySocialMutationError::LikeStateUnavailable)
-        ));
-    }
 }

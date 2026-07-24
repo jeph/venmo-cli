@@ -32,8 +32,8 @@ impl<T> VenmoApiClient<T> {
 
 pub(super) const ACTIVITY_DETAIL_OPERATION: &str = "activity detail";
 pub(super) const ACTIVITY_LIST_OPERATION: &str = "activity listing";
-pub(super) const ACTIVITY_LIKE_OPERATION: &str = "activity like";
-pub(super) const ACTIVITY_UNLIKE_OPERATION: &str = "activity unlike";
+pub(super) const ACTIVITY_LIKE_OPERATION: &str = "activity reactions add like";
+pub(super) const ACTIVITY_UNLIKE_OPERATION: &str = "activity reactions remove like";
 pub(super) const ACTIVITY_COMMENT_ADD_OPERATION: &str = "activity comment addition";
 pub(super) const ACTIVITY_COMMENT_REMOVE_OPERATION: &str = "activity comment removal";
 pub(super) const ACTIVITY_REACTION_ADD_OPERATION: &str = "activity reaction addition";

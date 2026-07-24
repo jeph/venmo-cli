@@ -35,8 +35,6 @@ pub enum CommandId {
     Balance,
     ActivityList,
     ActivityInfo,
-    ActivityLike,
-    ActivityUnlike,
     ActivityCommentsList,
     ActivityCommentsAdd,
     ActivityCommentsRemove,
@@ -70,8 +68,6 @@ impl CommandId {
             Self::Balance => "balance",
             Self::ActivityList => "activity.list",
             Self::ActivityInfo => "activity.info",
-            Self::ActivityLike => "activity.like",
-            Self::ActivityUnlike => "activity.unlike",
             Self::ActivityCommentsList => "activity.comments.list",
             Self::ActivityCommentsAdd => "activity.comments.add",
             Self::ActivityCommentsRemove => "activity.comments.remove",
@@ -116,8 +112,6 @@ impl Command {
             Self::Activity(args) => match &args.operation {
                 ActivityOperation::List(_) => CommandId::ActivityList,
                 ActivityOperation::Info(_) => CommandId::ActivityInfo,
-                ActivityOperation::Like(_) => CommandId::ActivityLike,
-                ActivityOperation::Unlike(_) => CommandId::ActivityUnlike,
                 ActivityOperation::Comments(args) => match args.operation {
                     ActivityCommentsOperation::List(_) => CommandId::ActivityCommentsList,
                     ActivityCommentsOperation::Add(_) => CommandId::ActivityCommentsAdd,
@@ -169,8 +163,6 @@ mod tests {
             CommandId::Balance,
             CommandId::ActivityList,
             CommandId::ActivityInfo,
-            CommandId::ActivityLike,
-            CommandId::ActivityUnlike,
             CommandId::ActivityCommentsList,
             CommandId::ActivityCommentsAdd,
             CommandId::ActivityCommentsRemove,
@@ -187,8 +179,8 @@ mod tests {
             CommandId::TransferOut,
         ];
         let names = ids.map(CommandId::as_str);
-        assert_eq!(names.len(), 29);
-        assert_eq!(names.into_iter().collect::<BTreeSet<_>>().len(), 29);
+        assert_eq!(names.len(), 27);
+        assert_eq!(names.into_iter().collect::<BTreeSet<_>>().len(), 27);
         assert!(names.into_iter().all(|name| {
             !name.is_empty()
                 && name

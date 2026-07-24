@@ -244,10 +244,10 @@ pub(crate) fn write_activity_reactions<W: Write>(
         return writeln!(writer, "No reactions found.");
     }
     let mut builder = Builder::default();
-    builder.push_record(["Emoji", "Count", "You reacted"]);
+    builder.push_record(["Reaction", "Count", "You reacted"]);
     for reaction in result.reactions().items() {
         builder.push_record([
-            sanitize_terminal_text(reaction.emoji().as_str()),
+            sanitize_terminal_text(reaction.value().as_str()),
             reaction.count().to_string(),
             if reaction.reacted_by_current_user() {
                 "yes".to_owned()
@@ -348,14 +348,12 @@ pub(crate) fn write_activity_social_details(
         "  Current like state: {}",
         like_state_label(plan.previous_like_state())
     )?;
-    match plan.action() {
-        ActivitySocialAction::AddComment(message) => writeln!(
-            writer,
-            "  Comment: {}",
-            sanitize_terminal_text(message.as_str())
-        )?,
-        ActivitySocialAction::Like | ActivitySocialAction::Unlike => {}
-    }
+    let ActivitySocialAction::AddComment(message) = plan.action();
+    writeln!(
+        writer,
+        "  Comment: {}",
+        sanitize_terminal_text(message.as_str())
+    )?;
     writeln!(writer, "  Automatic retries: disabled")
 }
 
@@ -391,7 +389,11 @@ pub(crate) fn write_activity_reaction_details(
     writeln!(
         writer,
         "  Reaction: {}",
-        sanitize_terminal_text(plan.action().emoji().as_str())
+        sanitize_terminal_text(if plan.action().target().is_like() {
+            "like (❤️)"
+        } else {
+            plan.action().target().as_str()
+        })
     )
 }
 

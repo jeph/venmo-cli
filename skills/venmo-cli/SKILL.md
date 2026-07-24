@@ -85,14 +85,15 @@ the locally stored credential.
 
 - `activity list` — Reports visible activity for the active account or another personal profile.
 - `activity info` — Reports one canonical activity with its parties and available social details.
-- `activity like` **(mutates)** — Adds the active account's like to an activity.
-- `activity unlike` **(mutates)** — Removes the active account's like from an activity.
 - `activity comments list` — Reports comments attached to an activity.
 - `activity comments add` **(mutates)** — Adds a comment to an activity.
 - `activity comments remove` **(mutates)** — Requests removal of a comment by its ID.
-- `activity reactions list` — Reports aggregate emoji counts and the active account's reaction state.
-- `activity reactions add` **(mutates)** — Adds one exact emoji reaction to an activity.
-- `activity reactions remove` **(mutates)** — Removes one exact emoji reaction from an activity.
+- `activity reactions list` — Reports aggregate reaction counts, including read-only custom aliases,
+  and the active account's reaction state.
+- `activity reactions add` **(mutates)** — Adds exact lowercase `like` through the likes endpoint,
+  or one exact Unicode emoji through the reactions endpoint.
+- `activity reactions remove` **(mutates)** — Removes exact lowercase `like` through the likes
+  endpoint, or one exact Unicode emoji through the reactions endpoint.
 - [JSON reference](references/json/activity.md)
 
 ### `requests`

@@ -2,14 +2,14 @@
 source: tests/cli.rs
 expression: help
 ---
-List, add, or remove emoji reactions
+List, add, or remove activity reactions
 
 Usage: reactions <COMMAND>
 
 Commands:
   list    List aggregate reactions and the authenticated account's reaction state
-  add     Add one emoji reaction to an activity record
-  remove  Remove one emoji reaction from an activity record
+  add     Add one Unicode emoji reaction or the special `like` target
+  remove  Remove one Unicode emoji reaction or the special `like` target
   help    Print this message or the help of the given subcommand(s)
 
 Options:

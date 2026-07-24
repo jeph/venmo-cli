@@ -1,6 +1,6 @@
 use super::{
     Activity, ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityDetail,
-    ActivityFeedScope, ActivityId, ActivityReactionEmoji,
+    ActivityFeedScope, ActivityId, ActivityReactionTarget,
 };
 use crate::shared::{AccessToken, ApiFailure, DeviceId, Limit, UserId};
 use std::future::Future;
@@ -79,22 +79,6 @@ pub trait ActivityDetailApi {
 pub trait ActivitySocialMutationApi {
     type Error: ApiFailure;
 
-    fn like_activity<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
-        activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
-
-    fn unlike_activity<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
-        activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
-
     fn add_activity_comment<'a>(
         &'a self,
         access_token: &'a AccessToken,
@@ -125,7 +109,7 @@ pub trait ActivityReactionMutationApi {
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-        emoji: &'a ActivityReactionEmoji,
+        target: &'a ActivityReactionTarget,
     ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
 
     fn remove_activity_reaction<'a>(
@@ -134,6 +118,6 @@ pub trait ActivityReactionMutationApi {
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-        emoji: &'a ActivityReactionEmoji,
+        target: &'a ActivityReactionTarget,
     ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a;
 }

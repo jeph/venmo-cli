@@ -338,10 +338,10 @@ pub(super) const ACTIVITY_INFO_OUTPUT: &str = concat!(
 pub(super) const ACTIVITY_REACTION_LIST_OUTPUT: &str = concat!(
     "Reactions for activity story-1\n",
     "Total reactions: 3\n",
-    " Emoji | Count | You reacted\n",
-    "-------+-------+-------------\n",
-    " 🔥    | 2     | yes\n",
-    " ❤️    | 1     | no\n",
+    " Reaction | Count | You reacted\n",
+    "----------+-------+-------------\n",
+    " 🔥       | 2     | yes\n",
+    " ❤️       | 1     | no\n",
 );
 
 pub(super) const REQUESTS_OUTPUT: &str = concat!(

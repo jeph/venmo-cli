@@ -1,7 +1,7 @@
 use clap::{Args, Subcommand};
 
 use crate::features::activity::{
-    ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityId, ActivityReactionEmoji,
+    ActivityBeforeId, ActivityCommentId, ActivityCommentMessage, ActivityId, ActivityReactionTarget,
 };
 use crate::features::people::UserSearchQuery;
 use crate::shared::{Limit, Offset, Username};
@@ -59,16 +59,10 @@ pub enum ActivityOperation {
     /// Show information about one activity record.
     Info(ActivityInfoArgs),
 
-    /// Like one activity record.
-    Like(ActivityLikeArgs),
-
-    /// Unlike one activity record.
-    Unlike(ActivityUnlikeArgs),
-
     /// List, add, or remove activity comments.
     Comments(ActivityCommentsArgs),
 
-    /// List, add, or remove emoji reactions.
+    /// List, add, or remove activity reactions.
     Reactions(ActivityReactionsArgs),
 }
 
@@ -92,42 +86,6 @@ pub struct ActivityInfoArgs {
     /// Canonical activity ID.
     #[arg(value_name = "ACTIVITY_ID")]
     pub activity_id: ActivityId,
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
-#[command(
-    after_long_help = "The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the like outcome must be verified independently."
-)]
-pub struct ActivityLikeArgs {
-    /// Canonical activity ID.
-    #[arg(value_name = "ACTIVITY_ID")]
-    pub activity_id: ActivityId,
-
-    /// Skip only the final default-No confirmation.
-    #[arg(long, conflicts_with = "dry_run")]
-    pub yes: bool,
-
-    /// Complete preflight and show details without liking the activity.
-    #[arg(long, conflicts_with = "yes")]
-    pub dry_run: bool,
-}
-
-#[derive(Args, Clone, Debug, Eq, PartialEq)]
-#[command(
-    after_long_help = "The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the unlike outcome must be verified independently."
-)]
-pub struct ActivityUnlikeArgs {
-    /// Canonical activity ID.
-    #[arg(value_name = "ACTIVITY_ID")]
-    pub activity_id: ActivityId,
-
-    /// Skip only the final default-No confirmation.
-    #[arg(long, conflicts_with = "dry_run")]
-    pub yes: bool,
-
-    /// Complete preflight and show details without unliking the activity.
-    #[arg(long, conflicts_with = "yes")]
-    pub dry_run: bool,
 }
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
@@ -214,10 +172,10 @@ pub enum ActivityReactionsOperation {
     /// List aggregate reactions and the authenticated account's reaction state.
     List(ActivityReactionListArgs),
 
-    /// Add one emoji reaction to an activity record.
+    /// Add one Unicode emoji reaction or the special `like` target.
     Add(ActivityReactionAddArgs),
 
-    /// Remove one emoji reaction from an activity record.
+    /// Remove one Unicode emoji reaction or the special `like` target.
     Remove(ActivityReactionRemoveArgs),
 }
 
@@ -230,16 +188,16 @@ pub struct ActivityReactionListArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "REACTION must be exactly one Unicode grapheme cluster, such as '🔥' or '❤️'. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
+    after_long_help = "REACTION must be exact lowercase 'like' or one complete Unicode emoji grapheme, such as '🔥' or '❤️'; backend custom aliases shown by list are read-only. The 'like' target uses Venmo's likes endpoint, while ❤️ uses its reactions endpoint; both expose the same server state. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
 )]
 pub struct ActivityReactionAddArgs {
     /// Canonical activity ID.
     #[arg(value_name = "ACTIVITY_ID")]
     pub activity_id: ActivityId,
 
-    /// Exact emoji glyph to add.
+    /// Exact emoji glyph or lowercase `like` target to add.
     #[arg(value_name = "REACTION")]
-    pub reaction: ActivityReactionEmoji,
+    pub reaction: ActivityReactionTarget,
 
     /// Skip only the final default-No confirmation.
     #[arg(long, conflicts_with = "dry_run")]
@@ -252,16 +210,16 @@ pub struct ActivityReactionAddArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "REACTION must exactly match one Unicode emoji reaction already applied by the authenticated account. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
+    after_long_help = "REACTION must be exact lowercase 'like' or exactly match one Unicode emoji reaction already applied by the authenticated account; backend custom aliases shown by list are read-only. The 'like' target uses Venmo's likes endpoint, while ❤️ uses its reactions endpoint; removing either clears the same server state. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
 )]
 pub struct ActivityReactionRemoveArgs {
     /// Canonical activity ID.
     #[arg(value_name = "ACTIVITY_ID")]
     pub activity_id: ActivityId,
 
-    /// Exact emoji glyph to remove.
+    /// Exact emoji glyph or lowercase `like` target to remove.
     #[arg(value_name = "REACTION")]
-    pub reaction: ActivityReactionEmoji,
+    pub reaction: ActivityReactionTarget,
 
     /// Skip only the final default-No confirmation.
     #[arg(long, conflicts_with = "dry_run")]

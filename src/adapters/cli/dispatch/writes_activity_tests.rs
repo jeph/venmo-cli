@@ -8,9 +8,10 @@ use time::OffsetDateTime;
 
 use super::*;
 use crate::adapters::cli::output::TimestampFormatter;
+use crate::features::activity::reactions::ActivityReactionMutationError;
 use crate::features::activity::{
-    ActivityAction, ActivityCommentId, ActivityCommentMessage, ActivityDetail, ActivityLikeState,
-    ActivityReaction, ActivityReactionEmoji, ActivityReactionMutationApi, ActivityReactions,
+    ActivityAction, ActivityCommentId, ActivityCommentMessage, ActivityDetail, ActivityReaction,
+    ActivityReactionEmoji, ActivityReactionMutationApi, ActivityReactionTarget, ActivityReactions,
     ActivitySocial, ActivitySocialCollection, ActivityStatus,
 };
 use crate::features::auth::{PromptAvailability, PromptError};
@@ -27,9 +28,8 @@ type Fixture = (Rc<RefCell<Vec<Call>>>, Reader, Api, Prompt);
 enum Call {
     ReadCredential,
     Detail,
-    Like,
-    AddReaction(ActivityReactionEmoji),
-    RemoveReaction(ActivityReactionEmoji),
+    AddReaction(ActivityReactionTarget),
+    RemoveReaction(ActivityReactionTarget),
     RemoveComment,
     Confirm,
     InstallInterruption,
@@ -104,27 +104,6 @@ impl ActivityDetailApi for Api {
 impl ActivitySocialMutationApi for Api {
     type Error = FakeApiError;
 
-    fn like_activity<'a>(
-        &'a self,
-        _access_token: &'a AccessToken,
-        _device_id: &'a DeviceId,
-        _current_user_id: &'a UserId,
-        _activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        self.calls.borrow_mut().push(Call::Like);
-        ready(Ok(self.after.clone()))
-    }
-
-    fn unlike_activity<'a>(
-        &'a self,
-        _access_token: &'a AccessToken,
-        _device_id: &'a DeviceId,
-        _current_user_id: &'a UserId,
-        _activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        ready(Err(FakeApiError))
-    }
-
     fn add_activity_comment<'a>(
         &'a self,
         _access_token: &'a AccessToken,
@@ -160,11 +139,11 @@ impl ActivityReactionMutationApi for Api {
         _device_id: &'a DeviceId,
         _current_user_id: &'a UserId,
         _activity_id: &'a ActivityId,
-        emoji: &'a ActivityReactionEmoji,
+        target: &'a ActivityReactionTarget,
     ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
         self.calls
             .borrow_mut()
-            .push(Call::AddReaction(emoji.clone()));
+            .push(Call::AddReaction(target.clone()));
         ready(Ok(self.after.clone()))
     }
 
@@ -174,11 +153,11 @@ impl ActivityReactionMutationApi for Api {
         _device_id: &'a DeviceId,
         _current_user_id: &'a UserId,
         _activity_id: &'a ActivityId,
-        emoji: &'a ActivityReactionEmoji,
+        target: &'a ActivityReactionTarget,
     ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
         self.calls
             .borrow_mut()
-            .push(Call::RemoveReaction(emoji.clone()));
+            .push(Call::RemoveReaction(target.clone()));
         ready(Ok(self.after.clone()))
     }
 }
@@ -288,94 +267,37 @@ fn reaction_fixture(before: bool, after: bool) -> TestResult<Fixture> {
     ))
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn activity_social_dry_run_stops_after_preflight_without_prompt_or_interruption() -> TestResult
-{
-    let (calls, reader, api, prompt) = fixture()?;
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let mut output = human_output(
-        crate::adapters::cli::CommandId::ActivityLike,
-        &mut stdout,
-        &mut stderr,
-    );
-    let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
-    let activity_id = ActivityId::from_str("story-1")?;
-
-    run_activity_social_with(
-        &activity_id,
-        ActivitySocialIntent::Like,
-        false,
-        true,
-        &reader,
-        &api,
-        &prompt,
-        &timestamps,
-        &mut output,
-        || {
-            calls.borrow_mut().push(Call::InstallInterruption);
-            Ok(pending())
-        },
-    )
-    .await?;
-
-    assert_eq!(*calls.borrow(), vec![Call::ReadCredential, Call::Detail]);
-    assert_eq!(
-        String::from_utf8(stdout)?,
-        "Dry run complete; no changes made.\n"
-    );
-    let details = String::from_utf8(stderr)?;
-    assert!(details.contains("Action: like activity"));
-    assert!(details.contains("Current like state: not liked"));
-    Ok(())
+fn like_reaction_detail(reacted: bool) -> TestResult<ActivityDetail> {
+    let detail = detail(reacted)?;
+    let likes = detail.social().likes().cloned();
+    let comments = detail.social().comments().cloned();
+    let reactions = vec![ActivityReaction::new(
+        ActivityReactionEmoji::from_str("❤️")?,
+        u64::from(reacted),
+        reacted,
+    )];
+    Ok(detail.with_social(
+        ActivitySocial::new(likes, comments)
+            .with_reactions(Some(ActivityReactions::try_new(reactions)?)),
+    ))
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn activity_social_yes_path_skips_prompt_and_executes_one_state_write() -> TestResult {
-    let (calls, reader, api, prompt) = fixture()?;
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let mut output = human_output(
-        crate::adapters::cli::CommandId::ActivityLike,
-        &mut stdout,
-        &mut stderr,
-    );
-    let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
-    let activity_id = ActivityId::from_str("story-1")?;
-
-    run_activity_social_with(
-        &activity_id,
-        ActivitySocialIntent::Like,
-        true,
-        false,
-        &reader,
-        &api,
-        &prompt,
-        &timestamps,
-        &mut output,
-        || {
-            calls.borrow_mut().push(Call::InstallInterruption);
-            Ok(pending())
+fn like_reaction_fixture(before: bool, after: bool) -> TestResult<Fixture> {
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    Ok((
+        Rc::clone(&calls),
+        Reader {
+            calls: Rc::clone(&calls),
         },
-    )
-    .await?;
-
-    assert_eq!(
-        *calls.borrow(),
-        vec![
-            Call::ReadCredential,
-            Call::Detail,
-            Call::InstallInterruption,
-            Call::Like,
-        ]
-    );
-    assert!(!calls.borrow().contains(&Call::Confirm));
-    assert!(String::from_utf8(stdout)?.contains("Result: Activity liked"));
-    assert_eq!(
-        detail(true)?.social().like_state(&UserId::from_str("123")?),
-        ActivityLikeState::Liked
-    );
-    Ok(())
+        Api {
+            calls: Rc::clone(&calls),
+            before: like_reaction_detail(before)?,
+            after: like_reaction_detail(after)?,
+        },
+        Prompt {
+            calls: Rc::clone(&calls),
+        },
+    ))
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -394,7 +316,7 @@ async fn activity_reaction_dry_run_stops_after_authoritative_preflight() -> Test
     run_activity_reaction_with(
         ActivityReactionCommand::new(
             &activity_id,
-            ActivityReactionIntent::Add(ActivityReactionEmoji::from_str("🔥")?),
+            ActivityReactionIntent::Add(ActivityReactionEmoji::from_str("🔥")?.into()),
             false,
             true,
         ),
@@ -441,7 +363,7 @@ async fn activity_reaction_yes_path_executes_one_state_write_and_reports_reconci
     run_activity_reaction_with(
         ActivityReactionCommand::new(
             &activity_id,
-            ActivityReactionIntent::Add(emoji.clone()),
+            ActivityReactionIntent::Add(emoji.clone().into()),
             true,
             false,
         ),
@@ -463,11 +385,68 @@ async fn activity_reaction_yes_path_executes_one_state_write_and_reports_reconci
             Call::ReadCredential,
             Call::Detail,
             Call::InstallInterruption,
-            Call::AddReaction(emoji),
+            Call::AddReaction(emoji.into()),
         ]
     );
     assert!(!calls.borrow().contains(&Call::Confirm));
     assert_eq!(String::from_utf8(stdout)?, "Reaction added\n");
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_like_target_uses_the_unified_reaction_pipeline() -> TestResult {
+    let (calls, reader, api, prompt) = like_reaction_fixture(false, true)?;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut output = output::OutputSession::new(
+        crate::adapters::cli::OutputFormat::Json,
+        crate::adapters::cli::CommandId::ActivityReactionsAdd,
+        false,
+        &mut stdout,
+        &mut stderr,
+    );
+    let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+    let activity_id = ActivityId::from_str("story-1")?;
+
+    run_activity_reaction_with(
+        ActivityReactionCommand::new(
+            &activity_id,
+            ActivityReactionIntent::Add(ActivityReactionTarget::Like),
+            true,
+            false,
+        ),
+        &reader,
+        &api,
+        &prompt,
+        &timestamps,
+        &mut output,
+        || {
+            calls.borrow_mut().push(Call::InstallInterruption);
+            Ok(pending())
+        },
+    )
+    .await?;
+
+    assert_eq!(
+        *calls.borrow(),
+        vec![
+            Call::ReadCredential,
+            Call::Detail,
+            Call::InstallInterruption,
+            Call::AddReaction(ActivityReactionTarget::Like),
+        ]
+    );
+    assert!(!calls.borrow().contains(&Call::Confirm));
+    assert!(stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&stdout)?;
+    assert_eq!(json["command"], "activity.reactions.add");
+    assert_eq!(json["data"]["plan"]["target"]["kind"], "like");
+    assert_eq!(json["data"]["plan"]["target"]["value"], "like");
+    assert_eq!(json["data"]["result"]["target"]["kind"], "like");
+    assert_eq!(json["data"]["result"]["target"]["value"], "like");
+    assert_eq!(json["data"]["result"]["state"], "present");
+    assert_eq!(json["data"]["result"]["count"], 1);
+    assert_eq!(json["data"]["result"]["reacted_by_current_user"], true);
     Ok(())
 }
 
@@ -491,7 +470,7 @@ async fn activity_reaction_json_dry_run_and_yes_outputs_are_explicit() -> TestRe
     run_activity_reaction_with(
         ActivityReactionCommand::new(
             &activity_id,
-            ActivityReactionIntent::Add(emoji.clone()),
+            ActivityReactionIntent::Add(emoji.clone().into()),
             false,
             true,
         ),
@@ -518,7 +497,8 @@ async fn activity_reaction_json_dry_run_and_yes_outputs_are_explicit() -> TestRe
     assert_eq!(dry_json["data"]["outcome"], "dry_run");
     assert_eq!(dry_json["data"]["performed"], false);
     assert_eq!(dry_json["data"]["plan"]["action"], "add_reaction");
-    assert_eq!(dry_json["data"]["plan"]["emoji"], "🔥");
+    assert_eq!(dry_json["data"]["plan"]["target"]["kind"], "unicode_emoji");
+    assert_eq!(dry_json["data"]["plan"]["target"]["value"], "🔥");
     assert_eq!(dry_json["data"]["plan"]["previous_state"], "absent");
     assert_eq!(dry_json["data"]["plan"]["automatic_retries"], false);
     assert_eq!(dry_json["data"]["result"], serde_json::Value::Null);
@@ -537,7 +517,7 @@ async fn activity_reaction_json_dry_run_and_yes_outputs_are_explicit() -> TestRe
     run_activity_reaction_with(
         ActivityReactionCommand::new(
             &activity_id,
-            ActivityReactionIntent::Add(emoji.clone()),
+            ActivityReactionIntent::Add(emoji.clone().into()),
             true,
             false,
         ),
@@ -559,7 +539,7 @@ async fn activity_reaction_json_dry_run_and_yes_outputs_are_explicit() -> TestRe
             Call::ReadCredential,
             Call::Detail,
             Call::InstallInterruption,
-            Call::AddReaction(emoji),
+            Call::AddReaction(emoji.into()),
         ]
     );
     assert!(!yes_calls.borrow().contains(&Call::Confirm));
@@ -570,10 +550,126 @@ async fn activity_reaction_json_dry_run_and_yes_outputs_are_explicit() -> TestRe
     assert_eq!(yes_json["data"]["outcome"], "completed");
     assert_eq!(yes_json["data"]["performed"], true);
     assert_eq!(yes_json["data"]["result"]["activity_id"], "story-1");
-    assert_eq!(yes_json["data"]["result"]["emoji"], "🔥");
+    assert_eq!(
+        yes_json["data"]["result"]["target"]["kind"],
+        "unicode_emoji"
+    );
+    assert_eq!(yes_json["data"]["result"]["target"]["value"], "🔥");
     assert_eq!(yes_json["data"]["result"]["state"], "present");
     assert_eq!(yes_json["data"]["result"]["count"], 1);
     assert_eq!(yes_json["data"]["result"]["reacted_by_current_user"], true);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_reaction_remove_json_uses_observed_absence() -> TestResult {
+    let (calls, reader, api, prompt) = reaction_fixture(true, false)?;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut output = output::OutputSession::new(
+        crate::adapters::cli::OutputFormat::Json,
+        crate::adapters::cli::CommandId::ActivityReactionsRemove,
+        false,
+        &mut stdout,
+        &mut stderr,
+    );
+    let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+    let activity_id = ActivityId::from_str("story-1")?;
+    let emoji = ActivityReactionEmoji::from_str("🔥")?;
+
+    run_activity_reaction_with(
+        ActivityReactionCommand::new(
+            &activity_id,
+            ActivityReactionIntent::Remove(emoji.clone().into()),
+            true,
+            false,
+        ),
+        &reader,
+        &api,
+        &prompt,
+        &timestamps,
+        &mut output,
+        || {
+            calls.borrow_mut().push(Call::InstallInterruption);
+            Ok(pending())
+        },
+    )
+    .await?;
+
+    assert_eq!(
+        *calls.borrow(),
+        vec![
+            Call::ReadCredential,
+            Call::Detail,
+            Call::InstallInterruption,
+            Call::RemoveReaction(emoji.into()),
+        ]
+    );
+    assert!(!calls.borrow().contains(&Call::Confirm));
+    assert!(stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&stdout)?;
+    assert_eq!(json["command"], "activity.reactions.remove");
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["data"]["outcome"], "completed");
+    assert_eq!(json["data"]["performed"], true);
+    assert_eq!(json["data"]["result"]["activity_id"], "story-1");
+    assert_eq!(json["data"]["result"]["target"]["kind"], "unicode_emoji");
+    assert_eq!(json["data"]["result"]["target"]["value"], "🔥");
+    assert_eq!(json["data"]["result"]["state"], "absent");
+    assert_eq!(json["data"]["result"]["count"], serde_json::Value::Null);
+    assert_eq!(json["data"]["result"]["reacted_by_current_user"], false);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn activity_reaction_feature_rejects_unproven_reconciled_state() -> TestResult {
+    let (calls, reader, api, prompt) = reaction_fixture(false, false)?;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut output = human_output(
+        crate::adapters::cli::CommandId::ActivityReactionsAdd,
+        &mut stdout,
+        &mut stderr,
+    );
+    let timestamps = TimestampFormatter::for_time_zone(jiff::tz::TimeZone::UTC);
+    let activity_id = ActivityId::from_str("story-1")?;
+    let emoji = ActivityReactionEmoji::from_str("🔥")?;
+
+    let result = run_activity_reaction_with(
+        ActivityReactionCommand::new(
+            &activity_id,
+            ActivityReactionIntent::Add(emoji.clone().into()),
+            true,
+            false,
+        ),
+        &reader,
+        &api,
+        &prompt,
+        &timestamps,
+        &mut output,
+        || {
+            calls.borrow_mut().push(Call::InstallInterruption);
+            Ok(pending())
+        },
+    )
+    .await;
+
+    assert!(matches!(
+        result,
+        Err(AppError::ActivityReactionMutation {
+            source: ActivityReactionMutationError::OutcomeUnknown { .. }
+        })
+    ));
+    assert_eq!(
+        *calls.borrow(),
+        vec![
+            Call::ReadCredential,
+            Call::Detail,
+            Call::InstallInterruption,
+            Call::AddReaction(emoji.into()),
+        ]
+    );
+    assert!(stdout.is_empty());
     Ok(())
 }
 

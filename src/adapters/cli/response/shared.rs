@@ -6,8 +6,8 @@ use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 use crate::features::activity::model::ActivityDetailParties;
 use crate::features::activity::{
     ActivityComment, ActivityCounterparty, ActivityDetail, ActivityDirection, ActivityFeedKind,
-    ActivityLikeState, ActivityReaction, ActivityReactionState, ActivitySocial,
-    ActivitySocialCollection,
+    ActivityLikeState, ActivityReaction, ActivityReactionKind, ActivityReactionState,
+    ActivitySocial, ActivitySocialCollection,
 };
 use crate::features::payments::{
     FinancialStatus, PeerFundingFee, PeerFundingRole, PeerFundingSource, PeerFundingSourceSelection,
@@ -192,7 +192,11 @@ pub(super) const fn reaction_state(value: ActivityReactionState) -> &'static str
 
 pub(super) fn activity_reaction(value: &ActivityReaction) -> Value {
     json!({
-        "emoji": value.emoji().as_str(),
+        "emoji": value.value().as_str(),
+        "kind": match value.value().kind() {
+            ActivityReactionKind::UnicodeEmoji => "unicode_emoji",
+            ActivityReactionKind::CustomAlias => "custom_alias",
+        },
         "count": value.count(),
         "reacted_by_current_user": value.reacted_by_current_user(),
     })

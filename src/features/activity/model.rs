@@ -17,6 +17,7 @@ const MAX_ACTIVITY_LABEL_BYTES: usize = 64;
 const MAX_COMMENT_CHARACTERS: usize = 2_000;
 const MAX_COMMENT_BYTES: usize = MAX_COMMENT_CHARACTERS * 4;
 pub const MAX_REACTION_EMOJI_BYTES: usize = 128;
+const MAX_REACTION_WIRE_VALUE_BYTES: usize = 512;
 
 macro_rules! activity_label {
     ($name:ident, $kind:literal) => {
@@ -169,9 +170,30 @@ impl FromStr for ActivityReactionEmoji {
         if !value.chars().any(|character| character.is_emoji_char()) {
             return Err(ActivityReactionEmojiParseError::NotEmoji);
         }
+        if value.chars().any(is_keycap_base) && !is_complete_keycap(value) {
+            return Err(ActivityReactionEmojiParseError::IncompleteSequence);
+        }
         let value = if value == "❤" { "❤️" } else { value };
         Ok(Self(value.to_owned()))
     }
+}
+
+fn is_keycap_base(character: char) -> bool {
+    matches!(character, '#' | '*' | '0'..='9')
+}
+
+fn is_complete_keycap(value: &str) -> bool {
+    let mut characters = value.chars();
+    let Some(base) = characters.next() else {
+        return false;
+    };
+    if !is_keycap_base(base) {
+        return false;
+    }
+    matches!(
+        (characters.next(), characters.next(), characters.next()),
+        (Some('\u{20e3}'), None, None) | (Some('\u{fe0f}'), Some('\u{20e3}'), None)
+    )
 }
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
@@ -185,6 +207,9 @@ pub enum ActivityReactionEmojiParseError {
     #[error("reaction must contain a Unicode emoji character")]
     NotEmoji,
 
+    #[error("reaction emoji must be a complete Unicode emoji sequence")]
+    IncompleteSequence,
+
     #[error("reaction emoji must not contain whitespace or control characters")]
     WhitespaceOrControl,
 
@@ -192,9 +217,191 @@ pub enum ActivityReactionEmojiParseError {
     TooLong { maximum_bytes: usize },
 }
 
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub enum ActivityReactionTarget {
+    Like,
+    Emoji(ActivityReactionEmoji),
+}
+
+impl ActivityReactionTarget {
+    #[must_use]
+    pub const fn as_emoji(&self) -> Option<&ActivityReactionEmoji> {
+        match self {
+            Self::Like => None,
+            Self::Emoji(emoji) => Some(emoji),
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Like => "like",
+            Self::Emoji(emoji) => emoji.as_str(),
+        }
+    }
+
+    #[must_use]
+    pub const fn is_like(&self) -> bool {
+        matches!(self, Self::Like)
+    }
+}
+
+impl fmt::Display for ActivityReactionTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_str().fmt(formatter)
+    }
+}
+
+impl fmt::Debug for ActivityReactionTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ActivityReactionTarget([REDACTED])")
+    }
+}
+
+impl FromStr for ActivityReactionTarget {
+    type Err = ActivityReactionTargetParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value == "like" {
+            Ok(Self::Like)
+        } else {
+            ActivityReactionEmoji::from_str(value)
+                .map(Self::Emoji)
+                .map_err(ActivityReactionTargetParseError::Emoji)
+        }
+    }
+}
+
+impl From<ActivityReactionEmoji> for ActivityReactionTarget {
+    fn from(value: ActivityReactionEmoji) -> Self {
+        Self::Emoji(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+pub enum ActivityReactionTargetParseError {
+    #[error(transparent)]
+    Emoji(#[from] ActivityReactionEmojiParseError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityReactionKind {
+    UnicodeEmoji,
+    CustomAlias,
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+enum ActivityReactionValueInner {
+    UnicodeEmoji(ActivityReactionEmoji),
+    CustomAlias(String),
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct ActivityReactionValue(ActivityReactionValueInner);
+
+impl ActivityReactionValue {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match &self.0 {
+            ActivityReactionValueInner::UnicodeEmoji(emoji) => emoji.as_str(),
+            ActivityReactionValueInner::CustomAlias(alias) => alias,
+        }
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> ActivityReactionKind {
+        match &self.0 {
+            ActivityReactionValueInner::UnicodeEmoji(_) => ActivityReactionKind::UnicodeEmoji,
+            ActivityReactionValueInner::CustomAlias(_) => ActivityReactionKind::CustomAlias,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_unicode_emoji(&self) -> Option<&ActivityReactionEmoji> {
+        match &self.0 {
+            ActivityReactionValueInner::UnicodeEmoji(emoji) => Some(emoji),
+            ActivityReactionValueInner::CustomAlias(_) => None,
+        }
+    }
+
+    pub(crate) fn custom_alias(value: String) -> Result<Self, ActivityReactionValueParseError> {
+        if value.is_empty() {
+            return Err(ActivityReactionValueParseError::Empty);
+        }
+        if value.len() > MAX_REACTION_WIRE_VALUE_BYTES {
+            return Err(ActivityReactionValueParseError::TooLong);
+        }
+        if value.chars().any(char::is_control) {
+            return Err(ActivityReactionValueParseError::Control);
+        }
+        if !contains_custom_alias(&value) {
+            return Err(ActivityReactionValueParseError::InvalidCustomAlias);
+        }
+        Ok(Self(ActivityReactionValueInner::CustomAlias(value)))
+    }
+}
+
+impl From<ActivityReactionEmoji> for ActivityReactionValue {
+    fn from(value: ActivityReactionEmoji) -> Self {
+        Self(ActivityReactionValueInner::UnicodeEmoji(value))
+    }
+}
+
+impl fmt::Display for ActivityReactionValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_str().fmt(formatter)
+    }
+}
+
+impl fmt::Debug for ActivityReactionValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ActivityReactionValue([REDACTED])")
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+pub(crate) enum ActivityReactionValueParseError {
+    #[error("reaction value must not be empty")]
+    Empty,
+
+    #[error("reaction value is too long")]
+    TooLong,
+
+    #[error("reaction value must not contain control characters")]
+    Control,
+
+    #[error("reaction value is not a supported custom alias")]
+    InvalidCustomAlias,
+}
+
+fn contains_custom_alias(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b':' {
+            index += 1;
+            continue;
+        }
+        let start = index + 1;
+        let mut end = start;
+        while end < bytes.len()
+            && (bytes[end].is_ascii_lowercase()
+                || bytes[end].is_ascii_digit()
+                || bytes[end] == b'_')
+        {
+            end += 1;
+        }
+        if end > start && end < bytes.len() && bytes[end] == b':' {
+            return true;
+        }
+        index = start;
+    }
+    false
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub struct ActivityReaction {
-    emoji: ActivityReactionEmoji,
+    value: ActivityReactionValue,
     count: u64,
     reacted_by_current_user: bool,
 }
@@ -207,15 +414,27 @@ impl ActivityReaction {
         reacted_by_current_user: bool,
     ) -> Self {
         Self {
-            emoji,
+            value: ActivityReactionValue(ActivityReactionValueInner::UnicodeEmoji(emoji)),
+            count,
+            reacted_by_current_user,
+        }
+    }
+
+    pub(crate) const fn from_value(
+        value: ActivityReactionValue,
+        count: u64,
+        reacted_by_current_user: bool,
+    ) -> Self {
+        Self {
+            value,
             count,
             reacted_by_current_user,
         }
     }
 
     #[must_use]
-    pub const fn emoji(&self) -> &ActivityReactionEmoji {
-        &self.emoji
+    pub const fn value(&self) -> &ActivityReactionValue {
+        &self.value
     }
 
     #[must_use]
@@ -270,7 +489,7 @@ impl ActivityReactions {
     pub fn state(&self, emoji: &ActivityReactionEmoji) -> ActivityReactionState {
         self.items
             .iter()
-            .find(|reaction| reaction.emoji() == emoji)
+            .find(|reaction| reaction.value().as_unicode_emoji() == Some(emoji))
             .map_or(ActivityReactionState::Absent, |reaction| {
                 if reaction.reacted_by_current_user() {
                     ActivityReactionState::Present
@@ -1059,7 +1278,8 @@ mod tests {
     #[test]
     fn reaction_emoji_preserves_one_bounded_unicode_grapheme_and_redacts_debug()
     -> Result<(), Box<dyn Error>> {
-        for value in ["🔥", "❤️", "👨🏽‍💻", "🇺🇸", "1️⃣"] {
+        for value in ["🔥", "❤️", "👨🏽‍💻", "🇺🇸", "1️⃣", "#️⃣", "*️⃣", "©", "®", "™", "‼"]
+        {
             let emoji = ActivityReactionEmoji::from_str(value)?;
             assert_eq!(emoji.as_str(), value);
             assert!(!format!("{emoji:?}").contains(value));
@@ -1077,6 +1297,12 @@ mod tests {
             ActivityReactionEmoji::from_str("A"),
             Err(ActivityReactionEmojiParseError::NotEmoji)
         );
+        for value in ["5", "#", "*", "5️"] {
+            assert_eq!(
+                ActivityReactionEmoji::from_str(value),
+                Err(ActivityReactionEmojiParseError::IncompleteSequence)
+            );
+        }
         assert_eq!(
             ActivityReactionEmoji::from_str("🔥 ❤️"),
             Err(ActivityReactionEmojiParseError::WhitespaceOrControl)
@@ -1095,6 +1321,75 @@ mod tests {
     }
 
     #[test]
+    fn reaction_target_reserves_exact_lowercase_like_without_weakening_emoji_validation()
+    -> Result<(), Box<dyn Error>> {
+        let like = ActivityReactionTarget::from_str("like")?;
+        assert!(like.is_like());
+        assert_eq!(like.as_str(), "like");
+        assert!(like.as_emoji().is_none());
+        assert!(!format!("{like:?}").contains("like"));
+
+        let fire = ActivityReactionTarget::from_str("🔥")?;
+        assert!(!fire.is_like());
+        assert_eq!(fire.as_str(), "🔥");
+        assert_eq!(
+            fire.as_emoji().map(ActivityReactionEmoji::as_str),
+            Some("🔥")
+        );
+        assert!(!format!("{fire:?}").contains("🔥"));
+
+        for value in ["Like", "LIKE", "heart", ":party_cup:"] {
+            assert!(ActivityReactionTarget::from_str(value).is_err(), "{value}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn reaction_values_preserve_bounded_backend_custom_aliases() -> Result<(), Box<dyn Error>> {
+        for value in [
+            ":party_cup:",
+            ":party_cup:🥳",
+            "🌴:festival_sunset:🌵",
+            ":festival_beer::festival_water: custom",
+        ] {
+            let reaction = ActivityReactionValue::custom_alias(value.to_owned())?;
+            assert_eq!(reaction.as_str(), value);
+            assert_eq!(reaction.kind(), ActivityReactionKind::CustomAlias);
+            assert!(reaction.as_unicode_emoji().is_none());
+            assert!(!format!("{reaction:?}").contains(value));
+        }
+        for (value, error) in [
+            ("", ActivityReactionValueParseError::Empty),
+            (
+                "plain text",
+                ActivityReactionValueParseError::InvalidCustomAlias,
+            ),
+            (
+                ":PARTY_CUP:",
+                ActivityReactionValueParseError::InvalidCustomAlias,
+            ),
+            (
+                ":party-cup:",
+                ActivityReactionValueParseError::InvalidCustomAlias,
+            ),
+            (":party_cup:\n", ActivityReactionValueParseError::Control),
+        ] {
+            assert_eq!(
+                ActivityReactionValue::custom_alias(value.to_owned()),
+                Err(error)
+            );
+        }
+        assert_eq!(
+            ActivityReactionValue::custom_alias(format!(
+                ":{}:",
+                "a".repeat(MAX_REACTION_WIRE_VALUE_BYTES)
+            )),
+            Err(ActivityReactionValueParseError::TooLong)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn reaction_aggregates_preserve_counts_and_evidence_sensitive_state()
     -> Result<(), Box<dyn Error>> {
         let fire = ActivityReactionEmoji::from_str("🔥")?;
@@ -1102,8 +1397,13 @@ mod tests {
         let reactions = ActivityReactions::try_new(vec![
             ActivityReaction::new(fire.clone(), 2, true),
             ActivityReaction::new(heart.clone(), 1, false),
+            ActivityReaction::from_value(
+                ActivityReactionValue::custom_alias(":party_cup:".to_owned())?,
+                3,
+                false,
+            ),
         ])?;
-        assert_eq!(reactions.total_count(), 3);
+        assert_eq!(reactions.total_count(), 6);
         assert_eq!(reactions.state(&fire), ActivityReactionState::Present);
         assert_eq!(reactions.state(&heart), ActivityReactionState::Absent);
         assert_eq!(

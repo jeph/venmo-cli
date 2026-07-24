@@ -148,11 +148,9 @@ settings determine which records are visible, and amounts are omitted from other
 Some activity types, including rewards disbursements, do not provide an amount or status. Their
 unavailable table fields are blank, and `activity info` omits those detail lines.
 
-Like, unlike, manage comments, and manage emoji reactions on visible activity:
+Manage comments and reactions on visible activity:
 
 ```sh
-venmo activity like <ACTIVITY_ID>
-venmo activity unlike <ACTIVITY_ID>
 venmo activity comments list <ACTIVITY_ID> [--limit <N>] [--offset <N>]
 venmo activity comments add <ACTIVITY_ID> <MESSAGE>
 venmo activity comments remove <COMMENT_ID>
@@ -161,8 +159,12 @@ venmo activity reactions add <ACTIVITY_ID> <REACTION>
 venmo activity reactions remove <ACTIVITY_ID> <REACTION>
 ```
 
-Reaction values are exact Unicode emoji glyphs, such as `🔥` or `❤️`; quote them if required by your
-shell.
+Use exact lowercase `like` as the reaction to call Venmo's bodyless like or unlike endpoint. Other
+reaction mutations accept exact Unicode emoji glyphs, such as `🔥` or `❤️`; quote them if required
+by your shell. Literal `❤️` continues to use the reactions endpoint, although Venmo exposes it and
+the like as the same server state. Reaction lists preserve Venmo custom aliases, but those aliases
+are read-only in this CLI. The previous `activity like` and `activity unlike` commands are replaced
+by `activity reactions add <ACTIVITY_ID> like` and `activity reactions remove <ACTIVITY_ID> like`.
 
 List commands print a continuation when another page is available. Pass that value back through
 the matching `--before-id` or `--offset` option. Continuation types are not interchangeable.

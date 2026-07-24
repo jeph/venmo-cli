@@ -7,8 +7,9 @@ use crate::features::activity::{
     ActivityCommentMessage, ActivityCommentRemovalApi, ActivityCounterparty, ActivityDetail,
     ActivityDetailApi, ActivityDirection, ActivityFeedKind, ActivityFeedScope, ActivityId,
     ActivityLikeState, ActivityListApi, ActivityPage, ActivityPageRequest, ActivityReaction,
-    ActivityReactionEmoji, ActivityReactionMutationApi, ActivityReactionState, ActivityReactions,
-    ActivitySocial, ActivitySocialCollection, ActivitySocialMutationApi, ActivityStatus,
+    ActivityReactionEmoji, ActivityReactionMutationApi, ActivityReactionState,
+    ActivityReactionTarget, ActivityReactionValue, ActivityReactions, ActivitySocial,
+    ActivitySocialCollection, ActivitySocialMutationApi, ActivityStatus,
 };
 use crate::features::people::User;
 use crate::shared::{AccessToken, DeviceId, Limit, Money, UserId};
@@ -430,26 +431,6 @@ impl<T: ApiTransport> VenmoApiClient<T> {
 impl<T: ApiTransport> ActivitySocialMutationApi for VenmoApiClient<T> {
     type Error = VenmoApiError;
 
-    fn like_activity<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
-        activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        self.set_activity_like(access_token, device_id, current_user_id, activity_id, true)
-    }
-
-    fn unlike_activity<'a>(
-        &'a self,
-        access_token: &'a AccessToken,
-        device_id: &'a DeviceId,
-        current_user_id: &'a UserId,
-        activity_id: &'a ActivityId,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        self.set_activity_like(access_token, device_id, current_user_id, activity_id, false)
-    }
-
     fn add_activity_comment<'a>(
         &'a self,
         access_token: &'a AccessToken,
@@ -484,40 +465,58 @@ impl<T: ApiTransport> ActivityCommentRemovalApi for VenmoApiClient<T> {
 impl<T: ApiTransport> ActivityReactionMutationApi for VenmoApiClient<T> {
     type Error = VenmoApiError;
 
-    fn add_activity_reaction<'a>(
+    async fn add_activity_reaction<'a>(
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-        emoji: &'a ActivityReactionEmoji,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        self.set_activity_reaction(
-            access_token,
-            device_id,
-            current_user_id,
-            activity_id,
-            emoji,
-            true,
-        )
+        target: &'a ActivityReactionTarget,
+    ) -> Result<ActivityDetail, Self::Error> {
+        match target {
+            ActivityReactionTarget::Like => {
+                self.set_activity_like(access_token, device_id, current_user_id, activity_id, true)
+                    .await
+            }
+            ActivityReactionTarget::Emoji(emoji) => {
+                self.set_activity_reaction(
+                    access_token,
+                    device_id,
+                    current_user_id,
+                    activity_id,
+                    emoji,
+                    true,
+                )
+                .await
+            }
+        }
     }
 
-    fn remove_activity_reaction<'a>(
+    async fn remove_activity_reaction<'a>(
         &'a self,
         access_token: &'a AccessToken,
         device_id: &'a DeviceId,
         current_user_id: &'a UserId,
         activity_id: &'a ActivityId,
-        emoji: &'a ActivityReactionEmoji,
-    ) -> impl Future<Output = Result<ActivityDetail, Self::Error>> + Send + 'a {
-        self.set_activity_reaction(
-            access_token,
-            device_id,
-            current_user_id,
-            activity_id,
-            emoji,
-            false,
-        )
+        target: &'a ActivityReactionTarget,
+    ) -> Result<ActivityDetail, Self::Error> {
+        match target {
+            ActivityReactionTarget::Like => {
+                self.set_activity_like(access_token, device_id, current_user_id, activity_id, false)
+                    .await
+            }
+            ActivityReactionTarget::Emoji(emoji) => {
+                self.set_activity_reaction(
+                    access_token,
+                    device_id,
+                    current_user_id,
+                    activity_id,
+                    emoji,
+                    false,
+                )
+                .await
+            }
+        }
     }
 }
 
@@ -795,7 +794,7 @@ fn map_activity_reactions(
                     problem: "the activity response marked a zero-count reaction as user-selected",
                 });
             }
-            Ok(ActivityReaction::new(
+            Ok(ActivityReaction::from_value(
                 emoji,
                 reaction.count,
                 reaction.reacted_by_user,
@@ -805,7 +804,7 @@ fn map_activity_reactions(
     let mut emojis = HashSet::with_capacity(reactions.len());
     if reactions
         .iter()
-        .any(|reaction| !emojis.insert(reaction.emoji().as_str()))
+        .any(|reaction| !emojis.insert(reaction.value().as_str()))
     {
         return Err(VenmoApiError::Contract {
             operation,
@@ -818,13 +817,15 @@ fn map_activity_reactions(
     })
 }
 
-fn parse_activity_reaction_wire_value(value: &str) -> Result<ActivityReactionEmoji, ()> {
-    ActivityReactionEmoji::from_str(if value == RED_HEART_WIRE_VALUE {
-        "❤️"
-    } else {
-        value
-    })
-    .map_err(|_| ())
+fn parse_activity_reaction_wire_value(value: &str) -> Result<ActivityReactionValue, ()> {
+    if value == RED_HEART_WIRE_VALUE {
+        return ActivityReactionEmoji::from_str("❤️")
+            .map(ActivityReactionValue::from)
+            .map_err(|_| ());
+    }
+    ActivityReactionEmoji::from_str(value)
+        .map(ActivityReactionValue::from)
+        .or_else(|_| ActivityReactionValue::custom_alias(value.to_owned()).map_err(|_| ()))
 }
 
 fn activity_reaction_wire_value(emoji: &ActivityReactionEmoji) -> &str {

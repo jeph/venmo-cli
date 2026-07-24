@@ -142,42 +142,6 @@ where
                     let timestamps = provider.timestamps();
                     reads::run_activity_info(args, &store, &api, &timestamps, &mut output).await
                 }
-                ActivityOperation::Like(args) => {
-                    let (store, api) = provider.credential_store_and_api()?;
-                    let prompt = provider.prompt();
-                    let timestamps = provider.timestamps();
-                    writes::run_activity_social_with(
-                        &args.activity_id,
-                        crate::features::activity::social::ActivitySocialIntent::Like,
-                        args.yes,
-                        args.dry_run,
-                        &store,
-                        &api,
-                        &prompt,
-                        &timestamps,
-                        &mut output,
-                        writes::production_state_interruption,
-                    )
-                    .await
-                }
-                ActivityOperation::Unlike(args) => {
-                    let (store, api) = provider.credential_store_and_api()?;
-                    let prompt = provider.prompt();
-                    let timestamps = provider.timestamps();
-                    writes::run_activity_social_with(
-                        &args.activity_id,
-                        crate::features::activity::social::ActivitySocialIntent::Unlike,
-                        args.yes,
-                        args.dry_run,
-                        &store,
-                        &api,
-                        &prompt,
-                        &timestamps,
-                        &mut output,
-                        writes::production_state_interruption,
-                    )
-                    .await
-                }
                 ActivityOperation::Comments(args) => match args.operation {
                     ActivityCommentsOperation::List(args) => {
                         let (store, api) = provider.credential_store_and_api()?;

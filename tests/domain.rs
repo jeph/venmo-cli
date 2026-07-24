@@ -3,9 +3,9 @@ use std::str::FromStr;
 use proptest::prelude::*;
 use venmo_cli::model::{
     ActivityBeforeId, ActivityCommentListResult, ActivityReactionEmoji, ActivityReactionListResult,
-    FriendsSubject, Limit, Money, Note, Offset, PeerFundingFee, RecipientInput, RequestAction,
-    RequestDirection, RequestId, RequestInfoResult, RequestRecord, RequestStatus, User, UserId,
-    UserInfoResult, UserSearchQuery, Username,
+    ActivityReactionTarget, FriendsSubject, Limit, Money, Note, Offset, PeerFundingFee,
+    RecipientInput, RequestAction, RequestDirection, RequestId, RequestInfoResult, RequestRecord,
+    RequestStatus, User, UserId, UserInfoResult, UserSearchQuery, Username,
 };
 
 #[test]
@@ -67,7 +67,17 @@ fn notes_and_limits_enforce_local_invariants() {
     assert!(Offset::from_str("-1").is_err());
     assert!(ActivityBeforeId::from_str("before-token").is_ok());
     assert!(ActivityBeforeId::from_str("before token").is_err());
-    assert!(ActivityReactionEmoji::from_str("🔥").is_ok());
+    for value in ["🔥", "5️⃣", "©"] {
+        assert!(ActivityReactionEmoji::from_str(value).is_ok());
+    }
+    for value in ["5", "#", "*", ":party_cup:"] {
+        assert!(ActivityReactionEmoji::from_str(value).is_err());
+    }
+    assert!(ActivityReactionTarget::from_str("like").is_ok());
+    assert!(ActivityReactionTarget::from_str("🔥").is_ok());
+    for value in ["Like", "heart", ":party_cup:"] {
+        assert!(ActivityReactionTarget::from_str(value).is_err());
+    }
     assert!(ActivityReactionEmoji::from_str("two emoji 🔥").is_err());
     assert!(UserSearchQuery::from_str("Alice Smith").is_ok());
     assert!(UserSearchQuery::from_str("@").is_err());

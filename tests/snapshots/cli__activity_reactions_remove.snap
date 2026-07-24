@@ -2,7 +2,7 @@
 source: tests/cli.rs
 expression: help
 ---
-Remove one emoji reaction from an activity record
+Remove one Unicode emoji reaction or the special `like` target
 
 Usage: remove [OPTIONS] <ACTIVITY_ID> <REACTION>
 
@@ -11,7 +11,7 @@ Arguments:
           Canonical activity ID
 
   <REACTION>
-          Exact emoji glyph to remove
+          Exact emoji glyph or lowercase `like` target to remove
 
 Options:
       --yes
@@ -23,4 +23,4 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-REACTION must exactly match one Unicode emoji reaction already applied by the authenticated account. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently.
+REACTION must be exact lowercase 'like' or exactly match one Unicode emoji reaction already applied by the authenticated account; backend custom aliases shown by list are read-only. The 'like' target uses Venmo's likes endpoint, while ❤️ uses its reactions endpoint; removing either clears the same server state. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently.

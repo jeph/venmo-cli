@@ -1,15 +1,16 @@
 use thiserror::Error;
 
 use super::{
-    ActivityDetail, ActivityDetailApi, ActivityError, ActivityId, ActivityReaction,
-    ActivityReactionEmoji, ActivityReactionMutationApi, ActivityReactionState, ActivityReactions,
+    ActivityDetail, ActivityDetailApi, ActivityError, ActivityId, ActivityLikeState,
+    ActivityReaction, ActivityReactionMutationApi, ActivityReactionState, ActivityReactionTarget,
+    ActivityReactions,
 };
 use crate::features::auth::{PromptError, prompt_failure_kind};
 use crate::features::payments::DefaultNoConfirmation;
 use crate::features::payments::confirmation::{self, DefaultNoConfirmationError};
 use crate::shared::{
     ApiFailureKind, ApiOperationFailure, ApplicationFailureKind, CredentialAccessError,
-    CredentialEnvelope, CredentialReader, require_credential,
+    CredentialEnvelope, CredentialReader, UserId, require_credential,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,21 +78,21 @@ where
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActivityReactionIntent {
-    Add(ActivityReactionEmoji),
-    Remove(ActivityReactionEmoji),
+    Add(ActivityReactionTarget),
+    Remove(ActivityReactionTarget),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActivityReactionAction {
-    Add(ActivityReactionEmoji),
-    Remove(ActivityReactionEmoji),
+    Add(ActivityReactionTarget),
+    Remove(ActivityReactionTarget),
 }
 
 impl ActivityReactionAction {
     #[must_use]
-    pub const fn emoji(&self) -> &ActivityReactionEmoji {
+    pub const fn target(&self) -> &ActivityReactionTarget {
         match self {
-            Self::Add(emoji) | Self::Remove(emoji) => emoji,
+            Self::Add(target) | Self::Remove(target) => target,
         }
     }
 
@@ -171,6 +172,7 @@ pub(crate) struct AuthorizedActivityReactionMutation(PreparedActivityReactionMut
 pub struct ActivityReactionMutationResult {
     plan: ActivityReactionPlan,
     activity: ActivityDetail,
+    reconciled_state: ActivityReactionState,
 }
 
 impl ActivityReactionMutationResult {
@@ -186,13 +188,18 @@ impl ActivityReactionMutationResult {
 
     #[must_use]
     pub fn reconciled_reaction(&self) -> Option<&ActivityReaction> {
-        let emoji = self.plan.action().emoji();
+        let target = self.plan.action().target();
         self.activity.social().reactions().and_then(|reactions| {
             reactions
                 .items()
                 .iter()
-                .find(|reaction| reaction.emoji() == emoji)
+                .find(|reaction| reaction_matches_target(reaction, target))
         })
+    }
+
+    #[must_use]
+    pub const fn reconciled_state(&self) -> ActivityReactionState {
+        self.reconciled_state
     }
 }
 
@@ -294,10 +301,10 @@ where
             problem: "the preflight returned a different activity ID",
         });
     }
-    let emoji = match &intent {
-        ActivityReactionIntent::Add(emoji) | ActivityReactionIntent::Remove(emoji) => emoji,
+    let target = match &intent {
+        ActivityReactionIntent::Add(target) | ActivityReactionIntent::Remove(target) => target,
     };
-    let previous_state = activity.social().reaction_state(emoji);
+    let previous_state = reaction_target_state(&activity, credential.user_id(), target);
     let action = select_action(intent, previous_state)?;
     Ok(PreparedActivityReactionMutation {
         credential,
@@ -314,14 +321,14 @@ fn select_action(
     previous_state: ActivityReactionState,
 ) -> Result<ActivityReactionAction, ActivityReactionMutationError> {
     match (intent, previous_state) {
-        (ActivityReactionIntent::Add(emoji), ActivityReactionState::Absent) => {
-            Ok(ActivityReactionAction::Add(emoji))
+        (ActivityReactionIntent::Add(target), ActivityReactionState::Absent) => {
+            Ok(ActivityReactionAction::Add(target))
         }
         (ActivityReactionIntent::Add(_), ActivityReactionState::Present) => {
             Err(ActivityReactionMutationError::AlreadyReacted)
         }
-        (ActivityReactionIntent::Remove(emoji), ActivityReactionState::Present) => {
-            Ok(ActivityReactionAction::Remove(emoji))
+        (ActivityReactionIntent::Remove(target), ActivityReactionState::Present) => {
+            Ok(ActivityReactionAction::Remove(target))
         }
         (ActivityReactionIntent::Remove(_), ActivityReactionState::Absent) => {
             Err(ActivityReactionMutationError::NotReacted)
@@ -368,23 +375,23 @@ where
     let credential = &prepared.credential;
     let activity_id = prepared.plan.activity.id();
     let updated = match &prepared.plan.action {
-        ActivityReactionAction::Add(emoji) => {
+        ActivityReactionAction::Add(target) => {
             api.add_activity_reaction(
                 credential.access_token(),
                 credential.device_id(),
                 credential.user_id(),
                 activity_id,
-                emoji,
+                target,
             )
             .await
         }
-        ActivityReactionAction::Remove(emoji) => {
+        ActivityReactionAction::Remove(target) => {
             api.remove_activity_reaction(
                 credential.access_token(),
                 credential.device_id(),
                 credential.user_id(),
                 activity_id,
-                emoji,
+                target,
             )
             .await
         }
@@ -397,10 +404,91 @@ where
             problem: "the reconciled response identified a different activity",
         });
     }
+    let reconciled_state = reaction_target_state(
+        &updated,
+        credential.user_id(),
+        prepared.plan.action().target(),
+    );
+    if reconciled_state != prepared.plan.action().expected_state() {
+        return Err(ActivityReactionMutationError::OutcomeUnknown {
+            problem: "the reconciled response did not prove the requested reaction state",
+        });
+    }
     Ok(ActivityReactionMutationResult {
         plan: prepared.plan,
         activity: updated,
+        reconciled_state,
     })
+}
+
+fn reaction_target_state(
+    activity: &ActivityDetail,
+    current_user_id: &UserId,
+    target: &ActivityReactionTarget,
+) -> ActivityReactionState {
+    match target {
+        ActivityReactionTarget::Like => synchronized_like_state(activity, current_user_id),
+        ActivityReactionTarget::Emoji(emoji) if emoji.as_str() == "❤️" => {
+            synchronized_like_state(activity, current_user_id)
+        }
+        ActivityReactionTarget::Emoji(emoji) => activity.social().reaction_state(emoji),
+    }
+}
+
+fn synchronized_like_state(
+    activity: &ActivityDetail,
+    current_user_id: &UserId,
+) -> ActivityReactionState {
+    let like_state = match activity.social().like_state(current_user_id) {
+        ActivityLikeState::Liked => ActivityReactionState::Present,
+        ActivityLikeState::NotLiked => ActivityReactionState::Absent,
+        ActivityLikeState::Unknown => ActivityReactionState::Unknown,
+    };
+    let heart_state =
+        activity
+            .social()
+            .reactions()
+            .map_or(ActivityReactionState::Unknown, |reactions| {
+                reactions
+                    .items()
+                    .iter()
+                    .find(|reaction| {
+                        reaction
+                            .value()
+                            .as_unicode_emoji()
+                            .is_some_and(|emoji| emoji.as_str() == "❤️")
+                    })
+                    .map_or(ActivityReactionState::Absent, |reaction| {
+                        if reaction.reacted_by_current_user() {
+                            ActivityReactionState::Present
+                        } else {
+                            ActivityReactionState::Absent
+                        }
+                    })
+            });
+    match (like_state, heart_state) {
+        (ActivityReactionState::Unknown, state) | (state, ActivityReactionState::Unknown) => state,
+        (ActivityReactionState::Present, ActivityReactionState::Present) => {
+            ActivityReactionState::Present
+        }
+        (ActivityReactionState::Absent, ActivityReactionState::Absent) => {
+            ActivityReactionState::Absent
+        }
+        (ActivityReactionState::Present, ActivityReactionState::Absent)
+        | (ActivityReactionState::Absent, ActivityReactionState::Present) => {
+            ActivityReactionState::Unknown
+        }
+    }
+}
+
+fn reaction_matches_target(reaction: &ActivityReaction, target: &ActivityReactionTarget) -> bool {
+    let Some(emoji) = reaction.value().as_unicode_emoji() else {
+        return false;
+    };
+    match target {
+        ActivityReactionTarget::Like => emoji.as_str() == "❤️",
+        ActivityReactionTarget::Emoji(target) => emoji == target,
+    }
 }
 
 #[cfg(test)]
@@ -409,6 +497,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use crate::features::activity::ActivityReactionEmoji;
 
     #[test]
     fn explicit_reaction_intents_require_authoritative_current_state() -> Result<(), Box<dyn Error>>
@@ -416,21 +505,21 @@ mod tests {
         let emoji = ActivityReactionEmoji::from_str("🔥")?;
         assert!(matches!(
             select_action(
-                ActivityReactionIntent::Add(emoji.clone()),
+                ActivityReactionIntent::Add(emoji.clone().into()),
                 ActivityReactionState::Present
             ),
             Err(ActivityReactionMutationError::AlreadyReacted)
         ));
         assert!(matches!(
             select_action(
-                ActivityReactionIntent::Remove(emoji.clone()),
+                ActivityReactionIntent::Remove(emoji.clone().into()),
                 ActivityReactionState::Absent
             ),
             Err(ActivityReactionMutationError::NotReacted)
         ));
         assert!(matches!(
             select_action(
-                ActivityReactionIntent::Add(emoji),
+                ActivityReactionIntent::Add(emoji.into()),
                 ActivityReactionState::Unknown
             ),
             Err(ActivityReactionMutationError::ReactionStateUnavailable)
