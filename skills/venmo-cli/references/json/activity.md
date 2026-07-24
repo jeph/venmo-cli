@@ -197,13 +197,7 @@ Expected envelope commands are `activity.reactions.add` and `activity.reactions.
 
 Exact lowercase `like` uses the bodyless likes endpoint. Unicode emoji, including literal `❤️`, use
 the reactions endpoint. Venmo exposes `like` and `❤️` as the same server state even though these
-inputs select different endpoints. Backend custom aliases remain read-only and cannot be mutation
-targets.
-
-The write is sent once and followed by an authoritative activity read. Result fields are derived
-from that reconciled activity. `reacted_by_current_user` is null only when the like state is proven
-through liker data but the refreshed activity omits its reaction bucket. An unprovable result has an
-ambiguous outcome and must not be retried before independent reconciliation.
+inputs select different endpoints.
 
 ## `activity comments remove`
 

@@ -23,4 +23,4 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-REACTION must be exact lowercase 'like' or exactly match one Unicode emoji reaction already applied by the authenticated account; backend custom aliases shown by list are read-only. The 'like' target uses Venmo's likes endpoint, while ❤️ uses its reactions endpoint; removing either clears the same server state. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently.
+REACTION must be exact lowercase 'like' or exactly match one Unicode emoji reaction already applied by the authenticated account. On the Venmo backend, 'like' and the ❤️ emoji are equivalent.

@@ -188,7 +188,7 @@ pub struct ActivityReactionListArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "REACTION must be exact lowercase 'like' or one complete Unicode emoji grapheme, such as '🔥' or '❤️'; backend custom aliases shown by list are read-only. The 'like' target uses Venmo's likes endpoint, while ❤️ uses its reactions endpoint; both expose the same server state. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
+    after_long_help = "REACTION must be exact lowercase 'like' or one complete Unicode emoji grapheme, such as '🔥' or '❤️'. On the Venmo backend, 'like' and the ❤️ emoji are equivalent."
 )]
 pub struct ActivityReactionAddArgs {
     /// Canonical activity ID.
@@ -210,7 +210,7 @@ pub struct ActivityReactionAddArgs {
 
 #[derive(Args, Clone, Debug, Eq, PartialEq)]
 #[command(
-    after_long_help = "REACTION must be exact lowercase 'like' or exactly match one Unicode emoji reaction already applied by the authenticated account; backend custom aliases shown by list are read-only. The 'like' target uses Venmo's likes endpoint, while ❤️ uses its reactions endpoint; removing either clears the same server state. The command performs an authoritative activity preflight and never retries automatically. Exit code 3 means the reaction outcome must be verified independently."
+    after_long_help = "REACTION must be exact lowercase 'like' or exactly match one Unicode emoji reaction already applied by the authenticated account. On the Venmo backend, 'like' and the ❤️ emoji are equivalent."
 )]
 pub struct ActivityReactionRemoveArgs {
     /// Canonical activity ID.

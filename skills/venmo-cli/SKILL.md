@@ -90,10 +90,8 @@ the locally stored credential.
 - `activity comments remove` **(mutates)** — Requests removal of a comment by its ID.
 - `activity reactions list` — Reports aggregate reaction counts, including read-only custom aliases,
   and the active account's reaction state.
-- `activity reactions add` **(mutates)** — Adds exact lowercase `like` through the likes endpoint,
-  or one exact Unicode emoji through the reactions endpoint.
-- `activity reactions remove` **(mutates)** — Removes exact lowercase `like` through the likes
-  endpoint, or one exact Unicode emoji through the reactions endpoint.
+- `activity reactions add` **(mutates)** — Adds a reaction to an activity.
+- `activity reactions remove` **(mutates)** — Removes a reaction from an activity.
 - [JSON reference](references/json/activity.md)
 
 ### `requests`

@@ -155,16 +155,11 @@ venmo activity comments list <ACTIVITY_ID> [--limit <N>] [--offset <N>]
 venmo activity comments add <ACTIVITY_ID> <MESSAGE>
 venmo activity comments remove <COMMENT_ID>
 venmo activity reactions list <ACTIVITY_ID>
-venmo activity reactions add <ACTIVITY_ID> <REACTION>
-venmo activity reactions remove <ACTIVITY_ID> <REACTION>
+venmo activity reactions add <ACTIVITY_ID> "❤️"
+venmo activity reactions remove <ACTIVITY_ID> like
 ```
 
-Use exact lowercase `like` as the reaction to call Venmo's bodyless like or unlike endpoint. Other
-reaction mutations accept exact Unicode emoji glyphs, such as `🔥` or `❤️`; quote them if required
-by your shell. Literal `❤️` continues to use the reactions endpoint, although Venmo exposes it and
-the like as the same server state. Reaction lists preserve Venmo custom aliases, but those aliases
-are read-only in this CLI. The previous `activity like` and `activity unlike` commands are replaced
-by `activity reactions add <ACTIVITY_ID> like` and `activity reactions remove <ACTIVITY_ID> like`.
+Liking an activity in Venmo is equivalent to adding a heart emoji to it.
 
 List commands print a continuation when another page is available. Pass that value back through
 the matching `--before-id` or `--offset` option. Continuation types are not interchangeable.
