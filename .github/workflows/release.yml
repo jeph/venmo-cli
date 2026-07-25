@@ -19,11 +19,11 @@ jobs:
           - runner: macos-15
             target: aarch64-apple-darwin
             platform: macos
-            artifact: unsigned/venmo-*
+            artifact: unsigned/*
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             platform: macos
-            artifact: unsigned/venmo-*
+            artifact: unsigned/*
           - runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-musl
             platform: linux
@@ -43,40 +43,49 @@ jobs:
           sudo apt-get install --yes musl-dev musl-tools
           rustup target add "${{ matrix.target }}"
 
-      - name: Build production binary
+      - name: Build production binaries
         env:
           AWS_LC_SYS_USE_SYSTEM: "0"
           CC_aarch64_unknown_linux_musl: musl-gcc
           CC_x86_64_unknown_linux_musl: musl-gcc
           VENMO_BUILD_VERSION: ${{ env.VERSION }}
-        run: cargo build --release --locked --bin venmo --target "${{ matrix.target }}"
+        run: cargo build --release --locked --bins --target "${{ matrix.target }}"
 
-      - name: Verify production binary
+      - name: Verify production binaries
         run: |
-          binary="target/${{ matrix.target }}/release/venmo"
-          test "$("$binary" --version)" = "venmo $VERSION"
+          venmo_binary="target/${{ matrix.target }}/release/venmo"
+          mcp_binary="target/${{ matrix.target }}/release/venmo-mcp"
+          test "$("$venmo_binary" --version)" = "venmo $VERSION"
+          test "$("$mcp_binary" --version)" = "venmo-mcp $VERSION"
+          "$venmo_binary" --help >/dev/null
+          "$mcp_binary" --help >/dev/null
 
           if [ "${{ matrix.platform }}" = linux ]; then
-            if readelf -lW "$binary" | grep INTERP >/dev/null; then
-              echo "Linux binary has a dynamic interpreter" >&2
-              exit 1
-            fi
-            if readelf -dW "$binary" | grep NEEDED >/dev/null; then
-              echo "Linux binary has dynamic library dependencies" >&2
-              exit 1
-            fi
+            for binary in "$venmo_binary" "$mcp_binary"; do
+              if readelf -lW "$binary" | grep INTERP >/dev/null; then
+                echo "Linux binary has a dynamic interpreter: $binary" >&2
+                exit 1
+              fi
+              if readelf -dW "$binary" | grep NEEDED >/dev/null; then
+                echo "Linux binary has dynamic library dependencies: $binary" >&2
+                exit 1
+              fi
+            done
           fi
 
       - name: Prepare release artifact
         run: |
-          binary="target/${{ matrix.target }}/release/venmo"
+          venmo_binary="target/${{ matrix.target }}/release/venmo"
+          mcp_binary="target/${{ matrix.target }}/release/venmo-mcp"
           if [ "${{ matrix.platform }}" = macos ]; then
             mkdir unsigned
-            cp "$binary" "unsigned/venmo-${{ matrix.target }}"
+            cp "$venmo_binary" "unsigned/venmo-${{ matrix.target }}"
+            cp "$mcp_binary" "unsigned/venmo-mcp-${{ matrix.target }}"
           else
             mkdir package dist
-            cp "$binary" package/venmo
-            tar -czf "dist/venmo-v$VERSION-${{ matrix.target }}.tar.gz" -C package venmo
+            cp "$venmo_binary" package/venmo
+            cp "$mcp_binary" package/venmo-mcp
+            tar -czf "dist/venmo-v$VERSION-${{ matrix.target }}.tar.gz" -C package venmo venmo-mcp
           fi
 
       - uses: actions/upload-artifact@v7
@@ -123,55 +132,60 @@ jobs:
       - name: Run Windows clippy
         run: cargo clippy --locked --all-targets --all-features --target "${{ matrix.target }}" -- -D warnings
 
-      - name: Build production binary
+      - name: Build production binaries
         env:
           VENMO_BUILD_VERSION: ${{ env.VERSION }}
-        run: cargo build --release --locked --bin venmo --target "${{ matrix.target }}"
+        run: cargo build --release --locked --bins --target "${{ matrix.target }}"
 
-      - name: Verify production binary
+      - name: Verify production binaries
         run: |
-          $binary = "target\${{ matrix.target }}\release\venmo.exe"
-
-          $versionOutput = & $binary --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "Windows binary failed to print its version"
-          }
-          if ($versionOutput -ne "venmo $env:VERSION") {
-            throw "unexpected version output: $versionOutput"
-          }
-
-          & $binary --help | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            throw "Windows binary failed to print its help"
-          }
-
           $llvmReadObj = (Get-Command llvm-readobj -ErrorAction Stop).Source
-          $headers = & $llvmReadObj --file-headers $binary | Out-String
-          if ($LASTEXITCODE -ne 0) {
-            throw "failed to inspect Windows PE headers"
-          }
-          if ($headers -notmatch "${{ matrix.machine }}") {
-            throw "Windows binary has the wrong machine type"
-          }
+          $binaries = @(
+            @{ Path = "target\${{ matrix.target }}\release\venmo.exe"; Version = "venmo $env:VERSION" },
+            @{ Path = "target\${{ matrix.target }}\release\venmo-mcp.exe"; Version = "venmo-mcp $env:VERSION" }
+          )
+          foreach ($entry in $binaries) {
+            $binary = $entry.Path
+            $versionOutput = & $binary --version
+            if ($LASTEXITCODE -ne 0) {
+              throw "$binary failed to print its version"
+            }
+            if ($versionOutput -ne $entry.Version) {
+              throw "unexpected version output from ${binary}: $versionOutput"
+            }
 
-          $imports = & $llvmReadObj --coff-imports $binary | Out-String
-          if ($LASTEXITCODE -ne 0) {
-            throw "failed to inspect Windows DLL imports"
-          }
-          if ($imports -match "(?i)(VCRUNTIME|MSVCP|UCRTBASE|api-ms-win-crt)") {
-            throw "Windows binary depends on the Visual C++ Redistributable"
+            & $binary --help | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "$binary failed to print its help"
+            }
+
+            $headers = & $llvmReadObj --file-headers $binary | Out-String
+            if ($LASTEXITCODE -ne 0) {
+              throw "failed to inspect Windows PE headers for $binary"
+            }
+            if ($headers -notmatch "${{ matrix.machine }}") {
+              throw "$binary has the wrong machine type"
+            }
+
+            $imports = & $llvmReadObj --coff-imports $binary | Out-String
+            if ($LASTEXITCODE -ne 0) {
+              throw "failed to inspect Windows DLL imports for $binary"
+            }
+            if ($imports -match "(?i)(VCRUNTIME|MSVCP|UCRTBASE|api-ms-win-crt)") {
+              throw "$binary depends on the Visual C++ Redistributable"
+            }
           }
 
       - name: Prepare release artifact
         run: |
-          $binary = "target\${{ matrix.target }}\release\venmo.exe"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item $binary "dist\venmo-v$env:VERSION-${{ matrix.target }}.exe"
+          Copy-Item "target\${{ matrix.target }}\release\venmo.exe" "dist\venmo-v$env:VERSION-${{ matrix.target }}.exe"
+          Copy-Item "target\${{ matrix.target }}\release\venmo-mcp.exe" "dist\venmo-mcp-v$env:VERSION-${{ matrix.target }}.exe"
 
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
-          path: dist/venmo-v*.exe
+          path: dist/*.exe
 
   sign:
     needs: build
@@ -219,20 +233,25 @@ jobs:
           security list-keychain -d user -s "$keychain"
 
           for target in aarch64-apple-darwin x86_64-apple-darwin; do
-            binary="unsigned/venmo-$target"
-            chmod 755 "$binary"
-            codesign --force --keychain "$keychain" \
-              --sign "$MACOS_SIGNING_IDENTITY" \
-              --identifier io.jeph.venmo \
-              --options runtime \
-              --timestamp \
-              "$binary"
-            codesign --verify --strict --verbose=2 "$binary"
+            for binary_name in venmo venmo-mcp; do
+              binary="unsigned/$binary_name-$target"
+              identifier="io.jeph.$binary_name"
+              chmod 755 "$binary"
+              codesign --force --keychain "$keychain" \
+                --sign "$MACOS_SIGNING_IDENTITY" \
+                --identifier "$identifier" \
+                --options runtime \
+                --timestamp \
+                "$binary"
+              codesign --verify --strict --verbose=2 "$binary"
+            done
           done
 
           mkdir -p notarize/aarch64 notarize/x86_64
           cp unsigned/venmo-aarch64-apple-darwin notarize/aarch64/venmo
+          cp unsigned/venmo-mcp-aarch64-apple-darwin notarize/aarch64/venmo-mcp
           cp unsigned/venmo-x86_64-apple-darwin notarize/x86_64/venmo
+          cp unsigned/venmo-mcp-x86_64-apple-darwin notarize/x86_64/venmo-mcp
           COPYFILE_DISABLE=1 ditto -c -k --keepParent notarize "$RUNNER_TEMP/notarize.zip"
           xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
             --key "$api_key" \
@@ -249,7 +268,8 @@ jobs:
             package="$RUNNER_TEMP/package-$target"
             mkdir "$package"
             cp "unsigned/venmo-$target" "$package/venmo"
-            COPYFILE_DISABLE=1 tar -czf "dist/venmo-v$VERSION-$target.tar.gz" -C "$package" venmo
+            cp "unsigned/venmo-mcp-$target" "$package/venmo-mcp"
+            COPYFILE_DISABLE=1 tar -czf "dist/venmo-v$VERSION-$target.tar.gz" -C "$package" venmo venmo-mcp
           done
 
       - uses: actions/upload-artifact@v7
@@ -341,11 +361,12 @@ jobs:
             end
 
             def install
-              bin.install "venmo"
+              bin.install "venmo", "venmo-mcp"
             end
 
             test do
               assert_equal "venmo #{version}", shell_output("#{bin}/venmo --version").strip
+              assert_equal "venmo-mcp #{version}", shell_output("#{bin}/venmo-mcp --version").strip
             end
           end
           EOF

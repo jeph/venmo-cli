@@ -27,6 +27,9 @@ experience from the terminal:
   Linux releases are standalone, fully static musl binaries with no glibc dependency. macOS releases
   are signed and notarized, credentials use the platform keyring when available, and uncertain API
   outcomes fail closed instead of being guessed.
+- **A typed MCP server.** The included `venmo-mcp` binary exposes every CLI leaf command to local AI
+  clients over stdio, with live CLI help, agent-safety guidance, JSON references, mutation
+  annotations, and structured results.
 
 ## Installation
 
@@ -52,6 +55,52 @@ After installing the CLI, install the optional skill globally for your supported
 
 ```sh
 npx skills add jeph/venmo-cli@venmo-cli -g
+```
+
+### MCP server
+
+The same installation also provides `venmo-mcp`, a local stdio Model Context Protocol server. Add
+it to an MCP client using the client's equivalent of this configuration:
+
+```json
+{
+  "mcpServers": {
+    "venmo": {
+      "command": "venmo-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+The server advertises one typed tool for each of the 27 CLI leaf commands. It also exposes all live
+`--help` pages and the complete bundled agent skill and JSON references as `venmo://` resources.
+It runs in-process rather than invoking a shell or subprocess, and stdout is reserved exclusively
+for MCP protocol messages.
+
+Important MCP safety behavior:
+
+- `auth.login` never logs in or accepts credentials. It returns a handoff telling the user to run
+  `venmo auth login` in their own interactive terminal. Login identifiers, passwords, trusted
+  `v_id`/device IDs, bearer tokens, and SMS codes must never be MCP arguments.
+- Every remote mutation tool requires `dry_run`. `true` previews the resolved plan without writing;
+  `false` executes immediately with the CLI's `--yes` behavior. The MCP server does not prompt or
+  confirm, so the client or LLM must confirm the exact action with the user before a real call.
+- `auth.logout` has no dry run and immediately deletes the local credential when called. It does not
+  revoke the remote token.
+- Tool annotations mark read-only, mutating, and potentially destructive operations. They are
+  intentionally conservative: a mutation-capable tool remains annotated as mutating even when a
+  particular call uses `dry_run: true`.
+- Never blindly retry a failed mutation whose `error.outcome` is `partial`, `unknown`, or
+  `completed`. Review account state first.
+- If Venmo requires payment/request SMS verification, the result contains a human handoff with the
+  exact argv and `--yes` removed. The user must run it and enter the OTP in their own terminal; the
+  code must not pass through MCP or chat.
+
+To inspect the local catalog without making a tool call:
+
+```sh
+npx @modelcontextprotocol/inspector --cli venmo-mcp --method tools/list
 ```
 
 ## Usage
@@ -298,8 +347,8 @@ Planned work includes:
   established.
 - **Simpler login.** Investigate a reliable way to establish a trusted device without requiring
   users to retrieve and enter a browser `v_id` manually.
-- **Non-interactive OTP challenges.** Design a secure structured flow that lets scripts and
-  LLM-based tools respond to SMS OTP challenges without an interactive terminal prompt.
+- **Safer OTP handoffs.** Continue improving structured MCP/CLI handoffs while keeping passwords,
+  device-trust values, and SMS codes confined to a user's interactive terminal.
 - **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
   easier to scan while preserving important safety and recovery information.
 - **Windows support.** Add and validate native Windows builds, credential storage, terminal prompts,
