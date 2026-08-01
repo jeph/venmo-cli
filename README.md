@@ -353,6 +353,9 @@ Pull requests are welcome. If you run into a bug, unexpected behavior, unclear o
 platform-specific problem, please [open an issue](https://github.com/jeph/venmo-cli/issues). Reports
 from real-world usage are especially helpful while the project is in alpha.
 
+Do not report suspected security vulnerabilities in public issues. Follow the
+[security policy](.github/SECURITY.md) to submit a private vulnerability report.
+
 ## Donations
 
 If this project is useful to you and you would like to support its development, donations are
