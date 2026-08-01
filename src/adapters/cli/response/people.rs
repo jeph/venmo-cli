@@ -21,7 +21,7 @@ pub(crate) fn user_search(result: &UserSearchResult) -> Response<'_, UserSearchR
 pub(crate) fn user_info(result: &UserInfoResult) -> Response<'_, UserInfoResult> {
     Response::new(
         result,
-        serde_json::json!({ "user": shared::user(result.user()) }),
+        serde_json::json!({ "user": shared::user_info(result.user()) }),
     )
 }
 

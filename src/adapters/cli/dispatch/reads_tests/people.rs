@@ -72,7 +72,8 @@ async fn user_info_handler_uses_exact_username_resolution_and_writes_sanitized_s
         Some("Alice\nExample".to_owned()),
     )
     .with_financial_attributes(UserProfileKind::Personal, true)
-    .with_friendship_status(FriendshipStatus::RequestSent);
+    .with_friendship_status(FriendshipStatus::RequestSent)
+    .with_friends_count(42);
 
     // Immutable initial script/state.
     let transcript = Rc::new(RefCell::new(Vec::new()));
@@ -150,7 +151,8 @@ async fn user_info_normalizes_optional_at_and_uses_shared_authoritative_lookup()
             Some("Alice\nExample".to_owned()),
         )
         .with_financial_attributes(UserProfileKind::Personal, true)
-        .with_friendship_status(FriendshipStatus::RequestSent);
+        .with_friendship_status(FriendshipStatus::RequestSent)
+        .with_friends_count(42);
         let transcript = Rc::new(RefCell::new(Vec::new()));
         let reader = FakeReader::standard(Rc::clone(&transcript));
         let api = UserInfoFake {

@@ -33,6 +33,8 @@ pub(crate) struct UserDto {
     #[serde(default)]
     pub is_payable: Option<bool>,
     #[serde(default)]
+    pub friends_count: Option<u64>,
+    #[serde(default)]
     pub friend_status: Option<String>,
 }
 

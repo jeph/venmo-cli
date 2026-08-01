@@ -88,9 +88,15 @@ async fn user_search_rejects_invalid_records_and_oversized_pages() -> TestResult
 
 #[tokio::test(flavor = "current_thread")]
 async fn user_lookup_maps_supported_envelopes_and_exact_id() -> TestResult {
-    for body in [
-        r#"{"data":{"user":{"id":123,"username":"alice","display_name":"Alice","identity_type":"personal","is_payable":true}}}"#,
-        r#"{"data":{"id":"123","username":"@alice","name":"Alice","identity_type":"personal","is_payable":true}}"#,
+    for (body, friends_count) in [
+        (
+            r#"{"data":{"user":{"id":123,"username":"alice","display_name":"Alice","identity_type":"personal","is_payable":true,"friends_count":42}}}"#,
+            Some(42),
+        ),
+        (
+            r#"{"data":{"id":"123","username":"@alice","name":"Alice","identity_type":"personal","is_payable":true}}"#,
+            None,
+        ),
     ] {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -109,6 +115,7 @@ async fn user_lookup_maps_supported_envelopes_and_exact_id() -> TestResult {
         assert_eq!(user.display_name(), Some("Alice"));
         assert_eq!(user.profile_kind(), Some(UserProfileKind::Personal));
         assert_eq!(user.is_payable(), Some(true));
+        assert_eq!(user.friends_count(), friends_count);
         assert_request_count(&server, 1).await;
     }
     Ok(())

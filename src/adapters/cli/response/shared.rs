@@ -66,14 +66,33 @@ pub(super) fn account(value: &Account) -> Value {
 }
 
 pub(super) fn user(value: &User) -> Value {
-    json!({
-        "user_id": value.user_id().as_str(),
-        "username": value.username().map(|username| username.as_str()),
-        "display_name": value.display_name(),
-        "profile_kind": value.profile_kind().map(profile_kind),
-        "is_payable": value.is_payable(),
-        "friendship_status": value.friendship_status().map(friendship_status),
-    })
+    Value::Object(user_fields(value))
+}
+
+pub(super) fn user_info(value: &User) -> Value {
+    let mut fields = user_fields(value);
+    fields.insert("friends_count".to_owned(), json!(value.friends_count()));
+    Value::Object(fields)
+}
+
+fn user_fields(value: &User) -> serde_json::Map<String, Value> {
+    serde_json::Map::from_iter([
+        ("user_id".to_owned(), json!(value.user_id().as_str())),
+        (
+            "username".to_owned(),
+            json!(value.username().map(|username| username.as_str())),
+        ),
+        ("display_name".to_owned(), json!(value.display_name())),
+        (
+            "profile_kind".to_owned(),
+            json!(value.profile_kind().map(profile_kind)),
+        ),
+        ("is_payable".to_owned(), json!(value.is_payable())),
+        (
+            "friendship_status".to_owned(),
+            json!(value.friendship_status().map(friendship_status)),
+        ),
+    ])
 }
 
 pub(super) const fn profile_kind(value: UserProfileKind) -> &'static str {

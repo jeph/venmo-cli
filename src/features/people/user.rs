@@ -32,6 +32,7 @@ pub struct User {
     profile_kind: Option<UserProfileKind>,
     is_payable: Option<bool>,
     friendship_status: Option<FriendshipStatus>,
+    friends_count: Option<u64>,
 }
 
 impl User {
@@ -44,6 +45,7 @@ impl User {
             profile_kind: None,
             is_payable: None,
             friendship_status: None,
+            friends_count: None,
         }
     }
 
@@ -93,6 +95,22 @@ impl User {
     }
 
     #[must_use]
+    pub fn with_friends_count(self, friends_count: u64) -> Self {
+        Self {
+            friends_count: Some(friends_count),
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_optional_friends_count(self, friends_count: Option<u64>) -> Self {
+        Self {
+            friends_count,
+            ..self
+        }
+    }
+
+    #[must_use]
     pub fn user_id(&self) -> &UserId {
         &self.user_id
     }
@@ -121,6 +139,11 @@ impl User {
     pub const fn friendship_status(&self) -> Option<FriendshipStatus> {
         self.friendship_status
     }
+
+    #[must_use]
+    pub const fn friends_count(&self) -> Option<u64> {
+        self.friends_count
+    }
 }
 
 impl fmt::Debug for User {
@@ -133,6 +156,7 @@ impl fmt::Debug for User {
             .field("profile_kind", &self.profile_kind)
             .field("is_payable", &self.is_payable)
             .field("friendship_status", &self.friendship_status)
+            .field("friends_count", &self.friends_count)
             .finish()
     }
 }
@@ -234,23 +258,27 @@ mod tests {
         assert_eq!(minimal.profile_kind(), None);
         assert_eq!(minimal.is_payable(), None);
         assert_eq!(minimal.friendship_status(), None);
+        assert_eq!(minimal.friends_count(), None);
 
         let complete = User::new(
             UserId::from_str("456")?,
             Some(Username::from_bare("élise")?),
             Some("Élise Example".to_owned()),
         )
-        .with_financial_attributes(UserProfileKind::Personal, true);
+        .with_financial_attributes(UserProfileKind::Personal, true)
+        .with_friends_count(42);
         assert_eq!(complete.username().map(Username::as_str), Some("élise"));
         assert_eq!(complete.display_name(), Some("Élise Example"));
         assert_eq!(complete.profile_kind(), Some(UserProfileKind::Personal));
         assert_eq!(complete.is_payable(), Some(true));
         let complete = complete.with_friendship_status(FriendshipStatus::Friend);
         assert_eq!(complete.friendship_status(), Some(FriendshipStatus::Friend));
+        assert_eq!(complete.friends_count(), Some(42));
         let rendered = format!("{complete:?}");
         assert!(!rendered.contains("456"));
         assert!(!rendered.contains("élise"));
         assert!(!rendered.contains("Élise Example"));
+        assert!(rendered.contains("friends_count: Some(42)"));
         Ok(())
     }
 

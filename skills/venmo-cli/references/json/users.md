@@ -38,11 +38,13 @@ Expected envelope command: `users.info`.
     "display_name": "Alice Example",
     "profile_kind": "personal",
     "is_payable": true,
-    "friendship_status": "friend"
+    "friendship_status": "friend",
+    "friends_count": 42
   }
 }
 ```
 
 `username` is present. `display_name`, `profile_kind`, `is_payable`, and `friendship_status` can be
-null. Non-null profile kinds are `personal`, `business`, `charity`, or `unknown`; friendship statuses
-are `friend`, `not_friend`, `request_received`, or `request_sent`.
+null. `friends_count` is a non-negative integer or `null` when Venmo omits or withholds it. Non-null
+profile kinds are `personal`, `business`, `charity`, or `unknown`; friendship statuses are `friend`,
+`not_friend`, `request_received`, or `request_sent`.
