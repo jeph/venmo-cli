@@ -4,13 +4,29 @@
 [![Latest release](https://img.shields.io/github/v/release/jeph/venmo-cli)](https://github.com/jeph/venmo-cli/releases/latest)
 [![License](https://img.shields.io/github/license/jeph/venmo-cli)](LICENSE)
 
+**venmo-cli** is an unofficial, full-featured Venmo command-line client for macOS, Linux, and
+Windows. Pay or request users, inspect balances and funding sources, transfer funds, manage pending
+requests and social activity, complete SMS 2FA challenges, and automate safely with JSON output.
+
 > [!IMPORTANT]
-> This project uses reverse engineered non-public Venmo API endpoints. They can change or stop working without notice.
+> venmo-cli is not affiliated with Venmo or PayPal. It uses reverse-engineered, non-public Venmo
+> API endpoints that can change or stop working without notice.
 
-## Why this one?
+## Contents
 
-Most Venmo CLIs focus on basic payments and requests. This one covers much more of the Venmo
-experience from the terminal:
+- [Features](#features)
+- [Command overview](#command-overview)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Donations](#donations)
+
+## Features
+
+Most Venmo command-line clients focus on basic payments and requests. venmo-cli covers much more of
+the Venmo experience from the terminal:
 
 - **Full payment controls.** Inspect funding options, select an exact balance/bank/card source,
   choose private/friends/public visibility, and optionally request Venmo Purchase Protection.
@@ -23,10 +39,24 @@ experience from the terminal:
   reactions.
 - **Balance and cash-out.** Check your wallet balance, inspect transfer eligibility, and transfer a
   fixed amount or all available funds to the selected standard bank destination.
-- **Native and security-conscious.** Prebuilt arm64 and x86_64 binaries require no language runtime.
-  Linux releases are standalone, fully static musl binaries with no glibc dependency. macOS releases
-  are signed and notarized, credentials use the platform keyring when available, and uncertain API
-  outcomes fail closed instead of being guessed.
+- **Native and security-conscious.** Prebuilt arm64 and x86_64 binaries require no language runtime
+  on macOS, Linux, or Windows. Linux releases are standalone, fully static musl binaries with no
+  glibc dependency. macOS releases are signed and notarized, Windows uses native Credential Manager,
+  credentials use the platform keyring when available, and uncertain API outcomes fail closed
+  instead of being guessed.
+
+## Command overview
+
+| Command | Purpose |
+| --- | --- |
+| `venmo auth` | Sign in, inspect authorization status, or remove stored credentials. |
+| `venmo balance` | Show the available and on-hold Venmo wallet balances. |
+| `venmo pay` | Inspect funding options or pay a user with funding, protection, and visibility controls. |
+| `venmo requests` | Create, list, inspect, accept, decline, or cancel payment requests. |
+| `venmo transfer` | Inspect eligibility or transfer the available balance to a standard bank destination. |
+| `venmo activity` | Browse activity and manage comments, likes, and emoji reactions. |
+| `venmo users` | Search for users or inspect a profile. |
+| `venmo friends` | Browse friend lists and add or remove friends. |
 
 ## Installation
 
@@ -37,6 +67,14 @@ On macOS or Linux, install the latest release with Homebrew:
 ```sh
 brew install jeph/tap/venmo
 ```
+
+### Prebuilt binaries
+
+[Download the latest release](https://github.com/jeph/venmo-cli/releases/latest) for your platform:
+
+- **macOS:** signed and notarized arm64 and x86_64 archives.
+- **Linux:** standalone static musl arm64 and x86_64 archives.
+- **Windows:** native arm64 and x86_64 executables.
 
 ### Build from source
 
@@ -302,8 +340,8 @@ Planned work includes:
   LLM-based tools respond to SMS OTP challenges without an interactive terminal prompt.
 - **Clearer terminal output.** Make the regular non-JSON output less wordy, more consistent, and
   easier to scan while preserving important safety and recovery information.
-- **Windows support.** Add and validate native Windows builds, credential storage, terminal prompts,
-  and release packaging.
+- **Windows validation.** Expand real-world testing of the native arm64 and x86_64 Windows builds,
+  Credential Manager integration, terminal prompts, and release packages.
 - **Fee visibility.** Resolve and display applicable fee rates more consistently so fewer commands
   fall back to `unknown`, without guessing when Venmo does not provide authoritative fee data.
 - **Beta stabilization.** Move to beta after enough users have exercised the CLI and reported issues.
