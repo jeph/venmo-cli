@@ -305,6 +305,7 @@ pub(super) const USER_INFO_OUTPUT: &str = concat!(
     "Profile kind: personal\n",
     "Payable: yes\n",
     "Friendship: outgoing request\n",
+    "Friends: 42\n",
 );
 
 pub(super) const FRIENDS_OUTPUT: &str = concat!(

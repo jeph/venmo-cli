@@ -49,7 +49,11 @@ pub(crate) fn write_user_info(
     )?;
     writeln!(writer, "Profile kind: {profile_kind}")?;
     writeln!(writer, "Payable: {payable}")?;
-    writeln!(writer, "Friendship: {friendship}")
+    writeln!(writer, "Friendship: {friendship}")?;
+    match user.friends_count() {
+        Some(count) => writeln!(writer, "Friends: {count}"),
+        None => writeln!(writer, "Friends: (not provided)"),
+    }
 }
 
 pub(crate) fn write_user_search<W: Write, E: Write>(

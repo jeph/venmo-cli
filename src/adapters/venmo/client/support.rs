@@ -65,7 +65,8 @@ pub(super) fn map_user(user: UserDto, operation: &'static str) -> Result<User, V
         user.display_name.filter(|value| !value.is_empty()),
     )
     .with_optional_financial_attributes(profile_kind, is_payable)
-    .with_optional_friendship_status(friendship_status))
+    .with_optional_friendship_status(friendship_status)
+    .with_optional_friends_count(user.friends_count))
 }
 
 pub(super) fn parse_required_timestamp(

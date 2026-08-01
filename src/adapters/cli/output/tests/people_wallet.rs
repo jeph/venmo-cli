@@ -29,7 +29,8 @@ fn user_info_output_preserves_known_fields_sanitizes_text_and_marks_absence() ->
             Some("Alice\n\u{1b}[31mExample".to_owned()),
         )
         .with_financial_attributes(UserProfileKind::Personal, true)
-        .with_friendship_status(FriendshipStatus::RequestSent),
+        .with_friendship_status(FriendshipStatus::RequestSent)
+        .with_friends_count(42),
     );
     let minimal = UserInfoResult::new(User::new(UserId::from_str("456")?, None, None));
     let mut complete_output = Vec::new();
@@ -44,6 +45,14 @@ fn user_info_output_preserves_known_fields_sanitizes_text_and_marks_absence() ->
     insta::assert_snapshot!("user_info_minimal", minimal_output);
     assert!(!complete_output.contains("Alice\n"));
     assert!(!complete_output.contains('\u{1b}'));
+    let complete_json = serde_json::to_value(crate::adapters::cli::response::user_info(&complete))?;
+    let minimal_json = serde_json::to_value(crate::adapters::cli::response::user_info(&minimal))?;
+    assert_eq!(complete_json["user"]["friends_count"], 42);
+    assert!(minimal_json["user"]["friends_count"].is_null());
+
+    let search = UserSearchResult::new(vec![complete.user().clone()], None);
+    let search_json = serde_json::to_value(crate::adapters::cli::response::user_search(&search))?;
+    assert!(search_json["users"][0].get("friends_count").is_none());
     Ok(())
 }
 
