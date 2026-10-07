@@ -44,7 +44,8 @@ Expected envelope command: `pay.user`.
       "display_name": "Alice Example",
       "profile_kind": "personal",
       "is_payable": true,
-      "friendship_status": "friend"
+      "friendship_status": "friend",
+      "profile_picture_url": "https://pics.venmo.com/example"
     },
     "amount": {
       "amount": "12.34",

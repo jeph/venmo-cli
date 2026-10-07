@@ -12,7 +12,7 @@ async fn user_search_maps_users_and_uses_bounded_offset_queries() -> TestResult 
         .and(header("authorization", "Bearer synthetic-token"))
         .and(header("device-id", "synthetic-device"))
         .respond_with(ResponseTemplate::new(200).set_body_raw(
-            r#"{"data":{"users":[{"id":51,"username":"alice","display_name":"Alice"},{"id":"52","username":"@alice2","name":"Alice Two"}]}}"#,
+            r#"{"data":{"users":[{"id":51,"username":"alice","display_name":"Alice","profile_picture_url":"https://pics.venmo.com/alice.jpg"},{"id":"52","username":"@alice2","name":"Alice Two","profile_picture_url":""}]}}"#,
             "application/json",
         ))
         .mount(&server)
@@ -38,6 +38,11 @@ async fn user_search_maps_users_and_uses_bounded_offset_queries() -> TestResult 
             Some("alice")
         );
         assert_eq!(users.last().and_then(User::display_name), Some("Alice Two"));
+        assert_eq!(
+            users.first().and_then(User::profile_picture_url),
+            Some("https://pics.venmo.com/alice.jpg")
+        );
+        assert_eq!(users.last().and_then(User::profile_picture_url), None);
         assert_eq!(next.map(Offset::get), Some(52));
     }
     assert_request_count(&server, 2).await;

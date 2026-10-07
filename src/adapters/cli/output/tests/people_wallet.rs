@@ -30,7 +30,8 @@ fn user_info_output_preserves_known_fields_sanitizes_text_and_marks_absence() ->
         )
         .with_financial_attributes(UserProfileKind::Personal, true)
         .with_friendship_status(FriendshipStatus::RequestSent)
-        .with_friends_count(42),
+        .with_friends_count(42)
+        .with_profile_picture_url("https://pics.venmo.com/alice.jpg".to_owned()),
     );
     let minimal = UserInfoResult::new(User::new(UserId::from_str("456")?, None, None));
     let mut complete_output = Vec::new();
@@ -53,6 +54,15 @@ fn user_info_output_preserves_known_fields_sanitizes_text_and_marks_absence() ->
     let search = UserSearchResult::new(vec![complete.user().clone()], None);
     let search_json = serde_json::to_value(crate::adapters::cli::response::user_search(&search))?;
     assert!(search_json["users"][0].get("friends_count").is_none());
+    assert_eq!(
+        search_json["users"][0]["profile_picture_url"],
+        "https://pics.venmo.com/alice.jpg"
+    );
+    assert_eq!(
+        complete_json["user"]["profile_picture_url"],
+        "https://pics.venmo.com/alice.jpg"
+    );
+    assert!(minimal_json["user"]["profile_picture_url"].is_null());
     Ok(())
 }
 
