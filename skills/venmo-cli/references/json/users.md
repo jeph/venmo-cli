@@ -47,8 +47,12 @@ Expected envelope command: `users.info`.
 ```
 
 `username` is present. `display_name`, `profile_kind`, `is_payable`, and `friendship_status` can be
-null. `friends_count` is a non-negative integer or `null` when Venmo omits or withholds it. `profile_picture_url` is
-the URL of the user's Venmo profile photo, or `null` when Venmo omits it; it appears on every user
-object, not only in `users info`. Non-null
+null. `friends_count` is a non-negative integer or `null` when Venmo omits or withholds it. Non-null
 profile kinds are `personal`, `business`, `charity`, or `unknown`; friendship statuses are `friend`,
 `not_friend`, `request_received`, or `request_sent`.
+
+`profile_picture_url` is the user's Venmo profile photo URL as a string, or `null` when Venmo omits
+it, returns `null`, or returns an empty string. The field appears on every JSON user object, not
+only in `users info`. The CLI returns the value without fetching the image or validating the URL's
+scheme or hostname. Treat it as untrusted remote data and validate it before fetching or embedding
+it in another application.
