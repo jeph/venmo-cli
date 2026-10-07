@@ -33,6 +33,7 @@ pub struct User {
     is_payable: Option<bool>,
     friendship_status: Option<FriendshipStatus>,
     friends_count: Option<u64>,
+    profile_picture_url: Option<String>,
 }
 
 impl User {
@@ -46,6 +47,7 @@ impl User {
             is_payable: None,
             friendship_status: None,
             friends_count: None,
+            profile_picture_url: None,
         }
     }
 
@@ -111,6 +113,25 @@ impl User {
     }
 
     #[must_use]
+    pub fn with_profile_picture_url(self, profile_picture_url: String) -> Self {
+        Self {
+            profile_picture_url: Some(profile_picture_url),
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_optional_profile_picture_url(
+        self,
+        profile_picture_url: Option<String>,
+    ) -> Self {
+        Self {
+            profile_picture_url,
+            ..self
+        }
+    }
+
+    #[must_use]
     pub fn user_id(&self) -> &UserId {
         &self.user_id
     }
@@ -144,6 +165,11 @@ impl User {
     pub const fn friends_count(&self) -> Option<u64> {
         self.friends_count
     }
+
+    #[must_use]
+    pub fn profile_picture_url(&self) -> Option<&str> {
+        self.profile_picture_url.as_deref()
+    }
 }
 
 impl fmt::Debug for User {
@@ -157,6 +183,7 @@ impl fmt::Debug for User {
             .field("is_payable", &self.is_payable)
             .field("friendship_status", &self.friendship_status)
             .field("friends_count", &self.friends_count)
+            .field("profile_picture_url", &REDACTED)
             .finish()
     }
 }
@@ -266,7 +293,8 @@ mod tests {
             Some("Élise Example".to_owned()),
         )
         .with_financial_attributes(UserProfileKind::Personal, true)
-        .with_friends_count(42);
+        .with_friends_count(42)
+        .with_profile_picture_url("https://pics.venmo.com/elise.jpg".to_owned());
         assert_eq!(complete.username().map(Username::as_str), Some("élise"));
         assert_eq!(complete.display_name(), Some("Élise Example"));
         assert_eq!(complete.profile_kind(), Some(UserProfileKind::Personal));
@@ -279,6 +307,7 @@ mod tests {
         assert!(!rendered.contains("élise"));
         assert!(!rendered.contains("Élise Example"));
         assert!(rendered.contains("friends_count: Some(42)"));
+        assert!(!rendered.contains("pics.venmo.com"));
         Ok(())
     }
 

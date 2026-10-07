@@ -29,7 +29,8 @@ Expected envelope command: `activity.list`.
           "profile_kind": "personal" | "business" | "charity" | "unknown" | null,
           "is_payable": boolean | null,
           "friendship_status":
-            "friend" | "not_friend" | "request_received" | "request_sent" | null
+            "friend" | "not_friend" | "request_received" | "request_sent" | null,
+          "profile_picture_url": string | null
         }
       },
       "amount": { "amount": string, "currency": "USD" } | null,

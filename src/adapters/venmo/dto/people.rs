@@ -35,6 +35,8 @@ pub(crate) struct UserDto {
     #[serde(default)]
     pub friends_count: Option<u64>,
     #[serde(default)]
+    pub profile_picture_url: Option<String>,
+    #[serde(default)]
     pub friend_status: Option<String>,
 }
 

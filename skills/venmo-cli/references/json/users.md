@@ -16,7 +16,8 @@ Expected envelope command: `users.search`.
       "display_name": "Alice Example",
       "profile_kind": "personal",
       "is_payable": true,
-      "friendship_status": "friend"
+      "friendship_status": "friend",
+      "profile_picture_url": "https://pics.venmo.com/example"
     }
   ],
   "next_offset": null
@@ -39,12 +40,15 @@ Expected envelope command: `users.info`.
     "profile_kind": "personal",
     "is_payable": true,
     "friendship_status": "friend",
+    "profile_picture_url": "https://pics.venmo.com/example",
     "friends_count": 42
   }
 }
 ```
 
 `username` is present. `display_name`, `profile_kind`, `is_payable`, and `friendship_status` can be
-null. `friends_count` is a non-negative integer or `null` when Venmo omits or withholds it. Non-null
+null. `friends_count` is a non-negative integer or `null` when Venmo omits or withholds it. `profile_picture_url` is
+the URL of the user's Venmo profile photo, or `null` when Venmo omits it; it appears on every user
+object, not only in `users info`. Non-null
 profile kinds are `personal`, `business`, `charity`, or `unknown`; friendship statuses are `friend`,
 `not_friend`, `request_received`, or `request_sent`.

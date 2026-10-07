@@ -100,14 +100,14 @@ struct FailureSnapshot {
 
 #[derive(Debug, Eq, PartialEq)]
 enum Outcome {
-    Success(RequestInfoResult),
+    Success(Box<RequestInfoResult>),
     Error(FailureSnapshot),
 }
 
 impl From<Result<RequestInfoResult, RequestInfoError>> for Outcome {
     fn from(result: Result<RequestInfoResult, RequestInfoError>) -> Self {
         match result {
-            Ok(result) => Self::Success(result),
+            Ok(result) => Self::Success(Box::new(result)),
             Err(error) => {
                 let kind = error.failure_kind();
                 let error = match error {
@@ -311,7 +311,7 @@ async fn info_accepts_pending_and_held_charge_requests_in_both_directions() -> T
 
         // Complete expected outcome and final fake state.
         let expected = Observation {
-            outcome: Outcome::Success(RequestInfoResult::new(expected_request)),
+            outcome: Outcome::Success(Box::new(RequestInfoResult::new(expected_request))),
             state: FakeState {
                 reader: ReaderOutcome::Present,
                 remaining_responses: vec![ResponseId::UnexpectedSecond],

@@ -92,6 +92,10 @@ fn user_fields(value: &User) -> serde_json::Map<String, Value> {
             "friendship_status".to_owned(),
             json!(value.friendship_status().map(friendship_status)),
         ),
+        (
+            "profile_picture_url".to_owned(),
+            json!(value.profile_picture_url()),
+        ),
     ])
 }
 

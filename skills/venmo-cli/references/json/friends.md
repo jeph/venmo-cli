@@ -17,7 +17,8 @@ Expected envelope command: `friends.list`.
       "display_name": "Alice Example",
       "profile_kind": "personal",
       "is_payable": true,
-      "friendship_status": "friend"
+      "friendship_status": "friend",
+      "profile_picture_url": "https://pics.venmo.com/example"
     }
   ],
   "next_offset": null
@@ -48,7 +49,8 @@ Expected envelope command: `friends.add`.
       "display_name": "Alice Example",
       "profile_kind": "personal",
       "is_payable": true,
-      "friendship_status": "not_friend"
+      "friendship_status": "not_friend",
+      "profile_picture_url": "https://pics.venmo.com/example"
     },
     "previous_status": "not_friend",
     "action": "send_request",
@@ -86,7 +88,8 @@ Expected envelope command: `friends.remove`.
       "display_name": "Alice Example",
       "profile_kind": "personal",
       "is_payable": true,
-      "friendship_status": "friend"
+      "friendship_status": "friend",
+      "profile_picture_url": "https://pics.venmo.com/example"
     },
     "previous_status": "friend",
     "action": "unfriend",
